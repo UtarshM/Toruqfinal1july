@@ -1,0 +1,40 @@
+# EAS Build ignore — exclude all non-frontend workspace content
+# This reduces the 171 MB+ archive to just the frontend source files
+
+# Other workspace packages (not needed for mobile build)
+admin-panel/
+# admin-apk-expo/ (Must be uploaded for the EAS build of the admin panel APK!)
+admin-apk/
+api_temp/
+
+# Large files not needed for build
+node_modules/
+torque all details/
+*.md
+*.sql
+*.log
+*.map
+*.lock
+package-lock.json
+
+# Git history
+.git/
+
+# Build artifacts & caches
+dist/
+build/
+.cache/
+.next/
+coverage/
+.expo/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test files
+__tests__/
+*.test.ts
+*.test.tsx
+*.spec.ts
+*.spec.tsx

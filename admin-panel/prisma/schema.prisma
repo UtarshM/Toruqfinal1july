@@ -1,0 +1,628 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id                   String              @id @default(uuid()) @db.Uuid
+  email                String              @unique
+  fullName             String
+  roleId               String?             @db.Uuid
+  isActive             Boolean             @default(true)
+  expoPushToken        String?
+  highestQualification String?
+  dateOfBirth          DateTime?
+  joiningDate          DateTime?
+  personalMobile       String?
+  homeMobile           String?
+  onboardingRemark     String?
+  onboardingUpdated    Boolean             @default(false)
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+  managerId             String?             @db.Uuid
+  deletedAt             DateTime?
+  manager               User?               @relation("TeamOversight", fields: [managerId], references: [id])
+  teamMembers           User[]              @relation("TeamOversight")
+  activityLogs         ActivityLog[]
+  attendance           Attendance[]
+  calls                Call[]
+  claims               Claim[]
+  dataChanges          DataChangeRequest[] @relation("RequestedBy")
+  reviewedChanges      DataChangeRequest[] @relation("ReviewedBy")
+  documents            Document[]
+  fitnessWork          FitnessWork[]
+  followUps            FollowUp[]
+  leadAssignments      LeadAssignment[]
+  statusHistories      LeadStatusHistory[]
+  whatsappLogs         LeadWhatsAppLog[]
+  assignedLeads        Lead[]              @relation("AssignedLeads")
+  leaveApprovals       LeaveRequest[]      @relation("LeaveApprovals")
+  leaveRequests        LeaveRequest[]      @relation("LeaveRequests")
+  loans                Loan[]
+  notifications        Notification[]
+  createdQuotes        Quotation[]
+  rtoWork              RTOWork[]
+  salaries             Salary[]
+  transactions         Transaction[]
+  role                 Role?               @relation(fields: [roleId], references: [id])
+  visits               Visit[]
+  permissions          Permission[]        @relation("UserPermissions")
+
+  @@map("users")
+}
+
+
+model Role {
+  id          String       @id @default(uuid()) @db.Uuid
+  name        String       @unique
+  description String?
+  users       User[]
+  permissions Permission[] @relation("RolePermissions")
+
+  @@map("roles")
+}
+
+model Permission {
+  id          String  @id @default(uuid()) @db.Uuid
+  name        String  @unique
+  description String?
+  roles       Role[]  @relation("RolePermissions")
+  users       User[]  @relation("UserPermissions")
+
+  @@map("permissions")
+}
+
+model Lead {
+  id               String              @id @default(uuid()) @db.Uuid
+  assignedTo       String?             @db.Uuid
+  clientName       String
+  clientEmail      String?
+  clientPhone      String?
+  status           String              @default("New")
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  vehicleNo        String?
+  expiryDate       DateTime?
+  registrationDate DateTime?
+  gvw              String?
+  address          String?
+  messageTemplate  String?
+  existingAgent    String?
+  city             String?
+  importName       String?
+  calls            Call[]
+  claims           Claim[]
+  fitnessWork      FitnessWork[]
+  followUps        FollowUp[]
+  assignments      LeadAssignment[]
+  statusHistories  LeadStatusHistory[]
+  whatsappLogs     LeadWhatsAppLog[]
+  assignee         User?               @relation("AssignedLeads", fields: [assignedTo], references: [id])
+  customers        Customer[]
+  loans            Loan[]
+  policies         Policy[]
+  quotations       Quotation[]
+  rtoWork          RTOWork[]
+  visits           Visit[]
+
+  @@index([status])
+  @@index([assignedTo])
+  @@index([clientPhone])
+  @@index([clientEmail])
+  @@index([importName])
+  @@map("leads")
+}
+
+model Policy {
+  id            String        @id @default(uuid()) @db.Uuid
+  leadId        String?       @db.Uuid
+  policyNumber  String        @unique
+  provider      String
+  type          String
+  premiumAmount Decimal       @db.Decimal(12, 2)
+  status        String        @default("Active")
+  startDate     DateTime
+  endDate       DateTime
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  claims        Claim[]
+  lead          Lead?         @relation(fields: [leadId], references: [id])
+  transactions  Transaction[]
+
+  @@index([status])
+  @@index([endDate])
+  @@map("policies")
+}
+
+model Quotation {
+  id         String   @id @default(uuid()) @db.Uuid
+  leadId     String?  @db.Uuid
+  createdBy  String?  @db.Uuid
+  amount     Decimal  @db.Decimal(12, 2)
+  status     String   @default("Draft")
+  details    Json?
+  shareToken String?  @unique
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  creator    User?    @relation(fields: [createdBy], references: [id])
+  lead       Lead?    @relation(fields: [leadId], references: [id])
+
+  // Rate Calculator fields
+  rate         Decimal? @db.Decimal(12, 2)
+  benefit      Decimal? @db.Decimal(12, 2)
+  companyId    String?  @db.Uuid
+  categoryId   String?  @db.Uuid
+  netPremium   Decimal? @db.Decimal(12, 2)
+  totalPremium Decimal? @db.Decimal(12, 2)
+  percentage   Decimal? @db.Decimal(5, 2)
+  profit       Decimal? @db.Decimal(12, 2)
+
+  company  CompanyDetail?  @relation(fields: [companyId], references: [id])
+  category CategoryDetail? @relation(fields: [categoryId], references: [id])
+
+  @@map("quotations")
+}
+
+model Call {
+  id        String   @id @default(uuid()) @db.Uuid
+  leadId    String   @db.Uuid
+  userId    String   @db.Uuid
+  type      String   @default("outbound")
+  outcome   String
+  duration  Int?
+  notes     String?
+  createdAt DateTime @default(now())
+  lead      Lead     @relation(fields: [leadId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@map("calls")
+}
+
+model FollowUp {
+  id          String    @id @default(uuid()) @db.Uuid
+  leadId      String    @db.Uuid
+  assignedTo  String?   @db.Uuid
+  leadName    String?
+  type        String    @default("call")
+  scheduledAt DateTime
+  notes       String?
+  status      String    @default("pending")
+  isOverdue   Boolean   @default(false)
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  assignee    User?     @relation(fields: [assignedTo], references: [id])
+  lead        Lead      @relation(fields: [leadId], references: [id])
+
+  @@index([status])
+  @@index([scheduledAt])
+  @@map("follow_ups")
+}
+
+model Claim {
+  id             String    @id @default(uuid()) @db.Uuid
+  policyId       String?   @db.Uuid
+  leadId         String?   @db.Uuid
+  assignedTo     String?   @db.Uuid
+  customerName   String
+  policyNumber   String?
+  vehicleNumber  String?
+  claimType      String?
+  claimAmount    Decimal?  @db.Decimal(12, 2)
+  approvedAmount Decimal?  @db.Decimal(12, 2)
+  status         String    @default("filed")
+  incidentDate   DateTime?
+  filedDate      DateTime  @default(now())
+  settledDate    DateTime?
+  description    String?
+  documents      Json?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  assignee       User?     @relation(fields: [assignedTo], references: [id])
+  lead           Lead?     @relation(fields: [leadId], references: [id])
+  policy         Policy?   @relation(fields: [policyId], references: [id])
+
+  @@index([status])
+  @@map("claims")
+}
+
+model Transaction {
+  id              String   @id @default(uuid()) @db.Uuid
+  userId          String?  @db.Uuid
+  leadId          String?  @db.Uuid
+  policyId        String?  @db.Uuid
+  type            String
+  category        String?
+  amount          Decimal  @db.Decimal(12, 2)
+  status          String   @default("completed")
+  paymentMethod   String?
+  referenceNumber String?
+  description     String?
+  date            DateTime @default(now())
+  createdAt       DateTime @default(now())
+  policy          Policy?  @relation(fields: [policyId], references: [id])
+  user            User?    @relation(fields: [userId], references: [id])
+
+  @@index([type])
+  @@map("transactions")
+}
+
+model Loan {
+  id               String    @id @default(uuid()) @db.Uuid
+  leadId           String?   @db.Uuid
+  assignedTo       String?   @db.Uuid
+  customerName     String
+  loanType         String?
+  amount           Decimal   @db.Decimal(12, 2)
+  tenureMonths     Int?
+  interestRate     Decimal?  @db.Decimal(5, 2)
+  status           String    @default("applied")
+  conversionStatus String    @default("Applied")
+  bankName         String?
+  disbursementDate DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  assignee         User?     @relation(fields: [assignedTo], references: [id])
+  lead             Lead?     @relation(fields: [leadId], references: [id])
+
+  @@index([status])
+  @@map("loans")
+}
+
+model RTOWork {
+  id             String    @id @default(uuid()) @db.Uuid
+  leadId         String?   @db.Uuid
+  assignedTo     String?   @db.Uuid
+  customerName   String
+  vehicleNumber  String?
+  workType       String
+  status         String    @default("pending")
+  rtoOffice      String?
+  fees           Decimal?  @db.Decimal(12, 2)
+  paymentStatus  String    @default("Pending")
+  paymentAmount  Decimal?  @db.Decimal(12, 2)
+  paymentDate    DateTime?
+  dueDate        DateTime?
+  completionDate DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  assignee       User?     @relation(fields: [assignedTo], references: [id])
+  lead           Lead?     @relation(fields: [leadId], references: [id])
+
+  @@map("rto_work")
+}
+
+model FitnessWork {
+  id            String    @id @default(uuid()) @db.Uuid
+  leadId        String?   @db.Uuid
+  assignedTo    String?   @db.Uuid
+  customerName  String
+  vehicleNumber String
+  status        String    @default("pending")
+  testDate      DateTime?
+  expiryDate    DateTime?
+  fees          Decimal?  @db.Decimal(12, 2)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  assignee      User?     @relation(fields: [assignedTo], references: [id])
+  lead          Lead?     @relation(fields: [leadId], references: [id])
+
+  @@map("fitness_work")
+}
+
+model ActivityLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String?  @db.Uuid
+  action     String
+  entityType String
+  entityId   String   @db.Uuid
+  metadata   Json?
+  createdAt  DateTime @default(now())
+  user       User?    @relation(fields: [userId], references: [id])
+
+  @@index([action])
+  @@map("activity_logs")
+}
+
+model Document {
+  id         String   @id @default(uuid()) @db.Uuid
+  entityType String
+  entityId   String   @db.Uuid
+  fileName   String
+  filePath   String
+  uploadedBy String?  @db.Uuid
+  createdAt  DateTime @default(now())
+  user       User?    @relation(fields: [uploadedBy], references: [id])
+
+  @@index([entityType, entityId])
+  @@map("documents")
+}
+
+model Customer {
+  id           String    @id @default(uuid()) @db.Uuid
+  leadId       String?   @db.Uuid
+  name         String
+  phone        String
+  email        String?
+  address      String?
+  kycStatus    String    @default("pending")
+  totalRevenue Decimal?  @db.Decimal(12, 2)
+  lastSaleDate DateTime?
+  policyCount  Int       @default(0)
+  loanCount    Int       @default(0)
+  claimCount   Int       @default(0)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  lead         Lead?     @relation(fields: [leadId], references: [id])
+  visits       Visit[]
+
+  @@index([phone])
+  @@index([email])
+  @@map("customers")
+}
+
+model Visit {
+  id           String    @id @default(uuid()) @db.Uuid
+  customerId   String?   @db.Uuid
+  leadId       String?   @db.Uuid
+  userId       String?   @db.Uuid
+  purpose      String
+  scheduledAt  DateTime
+  completedAt  DateTime?
+  status       String    @default("scheduled")
+  location     String?
+  startLat     Float?
+  startLng     Float?
+  endLat       Float?
+  endLng       Float?
+  distanceKm   Float?
+  checkInTime  DateTime?
+  checkOutTime DateTime?
+  gpsTrail     Json?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  customer     Customer? @relation(fields: [customerId], references: [id])
+  lead         Lead?     @relation(fields: [leadId], references: [id])
+  user         User?     @relation(fields: [userId], references: [id])
+
+  @@map("visits")
+}
+
+model Notification {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @db.Uuid
+  title      String
+  body       String
+  type       String    @default("info")
+  entityType String?
+  entityId   String?
+  isRead     Boolean   @default(false)
+  readAt     DateTime?
+  data       Json?
+  createdAt  DateTime  @default(now())
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+  @@map("notifications")
+}
+
+model DataChangeRequest {
+  id          String    @id @default(uuid()) @db.Uuid
+  requestedBy String    @db.Uuid
+  reviewedBy  String?   @db.Uuid
+  entityType  String
+  entityId    String    @db.Uuid
+  field       String
+  oldValue    String?
+  newValue    String
+  reason      String?
+  status      String    @default("pending")
+  reviewNote  String?
+  requestedAt DateTime  @default(now())
+  reviewedAt  DateTime?
+  requester   User      @relation("RequestedBy", fields: [requestedBy], references: [id])
+  reviewer    User?     @relation("ReviewedBy", fields: [reviewedBy], references: [id])
+
+  @@index([status])
+  @@index([entityType, entityId])
+  @@map("data_change_requests")
+}
+
+model LeadAssignment {
+  id         String   @id @default(uuid()) @db.Uuid
+  leadId     String   @db.Uuid
+  userId     String   @db.Uuid
+  assignedAt DateTime @default(now())
+  lead       Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("lead_assignments")
+}
+
+model LeadWhatsAppLog {
+  id     String   @id @default(uuid()) @db.Uuid
+  leadId String   @db.Uuid
+  userId String   @db.Uuid
+  sentAt DateTime @default(now())
+  lead   Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  user   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("lead_whatsapp_logs")
+}
+
+model LeadStatusHistory {
+  id        String   @id @default(uuid()) @db.Uuid
+  leadId    String   @db.Uuid
+  userId    String   @db.Uuid
+  oldStatus String?
+  newStatus String
+  notes     String?
+  changedAt DateTime @default(now())
+  lead      Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("lead_status_history")
+}
+
+model PredefinedResponse {
+  id               String   @id @default(uuid()) @db.Uuid
+  text             String   @unique
+  isActive         Boolean  @default(true)
+  orderIndex       Int      @default(0)
+  requiresFollowUp Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@map("predefined_responses")
+}
+
+model Attendance {
+  id           String    @id @default(uuid()) @db.Uuid
+  userId       String    @db.Uuid
+  date         DateTime  @db.Date
+  checkInTime  DateTime?
+  checkOutTime DateTime?
+  status       String    @default("present")
+  notes        String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  user         User      @relation(fields: [userId], references: [id])
+
+  @@unique([userId, date])
+  @@map("attendance")
+}
+
+model LeaveRequest {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @db.Uuid
+  type       String
+  startDate  DateTime  @db.Date
+  endDate    DateTime  @db.Date
+  days       Int       @default(1)
+  reason     String?
+  status     String    @default("pending")
+  approvedBy String?   @db.Uuid
+  approvedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  approver   User?     @relation("LeaveApprovals", fields: [approvedBy], references: [id])
+  user       User      @relation("LeaveRequests", fields: [userId], references: [id])
+
+  @@map("leave_requests")
+}
+
+model Salary {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String   @db.Uuid
+  month      Int
+  year       Int
+  baseAmount Float    @default(0)
+  deductions Float    @default(0)
+  netAmount  Float    @default(0)
+  status     String   @default("Pending")
+  notes      String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  user       User     @relation(fields: [userId], references: [id])
+
+  @@unique([userId, month, year])
+  @@map("salaries")
+}
+
+model RateTable {
+  id          String     @id @default(uuid()) @db.Uuid
+  provider    String
+  vehicleType String
+  basePremium Float      @default(0)
+  isActive    Boolean    @default(true)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  rules       RateRule[]
+
+  @@map("rate_tables")
+}
+
+model RateRule {
+  id            String    @id @default(uuid()) @db.Uuid
+  rateTableId   String    @db.Uuid
+  condition     String
+  modifierType  String
+  modifierValue Float     @default(0)
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  rateTable     RateTable @relation(fields: [rateTableId], references: [id])
+
+  @@map("rate_rules")
+}
+
+model Addon {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String
+  description String?
+  priceType   String   @default("flat")
+  priceValue  Float    @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("addons")
+}
+
+model SystemSetting {
+  id        String   @id @default(uuid()) @db.Uuid
+  key       String   @unique
+  value     Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("system_settings")
+}
+
+model CompanyDetail {
+  id         String                  @id @default(uuid()) @db.Uuid
+  name       String                  @unique
+  status     Int                     @default(1) // 1 = Active, 2 = Inactive
+  createdAt  DateTime                @default(now())
+  updatedAt  DateTime                @updatedAt
+  relations  QuotationRelationship[]
+  quotations Quotation[]
+
+  @@map("company_details")
+}
+
+model CategoryDetail {
+  id         String                  @id @default(uuid()) @db.Uuid
+  name       String                  @unique
+  status     Int                     @default(1) // 1 = Active, 2 = Inactive
+  createdAt  DateTime                @default(now())
+  updatedAt  DateTime                @updatedAt
+  relations  QuotationRelationship[]
+  quotations Quotation[]
+
+  @@map("category_details")
+}
+
+model QuotationRelationship {
+  id         String         @id @default(uuid()) @db.Uuid
+  companyId  String         @db.Uuid
+  categoryId String         @db.Uuid
+  percentage Decimal        @db.Decimal(5, 2)
+  profit     Decimal        @db.Decimal(12, 2)
+  status     Int            @default(1) // 1 = Active, 2 = Inactive, 3 = Deleted
+  addedBy    String?        @db.Uuid
+  updatedBy  String?        @db.Uuid
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+  company    CompanyDetail  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  category   CategoryDetail @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, categoryId, status])
+  @@map("quotation_relationship_details")
+}
+

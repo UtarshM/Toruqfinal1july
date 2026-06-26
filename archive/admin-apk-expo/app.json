@@ -1,0 +1,39 @@
+{
+  "expo": {
+    "name": "Torque Admin",
+    "slug": "torque-admin-panel",
+    "version": "1.0.7",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.torque.admin.pro.v1"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "package": "com.torque.admin.pro.v1",
+      "versionCode": 8,
+      "permissions": [
+        "android.permission.INTERNET"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "b1ea04fd-7a94-422f-8d3e-8ed551141997"
+      }
+    },
+    "owner": "testdemos"
+  }
+}

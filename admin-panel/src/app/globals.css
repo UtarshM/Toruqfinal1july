@@ -1,0 +1,40 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  
+  --color-brand-primary: #E2231A;
+  --color-brand-magenta: #E5007D;
+  --color-brand-yellow: #FFC20E;
+  --color-brand-green: #8DC63F;
+  --color-brand-dark: #231F20;
+  --color-brand-gray: #939598;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Force all input fields, select dropdowns, and textareas to have solid black text */
+input, 
+select, 
+textarea {
+  color: #000000 !important;
+}

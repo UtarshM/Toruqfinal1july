@@ -1,0 +1,20 @@
+# EAS Build ignore — keeps the archive small for faster uploads
+node_modules/
+.git/
+.expo/
+dist/
+build/
+ios/
+android/
+*.log
+*.map
+.DS_Store
+coverage/
+.cache/
+.next/
+__tests__/
+*.test.ts
+*.test.tsx
+*.spec.ts
+.metro-cache/
+**/.metro-cache/

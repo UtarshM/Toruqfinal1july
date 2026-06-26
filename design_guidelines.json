@@ -1,0 +1,113 @@
+{
+  "project_name": "Auto Insurance Management Platform",
+  "theme": "light",
+  "archetype": "4 (Swiss & High-Contrast)",
+  "design_philosophy": "Objective, rigid, and functional. Designed for speed, high data density, and clear workflows for insurance agents. Color is function only. Avoid decoration. Fast minimal-tap workflows are prioritized.",
+  "typography": {
+    "headings": {
+      "font_family": "Chivo, sans-serif",
+      "weights": ["400", "700", "900"],
+      "classes": "font-sans tracking-tight"
+    },
+    "body": {
+      "font_family": "IBM Plex Sans, sans-serif",
+      "weights": ["400", "500", "600"],
+      "classes": "font-sans"
+    },
+    "scales": {
+      "h1": "text-3xl sm:text-4xl lg:text-5xl tracking-tighter font-black",
+      "h2": "text-2xl sm:text-3xl lg:text-4xl tracking-tight font-bold",
+      "h3": "text-xl sm:text-2xl tracking-tight font-bold",
+      "h4": "text-lg sm:text-xl font-semibold",
+      "body": "text-sm md:text-base leading-relaxed",
+      "labels": "text-xs tracking-[0.2em] uppercase font-bold",
+      "data": "text-sm font-medium"
+    },
+    "installation": "yarn add @fontsource/chivo @fontsource/ibm-plex-sans"
+  },
+  "colors": {
+    "background": {
+      "default": "#FFFFFF",
+      "subtle": "#F8FAFC",
+      "muted": "#F1F5F9",
+      "grid_line": "#E2E8F0"
+    },
+    "foreground": {
+      "default": "#020617",
+      "muted": "#475569",
+      "inverse": "#FFFFFF"
+    },
+    "primary": {
+      "default": "#002FA7",
+      "hover": "#002482",
+      "foreground": "#FFFFFF"
+    },
+    "status": {
+      "urgent_red": "#E11D48",
+      "warning_yellow": "#F59E0B",
+      "success_green": "#10B981",
+      "info_blue": "#0284C7"
+    }
+  },
+  "layout_and_spacing": {
+    "philosophy": "The 'Control Room' Grid for dense admin/dashboard data and 'Mobile-First' for agent workflows.",
+    "spacing_scale": "p-2, p-4, p-6, p-8, p-12",
+    "mobile_lists": "Edge-to-edge list items with 1px bottom borders, high contrast data points, minimal padding for maximum screen utilization.",
+    "desktop_dashboard": "grid-cols-1 md:grid-cols-3 lg:grid-cols-4, tight gaps (gap-4 or gap-0 for border-collapse layouts).",
+    "forms": "Vertical stacks, 100% width inputs on mobile, multi-column on desktop. Minimal tap targets > 44px."
+  },
+  "surfaces_and_micro_themes": {
+    "dashboard_cards": "Flat solid background (`bg-white`), 1px subtle sharp border (`border-slate-200`), NO SHADOWS. Sharp or max 4px radius (`rounded-sm`).",
+    "grid_borders": "Use the technical look for heavy data sections. Expose the skeleton with `border-collapse` layouts and `border-r border-b border-slate-200` on items.",
+    "headers": "Solid white background (`bg-white`) with a hard 1px bottom border (`border-b border-slate-200`). Sticky top with `z-50`.",
+    "modals_drawers": "Mobile: Bottom sheets (`Drawer` component). Desktop: Centered Dialogs (`Dialog` component). Solid background, 1px border."
+  },
+  "components_strategy": {
+    "buttons": "Square or rounded-sm, high contrast. Primary actions are solid blue. Secondary actions are white with 1px border. Hover states must change background and explicitly set text color.",
+    "inputs": "Shadcn standard. Square or rounded-sm (`rounded-sm`), 1px border. Focus state must have high contrast ring (`focus:ring-2 focus:ring-blue-700`).",
+    "lists_and_tables": "Data density is key. Use Shadcn Table for desktop. For mobile, use custom mapped `<div className=\"flex flex-col border-b border-slate-200 py-3\">` items.",
+    "date_picker": "Shadcn Calendar / Popover.",
+    "dropdowns": "Shadcn Select or DropdownMenu.",
+    "toasts": "Sonner, positioned bottom-center on mobile, bottom-right on desktop."
+  },
+  "icons_and_assets": {
+    "library": "@phosphor-icons/react",
+    "usage": "Use bold or regular weights for clarity in dense dashboards. Use minimal icons—only where they speed up recognition (e.g., Call, WhatsApp, Filter).",
+    "installation": "yarn add @phosphor-icons/react"
+  },
+  "accessibility": {
+    "contrast": "Ensure all text meets minimum 4.5:1 ratio against background. Badges and tags must have high-contrast text.",
+    "interactive_states": "All buttons, links, and list items must have distinct hover, focus, and active states.",
+    "testing": "All interactive elements must include `data-testid` attribute (e.g., `data-testid=\"login-submit-btn\"`)."
+  },
+  "views_and_workflows": {
+    "1_authentication": "Minimalist login screen. White background, simple centered form. High contrast PIN input.",
+    "2_dashboard": "Grid-based control room. High-level metrics for Leads, Claims, Finances. Quick action floating button on mobile.",
+    "3_lead_management": "Dense, searchable list on mobile. Color-coded status dots. Swipe or tap to reveal Call/WhatsApp quick actions. Deep link to `wa.me` for WhatsApp.",
+    "4_lead_detail_post_call": "Focused view. Prominent 'Log Call' button leading to a quick form. Status update dropdown.",
+    "5_quotation_system": "Multi-step form or long scrolling form. High contrast sections for Vehicle Details, Coverage, Premium.",
+    "6_data_grids": "(Claims, RTO, Fitness, Finance Ledger, HR, Loans, CRM) - Use consistent list patterns on mobile and dense data tables on desktop. Sticky headers."
+  },
+  "image_urls": {
+    "abstract_backgrounds": [
+      {
+        "url": "https://images.unsplash.com/photo-1655474396177-e727349f44dc?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NTZ8MHwxfHNlYXJjaHwxfHxhYnN0cmFjdCUyMGdlb21ldHJpYyUyMHdoaXRlJTIwYmFja2dyb3VuZHxlbnwwfHx8fDE3NzY1MzYyODN8MA&ixlib=rb-4.1.0&q=85",
+        "category": "background",
+        "description": "Subtle white geometric background for the login screen."
+      }
+    ],
+    "avatars": [
+      {
+        "url": "https://images.unsplash.com/photo-1655249493799-9cee4fe983bb?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxODl8MHwxfHNlYXJjaHwxfHxwcm9mZXNzaW9uYWwlMjBidXNpbmVzcyUyMHBlcnNvbiUyMGhlYWRzaG90fGVufDB8fHx8MTc3NjUzNjI4M3ww&ixlib=rb-4.1.0&q=85",
+        "category": "avatar",
+        "description": "Professional headshot for HR/Employee list mockups."
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1770058428154-9eee8a6a1fbb?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxODl8MHwxfHNlYXJjaHwzfHxwcm9mZXNzaW9uYWwlMjBidXNpbmVzcyUyMHBlcnNvbiUyMGhlYWRzaG90fGVufDB8fHx8MTc3NjUzNjI4M3ww&ixlib=rb-4.1.0&q=85",
+        "category": "avatar",
+        "description": "Professional headshot for HR/Employee list mockups."
+      }
+    ]
+  },
+  "instructions_to_main_agent": "1. Build mobile-first. Rely heavily on dense, edge-to-edge lists for data on mobile. 2. Install `@phosphor-icons/react` and `sonner`. 3. Do not use 'Card' components with heavy shadows or rounded corners. Keep it flat, sharp, and high contrast. 4. Use `Chivo` for headings and `IBM Plex Sans` for body text. Update Tailwind config accordingly. 5. Include `data-testid` on all buttons and inputs. 6. WhatsApp integration should use `wa.me/` links. 7. Do not use generic fallback images; use the avatars provided for user lists."
+}
