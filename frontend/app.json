@@ -27,7 +27,8 @@
       "versionCode": 10,
       "permissions": [
         "android.permission.USE_BIOMETRIC",
-        "android.permission.USE_FINGERPRINT"
+        "android.permission.USE_FINGERPRINT",
+        "android.permission.RECORD_AUDIO"
       ]
     },
     "web": {
@@ -71,9 +72,9 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "7259d36b-57dc-4dfc-808e-7e227cfcc17f"
+        "projectId": "727086dc-4268-41cc-bb06-15c69663e95a"
       }
     },
-    "owner": "iya6732"
+    "owner": "utkarshmakwana"
   }
 }
