@@ -6,7 +6,7 @@ import { createClient } from '@supabase/supabase-js';
 
 // Hardcoded for production builds — env vars are NOT available inside APKs
 const supabaseUrl = 'https://ugwklaxdyibldmgdadyc.supabase.co';
-const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVnd2tsYXhkeWlibGRtZ2RhZHljIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NDA1OTYsImV4cCI6MjA5OTAxNjU5Nn0.0RtbYyt4FgFhXZfrfv5TmFBSf7wlmlGkgsj6jF0Bzys';
+const supabaseAnonKey = 'sb_publishable_QBy9auAMk-DbrD-K8ygYyA_Jv6_-3B3';
 
 const isWeb = Platform.OS === 'web';
 const storage = isWeb ? (typeof window !== 'undefined' ? window.localStorage : undefined) : AsyncStorage;
