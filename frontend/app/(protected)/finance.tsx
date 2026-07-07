@@ -7,6 +7,8 @@ import { Colors, Spacing, FontSize, BorderRadius } from '../../src/utils/theme';
 import { Ionicons } from '@expo/vector-icons';
 import { useCacheStore } from '../../src/store/cacheStore';
 import Sidebar from '../../src/components/Sidebar';
+import { printReceiptDirect, shareReceiptPDF } from '../../src/services/printService';
+import { exportToCSV } from '../../src/utils/exportHelper';
 
 export default function FinanceScreen() {
   const router = useRouter();
@@ -98,6 +100,26 @@ export default function FinanceScreen() {
     return item.type === filter;
   });
 
+  const handleExport = () => {
+    if (filteredItems.length === 0) {
+      Alert.alert('No Data', 'No transactions found to export.');
+      return;
+    }
+
+    const headers = ['Description', 'Type', 'Category', 'Amount (INR)', 'Payment Method', 'Reference Number', 'Date'];
+    const rows = filteredItems.map(item => [
+      item.description,
+      item.type.toUpperCase(),
+      item.category,
+      item.amount,
+      item.paymentMethod || item.payment_method || 'N/A',
+      item.referenceNumber || item.reference_number || 'N/A',
+      item.date ? item.date.split('T')[0] : 'N/A'
+    ]);
+
+    exportToCSV(`transactions_export_${filter}_${new Date().toISOString().split('T')[0]}.csv`, headers, rows);
+  };
+
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       {/* Sidebar Component */}
@@ -109,9 +131,14 @@ export default function FinanceScreen() {
           <Ionicons name="menu-outline" size={26} color={Colors.text} />
         </Pressable>
         <Text style={styles.title}>Finance</Text>
-        <Pressable style={styles.addBtn} onPress={() => setAddModalVisible(true)}>
-          <Ionicons name="add" size={22} color={Colors.primary} />
-        </Pressable>
+        <View style={styles.headerActions}>
+          <Pressable style={styles.actionIconBtn} onPress={handleExport}>
+            <Ionicons name="cloud-download-outline" size={22} color={Colors.primary} />
+          </Pressable>
+          <Pressable style={styles.addBtn} onPress={() => setAddModalVisible(true)}>
+            <Ionicons name="add" size={22} color={Colors.primary} />
+          </Pressable>
+        </View>
       </View>
 
       {/* Summary Row */}
@@ -149,6 +176,42 @@ export default function FinanceScreen() {
         }
         renderItem={({ item }) => {
           const isIncome = item.type === 'income';
+          const handlePrint = async () => {
+            try {
+              const receipt = {
+                receiptNo: item.referenceNumber || item.reference_number || `TXN-${item.id.substring(0, 8).toUpperCase()}`,
+                date: item.date ? item.date.split('T')[0] : new Date().toISOString().split('T')[0],
+                customerName: item.description || 'Valued Client',
+                customerPhone: 'N/A',
+                amount: Number(item.amount),
+                paymentMethod: item.paymentMethod || item.payment_method || 'Bank',
+                referenceNumber: item.referenceNumber || item.reference_number || undefined,
+                description: item.description,
+              };
+              await printReceiptDirect(receipt);
+            } catch (e: any) {
+              Alert.alert('Print Error', e.message || 'Failed to print receipt.');
+            }
+          };
+
+          const handleShare = async () => {
+            try {
+              const receipt = {
+                receiptNo: item.referenceNumber || item.reference_number || `TXN-${item.id.substring(0, 8).toUpperCase()}`,
+                date: item.date ? item.date.split('T')[0] : new Date().toISOString().split('T')[0],
+                customerName: item.description || 'Valued Client',
+                customerPhone: 'N/A',
+                amount: Number(item.amount),
+                paymentMethod: item.paymentMethod || item.payment_method || 'Bank',
+                referenceNumber: item.referenceNumber || item.reference_number || undefined,
+                description: item.description,
+              };
+              await shareReceiptPDF(receipt);
+            } catch (e: any) {
+              Alert.alert('Share Error', e.message || 'Failed to share receipt.');
+            }
+          };
+
           return (
             <View style={styles.card}>
               <View style={styles.cardLeft}>
@@ -160,9 +223,22 @@ export default function FinanceScreen() {
                   <Text style={styles.cardMeta}>{item.category} · {item.paymentMethod || item.payment_method} · {item.referenceNumber || item.reference_number || 'N/A'}</Text>
                 </View>
               </View>
-              <Text style={[styles.cardAmount, { color: isIncome ? Colors.success : Colors.error }]}>
-                {isIncome ? '+' : '-'}₹{(item.amount || 0).toLocaleString()}
-              </Text>
+              
+              <View style={{ alignItems: 'flex-end', gap: Spacing.xs }}>
+                <Text style={[styles.cardAmount, { color: isIncome ? Colors.success : Colors.error }]}>
+                  {isIncome ? '+' : '-'}₹{(item.amount || 0).toLocaleString()}
+                </Text>
+                {isIncome && (
+                  <View style={{ flexDirection: 'row', gap: Spacing.sm }}>
+                    <Pressable onPress={handlePrint} style={styles.actionLinkBtn}>
+                      <Ionicons name="print-outline" size={16} color={Colors.primary} />
+                    </Pressable>
+                    <Pressable onPress={handleShare} style={styles.actionLinkBtn}>
+                      <Ionicons name="share-social-outline" size={16} color={Colors.primary} />
+                    </Pressable>
+                  </View>
+                )}
+              </View>
             </View>
           );
         }}
@@ -328,5 +404,8 @@ const styles = StyleSheet.create({
   input: { backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.border, borderRadius: BorderRadius.md, height: 50, paddingHorizontal: Spacing.md, fontSize: FontSize.md, color: Colors.text },
   submitBtn: { backgroundColor: Colors.primary, height: 52, borderRadius: BorderRadius.sm, justifyContent: 'center', alignItems: 'center', marginTop: Spacing.xl },
   submitBtnText: { color: Colors.white, fontSize: FontSize.lg, fontWeight: '700' },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  actionIconBtn: { width: 38, height: 38, borderRadius: 19, justifyContent: 'center', alignItems: 'center' },
+  actionLinkBtn: { padding: 4 },
 });
 

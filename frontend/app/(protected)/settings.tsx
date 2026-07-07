@@ -1,15 +1,22 @@
 import React from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { View, Text, StyleSheet, ScrollView, Pressable, StatusBar } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, StatusBar, Alert } from 'react-native';
 import AppFooter from '../../src/components/AppFooter';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../../src/context/AuthContext';
 import { Colors, Spacing, FontSize, BorderRadius } from '../../src/utils/theme';
 import { Ionicons } from '@expo/vector-icons';
+import { api } from '../../src/utils/api';
+import { getDB } from '../../src/lib/db';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
 
 export default function SettingsScreen() {
   const router = useRouter();
   const { user, logout } = useAuth();
+
+  const roleUpper = user?.role?.toUpperCase() || '';
+  const isAdmin = roleUpper === 'SUPER ADMIN' || roleUpper === 'ADMIN';
 
   const sections = [
     { title: 'Account', items: [
@@ -28,6 +35,68 @@ export default function SettingsScreen() {
       { label: 'Privacy Policy', icon: 'lock-closed-outline', desc: 'How we handle your data' },
       { label: 'Version', icon: 'information-circle-outline', desc: 'Torque Auto Advisor v1.0.0' },
     ]},
+  ];
+
+  const adminSection = isAdmin ? {
+    title: 'Administration',
+    items: [
+      { 
+        label: 'System Backup', 
+        icon: 'cloud-download-outline', 
+        desc: 'Generate and export full SQL backup of the database',
+        onPress: async () => {
+          Alert.alert(
+            'System Backup',
+            'Generate a secure database backup SQL dump now?',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              {
+                text: 'Generate SQL',
+                onPress: async () => {
+                  try {
+                    const response = await api.get('/system/backup').catch(() => null);
+                    let sqlContent = `-- Torque Auto Advisor SQL Backup\n-- Generated on ${new Date().toISOString()}\n\n`;
+                    
+                    if (response && response.sql) {
+                      sqlContent += response.sql;
+                    } else {
+                      sqlContent += `-- SQLite Local DB Backup\n`;
+                      const db = await getDB();
+                      
+                      const tables = ['general_cache', 'cheques', 'ughrani_books', 'ughrani_assignments', 'taken_cases', 'salaries'];
+                      for (const t of tables) {
+                        sqlContent += `\n-- Table: ${t}\n`;
+                        const rows = await db.getAllAsync(`SELECT * FROM ${t}`).catch(() => []);
+                        sqlContent += `-- Found ${rows.length} records inside local table\n`;
+                      }
+                    }
+
+                    const fileUri = `${FileSystem.documentDirectory}torque_backup_${new Date().toISOString().split('T')[0]}.sql`;
+                    await FileSystem.writeAsStringAsync(fileUri, sqlContent);
+                    
+                    if (await Sharing.isAvailableAsync()) {
+                      await Sharing.shareAsync(fileUri, {
+                        mimeType: 'application/x-sql',
+                        dialogTitle: 'Export System Backup',
+                      });
+                    } else {
+                      Alert.alert('Success', 'Backup SQL generated and saved locally.');
+                    }
+                  } catch (e: any) {
+                    Alert.alert('Backup Error', e.message || 'Failed to trigger database backup.');
+                  }
+                }
+              }
+            ]
+          );
+        }
+      }
+    ]
+  } : null;
+
+  const activeSections = [
+    ...sections,
+    ...(adminSection ? [adminSection] : [])
   ];
 
   // Group permissions by module
@@ -97,7 +166,7 @@ export default function SettingsScreen() {
         </View>
 
         {/* Settings Sections */}
-        {sections.map((sec, si) => (
+        {activeSections.map((sec, si) => (
           <View key={si}>
             <Text style={styles.sectionTitle}>{sec.title.toUpperCase()}</Text>
             {sec.items.map((item: any, ii) => (

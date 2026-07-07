@@ -68,6 +68,9 @@ export default function Sidebar({ visible, onClose }: SidebarProps) {
         { name: 'Loans', icon: 'cash-outline', route: '/(protected)/loans', visible: isAdmin || isHrManager || isManager || roleUpper.includes('LOAN') },
         { name: 'RTO Work', icon: 'car-outline', route: '/(protected)/rto', visible: isAdmin || isHrManager || isManager || roleUpper.includes('RTO') },
         { name: 'Fitness', icon: 'fitness-outline', route: '/(protected)/fitness', visible: isAdmin || isHrManager || isManager || roleUpper.includes('FITNESS') },
+        { name: 'Cheques', icon: 'card-outline', route: '/(protected)/cheques', visible: isAdmin || isManager || roleUpper === 'ACCOUNTANT' },
+        { name: 'Ughrani (Collections)', icon: 'list-outline', route: '/(protected)/ughrani', visible: !['ACCOUNTANT'].includes(roleUpper) },
+        { name: 'Taken Documents', icon: 'folder-open-outline', route: '/(protected)/taken', visible: !['ACCOUNTANT'].includes(roleUpper) },
       ]
     },
     {
@@ -80,6 +83,7 @@ export default function Sidebar({ visible, onClose }: SidebarProps) {
         { name: 'Data Approvals', icon: 'checkbox-outline', route: '/(protected)/data-approvals', visible: isAdmin || isHrManager },
         { name: 'Finance', icon: 'wallet-outline', route: '/(protected)/finance', visible: isAdmin || roleUpper === 'ACCOUNTANT' },
         { name: 'HR/Employee management', icon: 'people-circle-outline', route: '/(protected)/hr', visible: isAdmin || isHrManager },
+        { name: 'Payroll & Salaries', icon: 'people-outline', route: '/(protected)/payroll', visible: isAdmin || isHrManager },
         { name: 'Lead Responses', icon: 'chatbubble-ellipses-outline', route: '/(protected)/responses', visible: isAdmin || isHrManager },
         { name: 'Settings', icon: 'settings-outline', route: '/(protected)/settings', visible: true },
       ]

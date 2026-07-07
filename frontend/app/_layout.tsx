@@ -85,7 +85,13 @@ function RootLayoutNav() {
   return <Slot />;
 }
 
+import { initDB } from '../src/lib/db';
+
 export default function RootLayout() {
+  useEffect(() => {
+    initDB().catch(err => console.error('[SQLite] Initialization failed:', err));
+  }, []);
+
   return (
     <ErrorBoundary>
       <SafeAreaProvider>

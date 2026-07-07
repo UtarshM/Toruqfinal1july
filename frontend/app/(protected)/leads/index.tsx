@@ -8,6 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useCacheStore } from '../../../src/store/cacheStore';
 import AppFooter from '../../../src/components/AppFooter';
 import Sidebar from '../../../src/components/Sidebar';
+import { exportToCSV } from '../../../src/utils/exportHelper';
 
 export default function LeadsScreen() {
   const router = useRouter();
@@ -118,6 +119,25 @@ export default function LeadsScreen() {
     l.vehicleNo?.toLowerCase().includes(search.toLowerCase())
   );
 
+  const handleExport = () => {
+    if (filteredItems.length === 0) {
+      Alert.alert('No Data', 'No leads found to export.');
+      return;
+    }
+
+    const headers = ['Client Name', 'Client Phone', 'Vehicle Number', 'Status', 'Expiry Date', 'Assignee'];
+    const rows = filteredItems.map(l => [
+      l.clientName || 'N/A',
+      l.clientPhone || 'N/A',
+      l.vehicleNo || 'N/A',
+      l.status || 'New',
+      l.expiryDate ? new Date(l.expiryDate).toLocaleDateString() : 'N/A',
+      l.assignee?.fullName || 'Unassigned'
+    ]);
+
+    exportToCSV(`leads_export_${selectedImportName || 'all'}_${new Date().toISOString().split('T')[0]}.csv`, headers, rows);
+  };
+
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
@@ -131,9 +151,14 @@ export default function LeadsScreen() {
           <Ionicons name="menu-outline" size={26} color={Colors.text} />
         </Pressable>
         <Text style={styles.title}>My Leads</Text>
-        <Pressable style={styles.addBtn} onPress={() => router.push('/lead/new')}>
-          <Ionicons name="add" size={22} color={Colors.primary} />
-        </Pressable>
+        <View style={styles.headerActions}>
+          <Pressable style={styles.actionIconBtn} onPress={handleExport}>
+            <Ionicons name="cloud-download-outline" size={22} color={Colors.primary} />
+          </Pressable>
+          <Pressable style={styles.addBtn} onPress={() => router.push('/lead/new')}>
+            <Ionicons name="add" size={22} color={Colors.primary} />
+          </Pressable>
+        </View>
       </View>
 
       {/* Search */}
@@ -283,6 +308,8 @@ const styles = StyleSheet.create({
   menuBtn:  { padding: Spacing.xs },
   title:    { flex: 1, fontSize: FontSize.xxl, fontWeight: '900', color: Colors.text },
   addBtn:   { width: 38, height: 38, borderRadius: 19, backgroundColor: Colors.primaryLight, justifyContent: 'center', alignItems: 'center' },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  actionIconBtn: { width: 38, height: 38, borderRadius: 19, justifyContent: 'center', alignItems: 'center' },
   searchRow:      { flexDirection: 'row', alignItems: 'center', paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm, gap: Spacing.sm, backgroundColor: '#FFFFFF' },
   searchContainer: { flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.border, borderRadius: BorderRadius.lg, paddingHorizontal: Spacing.md, height: 44, gap: Spacing.sm },
   searchInput:    { flex: 1, fontSize: FontSize.md, color: Colors.text },
