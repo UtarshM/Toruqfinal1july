@@ -16,6 +16,8 @@
     "vercel-build": "cd admin-panel && npx prisma generate && npm run build"
   },
   "devDependencies": {
-    "babel-preset-expo": "~54.0.11"
+    "babel-preset-expo": "~54.0.11",
+    "react": "19.1.0",
+    "react-dom": "19.1.0"
   }
 }
