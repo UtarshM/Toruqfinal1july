@@ -5,12 +5,12 @@
   },
   "build": {
     "development": {
-      "node": "22.11.0",
+      "node": "22.13.0",
       "developmentClient": true,
       "distribution": "internal"
     },
     "preview": {
-      "node": "22.11.0",
+      "node": "22.13.0",
       "android": {
         "buildType": "apk"
       },
@@ -18,7 +18,7 @@
       "channel": "preview"
     },
     "production": {
-      "node": "22.11.0",
+      "node": "22.13.0",
       "autoIncrement": true,
       "channel": "production"
     }
