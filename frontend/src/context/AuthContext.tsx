@@ -40,7 +40,7 @@ const AuthContext = createContext<AuthContextType>({
   login: async () => {},
 });
 
-const LIVE_API_BASE = 'https://torque-alpha.vercel.app';
+const LIVE_API_BASE = 'https://admin-panel-delta-steel.vercel.app';
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);

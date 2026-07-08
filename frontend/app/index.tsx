@@ -115,7 +115,7 @@ export default function LoginScreen() {
 
         <View style={styles.footer}>
           <Text style={styles.footerText}>PROD CREDENTIALS</Text>
-          <Text style={styles.footerCred}>admin@toque.com / Admin@123</Text>
+          <Text style={styles.footerCred}>admin@torque.com / Admin@Torque2026</Text>
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>

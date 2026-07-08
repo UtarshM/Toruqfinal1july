@@ -14,7 +14,7 @@ import { supabase } from '../src/lib/supabase';
 import { useAuth } from '../src/context/AuthContext';
 import { Colors, Spacing, FontSize, BorderRadius } from '../src/utils/theme';
 
-const LIVE_BASE_URL = 'https://torque-alpha.vercel.app';
+const LIVE_BASE_URL = 'https://admin-panel-delta-steel.vercel.app';
 
 const getBaseUrl = () => {
   if (Platform.OS === 'web' && typeof window !== 'undefined') {

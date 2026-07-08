@@ -58,7 +58,7 @@ export default function QuotationsScreen() {
         Alert.alert('Error', 'Session expired. Please log in again.');
         return;
       }
-      const url = `https://torque-alpha.vercel.app/api/v1/quotations/${item.id}/pdf?token=${token}`;
+      const url = `https://admin-panel-delta-steel.vercel.app/api/v1/quotations/${item.id}/pdf?token=${token}`;
       const filename = `Quotation_${item.id.substring(0, 8)}.pdf`;
       const fileUri = `${FileSystem.documentDirectory}${filename}`;
 

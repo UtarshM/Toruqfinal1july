@@ -148,7 +148,7 @@ export default function LeadImportScreen() {
         type: file.mimeType || 'application/octet-stream',
       } as any);
 
-      const response = await fetch('https://torque-alpha.vercel.app/api/v1/leads/import/parse', {
+      const response = await fetch('https://admin-panel-delta-steel.vercel.app/api/v1/leads/import/parse', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -228,7 +228,7 @@ export default function LeadImportScreen() {
 
       formData.append('mapping', JSON.stringify(cleanMapping));
 
-      const response = await fetch('https://torque-alpha.vercel.app/api/v1/leads/import', {
+      const response = await fetch('https://admin-panel-delta-steel.vercel.app/api/v1/leads/import', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
