@@ -14,8 +14,7 @@ torque all details/
 *.sql
 *.log
 *.map
-*.lock
-package-lock.json
+
 
 # Git history
 .git/
