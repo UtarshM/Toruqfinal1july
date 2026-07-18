@@ -2,6 +2,52 @@ import { validateAuth } from '@/lib/auth-guard'
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 
+function parseImportedDate(dateVal: any): Date | null {
+  if (!dateVal) return null
+
+  // If it's already a Date object
+  if (dateVal instanceof Date) {
+    return isNaN(dateVal.getTime()) ? null : dateVal
+  }
+
+  // If it is a string representing a Date
+  if (typeof dateVal === 'string') {
+    const trimmed = dateVal.trim()
+    if (!trimmed) return null
+
+    // Check if it's in DD/MM/YYYY or DD-MM-YYYY format
+    const slashOrDashRegex = /^(\d{1,2})[/\-](\d{1,2})[/\-](\d{4})$/
+    const match = trimmed.match(slashOrDashRegex)
+    if (match) {
+      const day = parseInt(match[1], 10)
+      const month = parseInt(match[2], 10) - 1 // JS months are 0-11
+      const year = parseInt(match[3], 10)
+      
+      const d = new Date(year, month, day)
+      if (!isNaN(d.getTime())) {
+        return d
+      }
+    }
+
+    // Try standard JavaScript date parsing
+    const d = new Date(trimmed)
+    if (!isNaN(d.getTime())) {
+      return d
+    }
+  }
+
+  // If it's a number (Excel serial date representation, e.g. 45138)
+  if (typeof dateVal === 'number') {
+    // Excel base date is Dec 30, 1899
+    const d = new Date((dateVal - 25569) * 86400 * 1000)
+    if (!isNaN(d.getTime())) {
+      return d
+    }
+  }
+
+  return null
+}
+
 export async function POST(req: NextRequest) {
   const { context, error } = await validateAuth(req, 'leads.import')
   if (error) return error
@@ -71,8 +117,8 @@ export async function POST(req: NextRequest) {
       const addressStr = address ? String(address).trim() : null
       const cityStr = city ? String(city).trim() : null
 
-      const parsedExpiry = expiryDate ? new Date(expiryDate) : null
-      const parsedRegDate = registrationDate ? new Date(registrationDate) : null
+      const parsedExpiry = parseImportedDate(expiryDate)
+      const parsedRegDate = parseImportedDate(registrationDate)
 
       // Check if a Lead already exists with the same vehicle registration number or client phone
       let existingLead = null

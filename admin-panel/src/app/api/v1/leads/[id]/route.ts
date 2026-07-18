@@ -98,7 +98,13 @@ export async function PUT(
 
     const registrationDateVal = body.registrationDate !== undefined ? body.registrationDate : body.registration_date
     if (registrationDateVal !== undefined) {
-      const newRegDate = registrationDateVal ? new Date(registrationDateVal) : null
+      let newRegDate: Date | null = null
+      if (registrationDateVal) {
+        const d = new Date(registrationDateVal)
+        if (!isNaN(d.getTime())) {
+          newRegDate = d
+        }
+      }
       const oldRegDate = currentLead.registrationDate
       const oldRegDateStr = oldRegDate ? oldRegDate.toISOString().split('T')[0] : ''
       const newRegDateStr = newRegDate ? newRegDate.toISOString().split('T')[0] : ''
@@ -117,7 +123,13 @@ export async function PUT(
 
     const expiryDateVal = body.expiryDate !== undefined ? body.expiryDate : body.expiry_date
     if (expiryDateVal !== undefined) {
-      const newExpDate = expiryDateVal ? new Date(expiryDateVal) : null
+      let newExpDate: Date | null = null
+      if (expiryDateVal) {
+        const d = new Date(expiryDateVal)
+        if (!isNaN(d.getTime())) {
+          newExpDate = d
+        }
+      }
       const oldExpDate = currentLead.expiryDate
       const oldExpDateStr = oldExpDate ? oldExpDate.toISOString().split('T')[0] : ''
       const newExpDateStr = newExpDate ? newExpDate.toISOString().split('T')[0] : ''
