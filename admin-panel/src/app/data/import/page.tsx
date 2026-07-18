@@ -25,7 +25,7 @@ const DB_LEAD_FIELDS: ColumnMapping[] = [
   { dbField: 'clientEmail', label: 'Email Address', required: false, mappedHeader: '' },
   { dbField: 'vehicleNo', label: 'Vehicle Number', required: false, mappedHeader: '' },
   { dbField: 'expiryDate', label: 'Policy Expiry Date', required: false, mappedHeader: '' },
-  { dbField: 'registrationDate', label: 'Registration Date', required: false, mappedHeader: '' },
+  { dbField: 'registrationDate', label: 'REG NO', required: false, mappedHeader: '' },
   { dbField: 'gvw', label: 'Gross Vehicle Weight (GVW)', required: false, mappedHeader: '' },
   { dbField: 'address', label: 'Address', required: false, mappedHeader: '' },
   { dbField: 'city', label: 'City', required: false, mappedHeader: '' }
@@ -617,7 +617,7 @@ export default function LeadImportPage() {
 
                           {/* Actions (Admins only) */}
                           {isAdmin && (
-                            <div className="hidden group-hover:flex items-center gap-1 shrink-0 animate-in fade-in duration-200">
+                            <div className="flex items-center gap-1 shrink-0">
                               <button
                                 onClick={() => startEditing(field.dbField, field.label)}
                                 className="p-1 hover:bg-slate-100 text-slate-400 hover:text-slate-700 rounded transition-all cursor-pointer"

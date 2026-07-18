@@ -8,7 +8,7 @@ const DEFAULT_MAPPINGS = [
   { dbField: 'clientEmail', label: 'Email Address', required: false },
   { dbField: 'vehicleNo', label: 'Vehicle Number', required: false },
   { dbField: 'expiryDate', label: 'Policy Expiry Date', required: false },
-  { dbField: 'registrationDate', label: 'Registration Date', required: false },
+  { dbField: 'registrationDate', label: 'REG NO', required: false },
   { dbField: 'gvw', label: 'Gross Vehicle Weight (GVW)', required: false },
   { dbField: 'address', label: 'Address', required: false },
   { dbField: 'city', label: 'City', required: false }
