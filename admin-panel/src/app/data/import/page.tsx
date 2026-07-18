@@ -1,13 +1,15 @@
 'use client'
-import React, { useState, useRef } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import AdminLayout from '@/components/layout/AdminLayout'
 import { useApi } from '@/hooks/useApi'
+import { useAuth } from '@/context/AuthContext'
 import { useRouter } from 'next/navigation'
 import Papa from 'papaparse'
 import * as XLSX from 'xlsx'
 import {
   UploadCloud, FileSpreadsheet, Map, CheckCircle2, AlertCircle,
-  ArrowRight, RefreshCw, Database, HelpCircle, Eye, Info
+  ArrowRight, RefreshCw, Database, Eye, Info,
+  Edit, Trash2, Plus, Save, X, Check, Lock
 } from 'lucide-react'
 
 interface ColumnMapping {
@@ -29,11 +31,40 @@ const DB_LEAD_FIELDS: ColumnMapping[] = [
   { dbField: 'city', label: 'City', required: false, mappedHeader: '' }
 ]
 
+// List of available predefined database fields (excluding the ones already in default list)
+const AVAILABLE_DB_FIELDS = [
+  { value: 'existingAgent', label: 'Existing Agent' },
+  { value: 'messageTemplate', label: 'Message Template' },
+  { value: 'status', label: 'Lead Status' },
+  { value: 'clientName', label: 'Client Name' },
+  { value: 'clientPhone', label: 'Phone Number' },
+  { value: 'clientEmail', label: 'Email Address' },
+  { value: 'vehicleNo', label: 'Vehicle Number' },
+  { value: 'expiryDate', label: 'Policy Expiry Date' },
+  { value: 'registrationDate', label: 'Registration Date' },
+  { value: 'gvw', label: 'Gross Vehicle Weight (GVW)' },
+  { value: 'address', label: 'Address' },
+  { value: 'city', label: 'City' }
+]
+
+const sanitizeFieldKey = (label: string): string => {
+  return label
+    .toLowerCase()
+    .replace(/[^a-zA-Z0-9\s]/g, '') // remove non-alphanumeric except spaces
+    .replace(/(?:^\w|[A-Z]|\b\w)/g, (word, index) => {
+      return index === 0 ? word.toLowerCase() : word.toUpperCase()
+    })
+    .replace(/\s+/g, '') // remove spaces
+}
+
 export default function LeadImportPage() {
   const apiFetch = useApi()
+  const { user } = useAuth()
   const router = useRouter()
   const fileInputRef = useRef<HTMLInputElement>(null)
-  
+
+  const isAdmin = user?.role?.name?.toUpperCase() === 'ADMIN' || user?.role?.name?.toUpperCase() === 'SUPER ADMIN'
+
   // States
   const [step, setStep] = useState(1) // 1: Upload, 2: Map & Preview, 3: Completed
   const [loading, setLoading] = useState(false)
@@ -45,6 +76,18 @@ export default function LeadImportPage() {
   const [parsedRows, setParsedRows] = useState<any[]>([])
   const [mappings, setMappings] = useState<ColumnMapping[]>(DB_LEAD_FIELDS)
   
+  // Admin Editing States
+  const [editingField, setEditingField] = useState<string | null>(null)
+  const [tempLabel, setTempLabel] = useState('')
+  const [savingMappings, setSavingMappings] = useState(false)
+  const [saveSuccess, setSaveSuccess] = useState(false)
+
+  // Add new column mapping states
+  const [showAddForm, setShowAddForm] = useState(false)
+  const [newColLabel, setNewColLabel] = useState('')
+  const [newColDbField, setNewColDbField] = useState('custom')
+  const [newColCustomKey, setNewColCustomKey] = useState('')
+
   // Outcome State
   const [importResult, setImportResult] = useState<{
     total: number
@@ -52,11 +95,35 @@ export default function LeadImportPage() {
     updatedCount: number
   } | null>(null)
 
+  // Fetch mappings from DB settings on mount
+  useEffect(() => {
+    const loadMappings = async () => {
+      try {
+        const res = await apiFetch('/api/v1/settings/import-mappings')
+        if (res.ok) {
+          const data = await res.json()
+          if (data.success && data.mappings) {
+            setMappings(data.mappings.map((m: any) => ({ ...m, mappedHeader: '' })))
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load mappings', err)
+      }
+    }
+    loadMappings()
+  }, [apiFetch])
+
   // Try to auto-detect mappings based on header name
-  const autoDetectMappings = (sheetHeaders: string[]): ColumnMapping[] => {
-    return DB_LEAD_FIELDS.map(field => {
+  const autoDetectMappings = (sheetHeaders: string[], currentMappings: ColumnMapping[]): ColumnMapping[] => {
+    return currentMappings.map(field => {
       const match = sheetHeaders.find(h => {
         const header = h.toLowerCase().trim()
+        const fieldLabel = field.label.toLowerCase().trim()
+        const dbFieldName = field.dbField.toLowerCase().trim()
+
+        if (header === fieldLabel) return true
+
+        // Fallbacks for default fields
         if (field.dbField === 'clientName') return header === 'name' || header === 'client name' || header === 'customer name'
         if (field.dbField === 'clientPhone') return header === 'phone' || header === 'mobile' || header === 'contact' || header === 'client phone'
         if (field.dbField === 'clientEmail') return header === 'email' || header === 'client email' || header === 'mail'
@@ -66,7 +133,8 @@ export default function LeadImportPage() {
         if (field.dbField === 'gvw') return header === 'gvw' || header === 'gross weight' || header === 'weight'
         if (field.dbField === 'address') return header === 'address' || header === 'location'
         if (field.dbField === 'city') return header === 'city'
-        return false
+        
+        return header === dbFieldName
       })
       return { ...field, mappedHeader: match || '' }
     })
@@ -82,7 +150,7 @@ export default function LeadImportPage() {
           const sheetHeaders = Object.keys(results.data[0] as object)
           setHeaders(sheetHeaders)
           setParsedRows(results.data)
-          setMappings(autoDetectMappings(sheetHeaders))
+          setMappings(prev => autoDetectMappings(sheetHeaders, prev))
           setStep(2)
         } else {
           setError('The uploaded CSV file is empty.')
@@ -111,7 +179,7 @@ export default function LeadImportPage() {
           const sheetHeaders = Object.keys(jsonData[0] as object)
           setHeaders(sheetHeaders)
           setParsedRows(jsonData)
-          setMappings(autoDetectMappings(sheetHeaders))
+          setMappings(prev => autoDetectMappings(sheetHeaders, prev))
           setStep(2)
         } else {
           setError('The uploaded Excel file is empty.')
@@ -204,7 +272,6 @@ export default function LeadImportPage() {
     setError(null)
 
     try {
-      // Send mapped leads to Next.js bulk lead import API
       const res = await apiFetch('/api/v1/import', {
         method: 'POST',
         body: JSON.stringify({ leads: validLeads })
@@ -220,7 +287,7 @@ export default function LeadImportPage() {
         importedCount: data.importedCount,
         updatedCount: data.updatedCount
       })
-      setStep(3) // Showing complete step
+      setStep(3)
     } catch (err: any) {
       console.error(err)
       setError(err.message || 'An error occurred during import.')
@@ -229,24 +296,153 @@ export default function LeadImportPage() {
     }
   }
 
+  // Mappings management logic (Admins only)
+  const startEditing = (dbField: string, label: string) => {
+    setEditingField(dbField)
+    setTempLabel(label)
+  }
+
+  const cancelEditing = () => {
+    setEditingField(null)
+    setTempLabel('')
+  }
+
+  const saveRename = (dbField: string) => {
+    if (!tempLabel.trim()) return
+    setMappings(prev =>
+      prev.map(m => (m.dbField === dbField ? { ...m, label: tempLabel.trim() } : m))
+    )
+    setEditingField(null)
+  }
+
+  const deleteMapping = (dbField: string) => {
+    setMappings(prev => prev.filter(m => m.dbField !== dbField))
+  }
+
+  const addMapping = () => {
+    if (!newColLabel.trim()) {
+      setError('Please enter a column label.')
+      return
+    }
+
+    let finalDbField = newColDbField
+    if (newColDbField === 'custom') {
+      const sanitized = newColCustomKey.trim() || sanitizeFieldKey(newColLabel)
+      if (!sanitized) {
+        setError('Invalid custom field key.')
+        return
+      }
+      finalDbField = sanitized
+    }
+
+    if (mappings.some(m => m.dbField === finalDbField)) {
+      setError(`A mapping for database field "${finalDbField}" already exists.`)
+      return
+    }
+
+    const newField: ColumnMapping = {
+      dbField: finalDbField,
+      label: newColLabel.trim(),
+      required: false,
+      mappedHeader: ''
+    }
+
+    setMappings(prev => [...prev, newField])
+    setShowAddForm(false)
+    setNewColLabel('')
+    setNewColDbField('custom')
+    setNewColCustomKey('')
+    setError(null)
+  }
+
+  const saveMappingsToDatabase = async () => {
+    setSavingMappings(true)
+    setError(null)
+    setSaveSuccess(false)
+    try {
+      const configToSave = mappings.map(({ dbField, label, required }) => ({
+        dbField,
+        label,
+        required
+      }))
+
+      const res = await apiFetch('/api/v1/settings/import-mappings', {
+        method: 'POST',
+        body: JSON.stringify({ mappings: configToSave })
+      })
+
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to save mappings.')
+      }
+
+      setSaveSuccess(true)
+      setTimeout(() => setSaveSuccess(false), 3000)
+    } catch (err: any) {
+      console.error(err)
+      setError(err.message || 'Failed to save mappings to settings.')
+    } finally {
+      setSavingMappings(false)
+    }
+  }
+
   return (
     <AdminLayout>
       <div className="p-6 space-y-6 max-w-6xl mx-auto">
         {/* Header */}
-        <div className="flex items-center gap-4">
-          <div className="h-12 w-12 bg-blue-500/10 text-blue-600 rounded-xl flex items-center justify-center">
-            <Database size={24} />
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div className="h-12 w-12 bg-blue-500/10 text-blue-600 rounded-xl flex items-center justify-center">
+              <Database size={24} />
+            </div>
+            <div>
+              <h1 className="text-2xl font-black text-slate-900 tracking-tight">Import Leads Dashboard</h1>
+              <p className="text-sm text-slate-500 mt-1">Upload renewals and leads directly into the core system.</p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-2xl font-black text-slate-900 tracking-tight">Import Leads Dashboard</h1>
-            <p className="text-sm text-slate-500 mt-1">Upload renewals and leads directly into the core system.</p>
-          </div>
+
+          {/* Admin Schema Action Button */}
+          {isAdmin && step === 2 && (
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowAddForm(prev => !prev)}
+                className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-all cursor-pointer border border-slate-200"
+              >
+                <Plus size={14} />
+                Add Column
+              </button>
+              <button
+                onClick={saveMappingsToDatabase}
+                disabled={savingMappings}
+                className="flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-all disabled:opacity-50 cursor-pointer shadow-sm"
+              >
+                {savingMappings ? (
+                  <RefreshCw size={14} className="animate-spin" />
+                ) : (
+                  <Save size={14} />
+                )}
+                {saveSuccess ? 'Saved!' : 'Save Config'}
+              </button>
+            </div>
+          )}
         </div>
 
         {error && (
-          <div className="bg-rose-50 border border-rose-100 text-rose-600 px-4 py-3 rounded-2xl flex items-center gap-3 text-sm">
-            <AlertCircle size={18} className="shrink-0" />
-            <span>{error}</span>
+          <div className="bg-rose-50 border border-rose-100 text-rose-600 px-4 py-3 rounded-2xl flex items-center justify-between gap-3 text-sm">
+            <div className="flex items-center gap-3">
+              <AlertCircle size={18} className="shrink-0" />
+              <span>{error}</span>
+            </div>
+            <button onClick={() => setError(null)} className="text-rose-400 hover:text-rose-600">
+              <X size={16} />
+            </button>
+          </div>
+        )}
+
+        {saveSuccess && (
+          <div className="bg-emerald-50 border border-emerald-100 text-emerald-700 px-4 py-3 rounded-2xl flex items-center gap-3 text-sm">
+            <CheckCircle2 size={18} className="shrink-0" />
+            <span>Column mapping configuration saved successfully for the entire system!</span>
           </div>
         )}
 
@@ -307,18 +503,142 @@ export default function LeadImportPage() {
             
             {/* Mappings Form */}
             <div className="lg:col-span-1 bg-white rounded-2xl border border-slate-100 shadow-sm p-6 space-y-6">
-              <div className="flex items-center gap-2 pb-4 border-b border-slate-100">
-                <Map size={18} className="text-blue-600" />
-                <h3 className="font-black text-slate-900 text-md">Column Mapping</h3>
+              <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+                <div className="flex items-center gap-2">
+                  <Map size={18} className="text-blue-600" />
+                  <h3 className="font-black text-slate-900 text-md">Column Mapping</h3>
+                </div>
+                {!isAdmin && (
+                  <span className="text-[10px] bg-slate-100 text-slate-500 font-bold px-2 py-0.5 rounded flex items-center gap-1">
+                    <Lock size={10} /> Read Only
+                  </span>
+                )}
               </div>
 
-              <div className="space-y-4">
+              {/* Add Column Inline Form */}
+              {showAddForm && isAdmin && (
+                <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 space-y-4 shadow-inner animate-in slide-in-from-top-4 duration-200">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">Add Custom Column</h4>
+                    <button onClick={() => setShowAddForm(false)} className="text-slate-400 hover:text-slate-600">
+                      <X size={14} />
+                    </button>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Column Label</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Engine Number"
+                        value={newColLabel}
+                        onChange={(e) => setNewColLabel(e.target.value)}
+                        className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">DB Property Type</label>
+                      <select
+                        value={newColDbField}
+                        onChange={(e) => setNewColDbField(e.target.value)}
+                        className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20"
+                      >
+                        <option value="custom">-- Custom Field (JSON metadata) --</option>
+                        {AVAILABLE_DB_FIELDS.map(f => (
+                          <option key={f.value} value={f.value}>{f.label} ({f.value})</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {newColDbField === 'custom' && (
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">JSON Property Key (Optional)</label>
+                        <input
+                          type="text"
+                          placeholder={newColLabel ? sanitizeFieldKey(newColLabel) : "e.g. engineNo"}
+                          value={newColCustomKey}
+                          onChange={(e) => setNewColCustomKey(e.target.value)}
+                          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20"
+                        />
+                      </div>
+                    )}
+
+                    <button
+                      onClick={addMapping}
+                      className="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md shadow-blue-100 transition-all cursor-pointer"
+                    >
+                      Add Column Mapping
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Column Mapping Inputs List */}
+              <div className="space-y-4 max-h-[400px] overflow-y-auto pr-1">
                 {mappings.map((field) => (
-                  <div key={field.dbField} className="space-y-2">
-                    <label className="text-xs font-bold text-slate-600 flex items-center gap-1.5">
-                      {field.label}
-                      {field.required && <span className="text-rose-500">*</span>}
-                    </label>
+                  <div key={field.dbField} className="space-y-2 border-b border-slate-50 pb-3 last:border-0 last:pb-0">
+                    <div className="flex items-center justify-between">
+                      {editingField === field.dbField ? (
+                        <div className="flex items-center gap-1.5 w-full">
+                          <input
+                            type="text"
+                            value={tempLabel}
+                            onChange={(e) => setTempLabel(e.target.value)}
+                            className="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-blue-500/20"
+                            autoFocus
+                          />
+                          <button
+                            onClick={() => saveRename(field.dbField)}
+                            className="p-1 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 rounded-lg transition-all"
+                          >
+                            <Check size={12} />
+                          </button>
+                          <button
+                            onClick={cancelEditing}
+                            className="p-1 bg-rose-50 text-rose-600 hover:bg-rose-100 rounded-lg transition-all"
+                          >
+                            <X size={12} />
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-between w-full group">
+                          <label className="text-xs font-bold text-slate-600 flex items-center gap-1.5">
+                            <span className="truncate max-w-[150px]">{field.label}</span>
+                            {field.required && <span className="text-rose-500">*</span>}
+                            
+                            {/* Badges for custom JSON columns or specific mapped fields */}
+                            {!DB_LEAD_FIELDS.some(d => d.dbField === field.dbField) && (
+                              <span className="text-[9px] bg-amber-50 text-amber-600 border border-amber-100 px-1.5 py-0.2 rounded font-medium shrink-0">
+                                Custom Field
+                              </span>
+                            )}
+                          </label>
+
+                          {/* Actions (Admins only) */}
+                          {isAdmin && (
+                            <div className="hidden group-hover:flex items-center gap-1 shrink-0 animate-in fade-in duration-200">
+                              <button
+                                onClick={() => startEditing(field.dbField, field.label)}
+                                className="p-1 hover:bg-slate-100 text-slate-400 hover:text-slate-700 rounded transition-all cursor-pointer"
+                                title="Rename column"
+                              >
+                                <Edit size={10} />
+                              </button>
+                              {!field.required && (
+                                <button
+                                  onClick={() => deleteMapping(field.dbField)}
+                                  className="p-1 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded transition-all cursor-pointer"
+                                  title="Delete column mapping"
+                                >
+                                  <Trash2 size={10} />
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
                     
                     <select
                       value={field.mappedHeader}
@@ -334,6 +654,7 @@ export default function LeadImportPage() {
                 ))}
               </div>
 
+              {/* Action Buttons */}
               <div className="pt-4 border-t border-slate-100 flex gap-3">
                 <button
                   onClick={() => setStep(1)}

@@ -95,6 +95,7 @@ model Lead {
   existingAgent    String?
   city             String?
   importName       String?
+  customFields     Json?               @default("{}")
   calls            Call[]
   claims           Claim[]
   fitnessWork      FitnessWork[]

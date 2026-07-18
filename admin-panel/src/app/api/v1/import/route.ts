@@ -102,23 +102,11 @@ export async function POST(req: NextRequest) {
 
     // Process leads sequentially to ensure unique checks
     for (const item of leads) {
-      const {
-        clientName, clientPhone, clientEmail, vehicleNo,
-        expiryDate, registrationDate, gvw, address, city
-      } = item
-
-      const clientNameStr = clientName ? String(clientName).trim() : ''
+      const clientNameStr = item.clientName ? String(item.clientName).trim() : ''
       if (!clientNameStr) continue // Name is required in schema
 
-      const clientPhoneStr = clientPhone ? String(clientPhone).trim() : null
-      const clientEmailStr = clientEmail ? String(clientEmail).trim() : null
-      const vehicleNoStr = vehicleNo ? String(vehicleNo).trim() : null
-      const gvwStr = gvw ? String(gvw).trim() : null
-      const addressStr = address ? String(address).trim() : null
-      const cityStr = city ? String(city).trim() : null
-
-      const parsedExpiry = parseImportedDate(expiryDate)
-      const parsedRegDate = parseImportedDate(registrationDate)
+      const clientPhoneStr = item.clientPhone ? String(item.clientPhone).trim() : null
+      const vehicleNoStr = item.vehicleNo ? String(item.vehicleNo).trim() : null
 
       // Check if a Lead already exists with the same vehicle registration number or client phone
       let existingLead = null
@@ -135,6 +123,24 @@ export async function POST(req: NextRequest) {
         })
       }
 
+      // Build data payload and extract custom fields
+      const standardFields = [
+        'clientName', 'clientPhone', 'clientEmail', 'vehicleNo',
+        'expiryDate', 'registrationDate', 'gvw', 'address', 'city',
+        'existingAgent', 'messageTemplate', 'importName'
+      ]
+
+      const parsedExpiry = parseImportedDate(item.expiryDate)
+      const parsedRegDate = parseImportedDate(item.registrationDate)
+
+      // Gather custom fields (any fields not in standard lead schema list)
+      const customFields: Record<string, any> = {}
+      Object.keys(item).forEach(key => {
+        if (!standardFields.includes(key) && key !== 'id' && key !== 'assignedTo' && key !== 'status') {
+          customFields[key] = item[key]
+        }
+      })
+
       if (existingLead) {
         // If the existing lead doesn't have an assignee, assign it using round-robin
         let assignedToUpdate = existingLead.assignedTo
@@ -143,19 +149,33 @@ export async function POST(req: NextRequest) {
           nextIndex = (nextIndex + 1) % salesExecutives.length
         }
 
+        // Merge customFields
+        let existingCustomFields: any = {}
+        if (existingLead.customFields && typeof existingLead.customFields === 'object') {
+          existingCustomFields = existingLead.customFields
+        }
+        const mergedCustomFields = {
+          ...existingCustomFields,
+          ...customFields
+        }
+
         // Update existing lead
         await prisma.lead.update({
           where: { id: existingLead.id },
           data: {
             clientName: clientNameStr,
-            clientEmail: clientEmailStr || existingLead.clientEmail,
+            clientEmail: item.clientEmail ? String(item.clientEmail).trim() : existingLead.clientEmail,
             clientPhone: clientPhoneStr || existingLead.clientPhone,
             vehicleNo: vehicleNoStr || existingLead.vehicleNo,
             expiryDate: parsedExpiry || existingLead.expiryDate,
             registrationDate: parsedRegDate || existingLead.registrationDate,
-            gvw: gvwStr || existingLead.gvw,
-            address: addressStr || existingLead.address,
-            city: cityStr || existingLead.city,
+            gvw: item.gvw ? String(item.gvw).trim() : existingLead.gvw,
+            address: item.address ? String(item.address).trim() : existingLead.address,
+            city: item.city ? String(item.city).trim() : existingLead.city,
+            existingAgent: item.existingAgent ? String(item.existingAgent).trim() : existingLead.existingAgent,
+            messageTemplate: item.messageTemplate ? String(item.messageTemplate).trim() : existingLead.messageTemplate,
+            importName: item.importName ? String(item.importName).trim() : existingLead.importName,
+            customFields: mergedCustomFields,
             assignedTo: assignedToUpdate,
             updatedAt: new Date()
           }
@@ -174,13 +194,17 @@ export async function POST(req: NextRequest) {
           data: {
             clientName: clientNameStr,
             clientPhone: clientPhoneStr,
-            clientEmail: clientEmailStr,
+            clientEmail: item.clientEmail ? String(item.clientEmail).trim() : null,
             vehicleNo: vehicleNoStr,
             expiryDate: parsedExpiry,
             registrationDate: parsedRegDate,
-            gvw: gvwStr,
-            address: addressStr,
-            city: cityStr,
+            gvw: item.gvw ? String(item.gvw).trim() : null,
+            address: item.address ? String(item.address).trim() : null,
+            city: item.city ? String(item.city).trim() : null,
+            existingAgent: item.existingAgent ? String(item.existingAgent).trim() : null,
+            messageTemplate: item.messageTemplate ? String(item.messageTemplate).trim() : null,
+            importName: item.importName ? String(item.importName).trim() : null,
+            customFields: customFields,
             status: 'New',
             assignedTo: assignedToNew
           }
