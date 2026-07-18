@@ -27,7 +27,15 @@ const styles = StyleSheet.create({
   footer: { position: 'absolute', bottom: 40, left: 40, right: 40, borderTop: 1, borderTopColor: '#e5e7eb', paddingTop: 10, textAlign: 'center', color: '#999', fontSize: 8 },
 });
 
-export const QuotationPDF = ({ data }: { data: any }) => {
+export const QuotationPDF = ({ 
+  data,
+  dateStr,
+  validUntilStr
+}: { 
+  data: any
+  dateStr: string
+  validUntilStr: string
+}) => {
   const quoteId = String(data?.id || '').slice(0, 8).toUpperCase();
   const clientName = String(data?.lead?.clientName || 'N/A');
   const clientPhone = String(data?.lead?.clientPhone || '');
@@ -45,7 +53,7 @@ export const QuotationPDF = ({ data }: { data: any }) => {
           <View style={styles.titleSection}>
             <Text style={styles.title}>Quotation</Text>
             <Text style={{ marginTop: 4 }}>#{quoteId}</Text>
-            <Text style={{ color: '#666' }}>Date: {new Date().toLocaleDateString()}</Text>
+            <Text style={{ color: '#666' }}>Date: {dateStr}</Text>
           </View>
         </View>
 
@@ -59,7 +67,7 @@ export const QuotationPDF = ({ data }: { data: any }) => {
           <View style={styles.infoBlock}>
             <Text style={styles.label}>Prepared By</Text>
             <Text style={styles.value}>Toque Admin Team</Text>
-            <Text style={{ marginTop: 2 }}>Valid Until: {new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString()}</Text>
+            <Text style={{ marginTop: 2 }}>Valid Until: {validUntilStr}</Text>
           </View>
         </View>
 

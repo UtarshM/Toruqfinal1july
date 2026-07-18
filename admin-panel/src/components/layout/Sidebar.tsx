@@ -1,5 +1,5 @@
 "use client"
-import React, { useState, useEffect } from 'react'
+import React, { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { Menu, X } from 'lucide-react'
@@ -53,10 +53,13 @@ const MENU_GROUPS = [
 export default function Sidebar() {
   const pathname = usePathname()
   const [open, setOpen] = useState(false)
+  const [prevPathname, setPrevPathname] = useState(pathname)
   const { user } = useAuth()
 
-  // Close sidebar on route change (mobile)
-  useEffect(() => { setOpen(false) }, [pathname])
+  if (pathname !== prevPathname) {
+    setPrevPathname(pathname)
+    setOpen(false)
+  }
 
   const role = (user?.role?.name || 'EXECUTIVE').toUpperCase()
   const isExecutive = role.endsWith('EXECUTIVE') || role === 'VIEWER'

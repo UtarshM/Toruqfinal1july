@@ -28,8 +28,19 @@ export async function GET(
       return NextResponse.json({ error: 'Quotation not found' }, { status: 404 })
     }
 
+    const currentDate = new Date()
+    const validUntilDate = new Date(currentDate.getTime() + 7 * 24 * 60 * 60 * 1000)
+    const dateStr = currentDate.toLocaleDateString()
+    const validUntilStr = validUntilDate.toLocaleDateString()
+
     // 2. Generate PDF using Web APIs (Blob/ArrayBuffer) for maximum compatibility with Next.js 15
-    const pdfInstance = pdf(<QuotationPDF data={quotation} />)
+    const pdfInstance = pdf(
+      <QuotationPDF 
+        data={quotation} 
+        dateStr={dateStr} 
+        validUntilStr={validUntilStr} 
+      />
+    )
     const blob = await (pdfInstance.toBlob() as any)
     const pdfArrayBuffer = await (blob.arrayBuffer() as any)
 
