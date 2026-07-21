@@ -11,7 +11,9 @@ export async function GET(req: NextRequest) {
     const fromParam = searchParams.get('startDate') || searchParams.get('from')
     const toParam = searchParams.get('endDate') || searchParams.get('to')
     
-    const where: any = {}
+    const where: any = {
+      deletedAt: null
+    }
     
     if (fromParam || toParam) {
       where.createdAt = {}
@@ -41,13 +43,25 @@ export async function GET(req: NextRequest) {
       where.assignedTo = { in: [context!.userId, ...teamIds] }
     }
 
-    const totalLeads = await prisma.lead.count({ where })
-    
+    let totalLeads = 0
     let assignedLeads = 0
     let unassignedLeads = 0
+    let convertedLeads = 0
+    let pendingFollowups = 0
+    let notInterestedLeads = 0
+
+    try {
+      totalLeads = await prisma.lead.count({ where })
+    } catch (err: any) {
+      if (err?.message?.includes('deletedAt')) {
+        delete where.deletedAt
+        totalLeads = await prisma.lead.count({ where })
+      } else {
+        throw err
+      }
+    }
     
     if (isExecutive) {
-      // For sales executives, all their visible leads are assigned to them, and 0 are unassigned
       assignedLeads = totalLeads
       unassignedLeads = 0
     } else {
@@ -58,17 +72,13 @@ export async function GET(req: NextRequest) {
       assignedLeads = await prisma.lead.count({ where: assignedWhere })
       
       const unassignedWhere = { ...where }
-      if (unassignedWhere.assignedTo === undefined) {
-        unassignedWhere.assignedTo = null
-      } else {
-        unassignedWhere.assignedTo = null
-      }
+      unassignedWhere.assignedTo = null
       unassignedLeads = await prisma.lead.count({ where: unassignedWhere })
     }
     
-    const convertedLeads = await prisma.lead.count({ where: { ...where, status: 'Converted' } })
-    const pendingFollowups = await prisma.lead.count({ where: { ...where, status: { in: ['Follow Up', 'Follow-up'] } } })
-    const notInterestedLeads = await prisma.lead.count({ where: { ...where, status: 'Not Interested' } })
+    convertedLeads = await prisma.lead.count({ where: { ...where, status: 'Converted' } })
+    pendingFollowups = await prisma.lead.count({ where: { ...where, status: { in: ['Follow Up', 'Follow-up'] } } })
+    notInterestedLeads = await prisma.lead.count({ where: { ...where, status: 'Not Interested' } })
     
     const employeeWhere: any = {
       role: {
@@ -125,6 +135,6 @@ export async function GET(req: NextRequest) {
     })
   } catch (error: any) {
     console.error('Leads Stats Error:', error)
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })
+    return NextResponse.json({ error: 'Internal Server Error', details: error?.message || String(error) }, { status: 500 })
   }
 }

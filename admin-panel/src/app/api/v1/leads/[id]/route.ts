@@ -209,13 +209,17 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { error: authError } = await validateAuth(req, 'lead.delete')
+  const { error: authError, context } = await validateAuth(req, 'lead.delete')
   if (authError) return authError
 
   try {
     const { id } = await params
-    await prisma.lead.delete({
-      where: { id }
+    await prisma.lead.update({
+      where: { id },
+      data: {
+        deletedAt: new Date(),
+        deletedBy: context!.userId
+      }
     })
     return NextResponse.json({ success: true })
   } catch (error: any) {

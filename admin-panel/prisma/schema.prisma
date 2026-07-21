@@ -96,6 +96,8 @@ model Lead {
   city             String?
   importName       String?
   customFields     Json?               @default("{}")
+  deletedAt        DateTime?
+  deletedBy        String?             @db.Uuid
   calls            Call[]
   claims           Claim[]
   fitnessWork      FitnessWork[]
@@ -116,6 +118,7 @@ model Lead {
   @@index([clientPhone])
   @@index([clientEmail])
   @@index([importName])
+  @@index([deletedAt])
   @@map("leads")
 }
 

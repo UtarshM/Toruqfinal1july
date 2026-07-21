@@ -4,7 +4,7 @@ import Sidebar from '@/components/layout/Sidebar'
 import Header from '@/components/layout/Header'
 import { useAuth } from '@/context/AuthContext'
 import { useRouter, usePathname } from 'next/navigation'
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { Home, Users, Calendar, Settings } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
@@ -18,12 +18,14 @@ export default function AdminLayout({
   const router = useRouter()
   const pathname = usePathname()
   const [checkingForm, setCheckingForm] = React.useState(true)
+  const onboardingChecked = useRef(false)
 
   useEffect(() => {
     if (!isLoading) {
       if (!user) {
         router.push('/login')
-      } else {
+      } else if (!onboardingChecked.current) {
+        onboardingChecked.current = true
         const checkFormStatus = async () => {
           try {
             const { data: { session } } = await supabase.auth.getSession()
@@ -54,6 +56,8 @@ export default function AdminLayout({
           setCheckingForm(false)
         }
         checkFormStatus()
+      } else {
+        setCheckingForm(false)
       }
     }
   }, [user, isLoading, router])
@@ -103,3 +107,4 @@ export default function AdminLayout({
     </div>
   )
 }
+

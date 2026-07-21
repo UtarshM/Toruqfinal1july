@@ -1,12 +1,14 @@
 "use client"
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import AdminLayout from '@/components/layout/AdminLayout'
 import { fetchApi } from '@/lib/api'
 import { useAuth } from '@/context/AuthContext'
+import { useRouter } from 'next/navigation'
 import { 
-  Search, Filter, Plus, ExternalLink, Upload, CheckCircle, 
+  Search, Filter, Plus, Upload, CheckCircle, 
   AlertCircle, Users, Calendar, RefreshCw, Phone, MessageCircle, 
-  X, Check, UserPlus, Clock, Clipboard, FileText, ChevronRight
+  X, Check, Clipboard, ChevronRight, Trash2, ArrowUpDown, ArrowUp, ArrowDown,
+  ChevronDown
 } from 'lucide-react'
 
 // Premium WhatsApp Message Templates
@@ -33,13 +35,16 @@ const WHATSAPP_TEMPLATES = [
 
 export default function LeadsPage() {
   const { user } = useAuth()
+  const router = useRouter()
   const role = (user?.role?.name || 'EXECUTIVE').toUpperCase()
   const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null
   const initialSearch = searchParams?.get('search') || ''
 
-  const triggerNativeLink = (url: string) => {
+  const triggerNativeLink = (url: string, newTab = false) => {
     if (typeof window !== 'undefined' && (window as any).ReactNativeWebView) {
       (window as any).ReactNativeWebView.postMessage(JSON.stringify({ type: 'open_url', url }));
+    } else if (newTab) {
+      window.open(url, '_blank')
     } else {
       window.location.href = url;
     }
@@ -49,8 +54,8 @@ export default function LeadsPage() {
   const [stats, setStats] = useState<any>(null)
   const [employees, setEmployees] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [errorMessage, setErrorMessage] = useState('')
   const [search, setSearch] = useState(initialSearch)
-  const [importing, setImporting] = useState(false)
   const [showAddModal, setShowAddModal] = useState(false)
   const [newLead, setNewLead] = useState({ clientName: '', clientPhone: '', vehicleNo: '', clientEmail: '' })
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -75,11 +80,32 @@ export default function LeadsPage() {
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
 
+  // Sorting Config (Default: Recently Added First!)
+  const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({
+    key: 'createdAt',
+    direction: 'desc'
+  })
+
+  // Selected values checklist per column (Excel / Google Sheets style)
+  const [columnSelectedValues, setColumnSelectedValues] = useState<Record<string, Set<string>>>({})
+
+  // Search input inside Excel popover
+  const [popoverSearch, setPopoverSearch] = useState<string>('')
+
+  // Toggle active filter popups for headers
+  const [activeFilterHeader, setActiveFilterHeader] = useState<string | null>(null)
+  const popoverRef = useRef<HTMLDivElement>(null)
+
+  // Bulk Selection State
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
+
   // Detailed Drawer State
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null)
   const [detailedLead, setDetailedLead] = useState<any | null>(null)
   const [isDrawerLoading, setIsDrawerLoading] = useState(false)
-  const [activeTab, setActiveTab] = useState<'info' | 'call' | 'whatsapp'>('info')
+  const [activeTab, setActiveTab] = useState<'info' | 'call' | 'whatsapp' | 'response'>('info')
 
   // Call Logger State
   const [logOutcome, setLogOutcome] = useState('Connected')
@@ -100,6 +126,12 @@ export default function LeadsPage() {
   })
   const [isScheduling, setIsScheduling] = useState(false)
 
+  // Response Tab State
+  const [predefinedResponses, setPredefinedResponses] = useState<any[]>([])
+  const [selectedResponseId, setSelectedResponseId] = useState<string | null>(null)
+  const [responseNotes, setResponseNotes] = useState('')
+  const [isSavingResponse, setIsSavingResponse] = useState(false)
+
   useEffect(() => {
     fetchData()
   }, [startDate, endDate])
@@ -108,23 +140,36 @@ export default function LeadsPage() {
     fetchEmployees()
   }, [])
 
+  // Close popover when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
+        setActiveFilterHeader(null)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
   const fetchData = async () => {
     setIsLoading(true)
+    setErrorMessage('')
     try {
       const params = new URLSearchParams()
       if (startDate) params.append('startDate', startDate)
       if (endDate) params.append('endDate', endDate)
-      params.append('limit', '100')
+      params.append('limit', '500')
 
       const [leadsData, statsData] = await Promise.all([
         fetchApi(`/api/v1/leads?${params}`),
         fetchApi(`/api/v1/leads/stats?${params}`)
       ])
       
-      setLeads(leadsData.leads || [])
-      setStats(statsData.summary || null)
-    } catch (error) {
+      setLeads(leadsData?.leads || [])
+      setStats(statsData?.summary || null)
+    } catch (error: any) {
       console.error('Failed to fetch leads:', error)
+      setErrorMessage(error.message || 'Failed to load leads from database')
     } finally {
       setIsLoading(false)
     }
@@ -151,10 +196,22 @@ export default function LeadsPage() {
     }
   }
 
+  const fetchPredefinedResponses = async () => {
+    try {
+      const data = await fetchApi('/api/v1/settings/responses?activeOnly=true')
+      setPredefinedResponses(Array.isArray(data) ? data : [])
+    } catch (error) {
+      console.error('Failed to fetch predefined responses:', error)
+    }
+  }
+
   const handleOpenDrawer = (leadId: string) => {
     setSelectedLeadId(leadId)
     fetchLeadDetails(leadId)
+    fetchPredefinedResponses()
     setActiveTab('info')
+    setSelectedResponseId(null)
+    setResponseNotes('')
   }
 
   const handleCloseDrawer = () => {
@@ -167,7 +224,6 @@ export default function LeadsPage() {
     if (!detailedLead) return
     
     if (newStatus === 'Follow Up') {
-      // Set default date to tomorrow at 10:00 AM
       const tomorrow = new Date()
       tomorrow.setDate(tomorrow.getDate() + 1)
       tomorrow.setHours(10, 0, 0, 0)
@@ -201,7 +257,6 @@ export default function LeadsPage() {
     if (!detailedLead) return
     setIsScheduling(true)
     try {
-      // 1. Create Follow-up in DB
       await fetchApi('/api/v1/follow-ups', {
         method: 'POST',
         body: JSON.stringify({
@@ -214,14 +269,12 @@ export default function LeadsPage() {
         })
       })
 
-      // 2. Update Lead Status in DB to 'Follow Up'
       const updated = await fetchApi(`/api/v1/leads/${detailedLead.id}`, {
         method: 'PUT',
         body: JSON.stringify({ status: 'Follow Up' })
       })
       setDetailedLead({ ...detailedLead, status: updated.status })
       
-      // 3. Reset and Close Modal
       setShowFollowupModal(false)
       fetchData()
       alert('Follow-up scheduled successfully!')
@@ -235,13 +288,12 @@ export default function LeadsPage() {
   const handleUpdateLeadAssignee = async (newAssigneeId: string) => {
     if (!detailedLead) return
     try {
-      const updated = await fetchApi(`/api/v1/leads/${detailedLead.id}`, {
+      await fetchApi(`/api/v1/leads/${detailedLead.id}`, {
         method: 'PUT',
         body: JSON.stringify({ 
           assigned_to: newAssigneeId === 'unassigned' ? null : newAssigneeId 
         })
       })
-      // Sync detailed display
       fetchLeadDetails(detailedLead.id)
       fetchData()
     } catch (error) {
@@ -303,11 +355,9 @@ export default function LeadsPage() {
         body: JSON.stringify(body)
       })
       
-      // Reset logging states
       setLogNotes('')
       setLogFollowupDate('')
       
-      // Reload timeline and details
       fetchLeadDetails(detailedLead.id)
       fetchData()
     } catch (error: any) {
@@ -321,28 +371,6 @@ export default function LeadsPage() {
     navigator.clipboard.writeText(text)
     setCopiedText(true)
     setTimeout(() => setCopiedText(false), 2000)
-  }
-
-  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-
-    setImporting(true)
-    const formData = new FormData()
-    formData.append('file', file)
-
-    try {
-      const result = await fetchApi('/api/v1/leads/import', {
-        method: 'POST',
-        body: formData,
-      })
-      alert(`Import Summary:\n- Total Rows: ${result.stats.total}\n- Imported: ${result.stats.assignedCount}\n- Errors: ${result.stats.errors}\n- Duplicates: ${result.stats.duplicates}`)
-      fetchData()
-    } catch (err: any) {
-      alert(err.message || 'Import failed')
-    } finally {
-      setImporting(false)
-    }
   }
 
   const handleAddLead = async (e: React.FormEvent) => {
@@ -363,7 +391,127 @@ export default function LeadsPage() {
     }
   }
 
-  // Filter Leads based on Search Query AND summaries card selection
+  // Bulk delete handler
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return
+    setIsDeleting(true)
+    try {
+      await fetchApi('/api/v1/leads', {
+        method: 'DELETE',
+        body: JSON.stringify({ ids: Array.from(selectedIds) })
+      })
+      setSelectedIds(new Set())
+      setShowDeleteConfirm(false)
+      fetchData()
+    } catch (err: any) {
+      alert(err.message || 'Failed to delete leads')
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
+  // Toggle selection
+  const toggleSelect = (id: string) => {
+    const newSet = new Set(selectedIds)
+    if (newSet.has(id)) {
+      newSet.delete(id)
+    } else {
+      newSet.add(id)
+    }
+    setSelectedIds(newSet)
+  }
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === sortedLeads.length) {
+      setSelectedIds(new Set())
+    } else {
+      setSelectedIds(new Set(sortedLeads.map(l => l.id)))
+    }
+  }
+
+  // Save predefined response for a lead
+  const handleSaveResponse = async () => {
+    if (!detailedLead || !selectedResponseId) return
+    setIsSavingResponse(true)
+    try {
+      const selectedResponse = predefinedResponses.find(r => r.id === selectedResponseId)
+      const notesText = selectedResponse ? `[Response: ${selectedResponse.text}]${responseNotes ? ` — ${responseNotes}` : ''}` : responseNotes
+
+      await fetchApi(`/api/v1/leads/${detailedLead.id}/response`, {
+        method: 'POST',
+        body: JSON.stringify({
+          status: selectedResponse?.requiresFollowUp ? 'Follow Up' : detailedLead.status,
+          notes: notesText
+        })
+      })
+
+      setSelectedResponseId(null)
+      setResponseNotes('')
+      fetchLeadDetails(detailedLead.id)
+      fetchData()
+      alert('Response recorded successfully!')
+    } catch (err: any) {
+      alert(err.message || 'Failed to save response')
+    } finally {
+      setIsSavingResponse(false)
+    }
+  }
+
+  // Value getter helper for any column key
+  const getLeadColumnValue = (lead: any, colKey: string): string => {
+    if (colKey === 'clientName') return lead.clientName || '—'
+    if (colKey === 'phone1') return lead.clientPhone || '—'
+    if (colKey === 'phone2') {
+      if (lead.customFields?.phone2 || lead.customFields?.mobile2) {
+        return lead.customFields?.phone2 || lead.customFields?.mobile2
+      }
+      if (lead.clientEmail && /^[0-[#]?[0-9\s+-]{7,15}$/.test(lead.clientEmail.trim())) {
+        return lead.clientEmail
+      }
+      return '—'
+    }
+    if (colKey === 'regNo') return lead.vehicleNo || '—'
+    if (colKey === 'expiryDate') return lead.expiryDate ? new Date(lead.expiryDate).toLocaleDateString() : '—'
+    if (colKey === 'gvw') return lead.gvw || '—'
+    if (colKey === 'cat') return lead.customFields?.cat || lead.customFields?.category || lead.messageTemplate || '—'
+    if (colKey === 'model') return lead.customFields?.model || lead.customFields?.vehicleModel || '—'
+    if (colKey === 'company') return lead.customFields?.company || lead.customFields?.insuranceCompany || '—'
+    if (colKey === 'tpFull') return lead.customFields?.tpFull || lead.customFields?.policyType || '—'
+    if (colKey === 'via') return lead.existingAgent || lead.city || lead.customFields?.via || '—'
+    return '—'
+  }
+
+  // Get distinct non-empty values for a column
+  const getDistinctColumnValues = (colKey: string): string[] => {
+    const set = new Set<string>()
+    leads.forEach(l => {
+      const val = getLeadColumnValue(l, colKey)
+      if (val && val !== '—') set.add(val)
+    })
+    return Array.from(set).sort()
+  }
+
+  // Checkbox toggle handler for popover value filters
+  const toggleColumnValue = (colKey: string, val: string) => {
+    const currentSet = new Set(columnSelectedValues[colKey] || getDistinctColumnValues(colKey))
+    if (currentSet.has(val)) {
+      currentSet.delete(val)
+    } else {
+      currentSet.add(val)
+    }
+    setColumnSelectedValues({ ...columnSelectedValues, [colKey]: currentSet })
+  }
+
+  const selectAllColumnValues = (colKey: string) => {
+    const distinct = getDistinctColumnValues(colKey)
+    setColumnSelectedValues({ ...columnSelectedValues, [colKey]: new Set(distinct) })
+  }
+
+  const clearColumnValues = (colKey: string) => {
+    setColumnSelectedValues({ ...columnSelectedValues, [colKey]: new Set() })
+  }
+
+  // Filter Leads based on Search Query AND status cards AND Excel-style selected values
   const filteredLeads = leads.filter(l => {
     const searchMatch = 
       l.clientName?.toLowerCase().includes(search.toLowerCase()) ||
@@ -372,10 +520,49 @@ export default function LeadsPage() {
 
     if (!searchMatch) return false
 
-    // Apply Active Card Filters
-    if (statusFilter === 'all') return true
-    if (statusFilter === 'assigned') return l.assignedTo !== null
-    return l.status?.toUpperCase() === statusFilter.toUpperCase()
+    // Active Card Filters
+    if (statusFilter !== 'all') {
+      if (statusFilter === 'assigned') {
+        if (l.assignedTo === null) return false
+      } else if (l.status?.toUpperCase() !== statusFilter.toUpperCase()) {
+        return false
+      }
+    }
+
+    // Excel-style Distinct Value Checkboxes per column
+    for (const [colKey, selectedSet] of Object.entries(columnSelectedValues)) {
+      if (!selectedSet || selectedSet.size === 0) continue
+      const val = getLeadColumnValue(l, colKey)
+      if (!selectedSet.has(val)) return false
+    }
+
+    return true
+  })
+
+  // Sort Leads dynamically based on sortConfig
+  const sortedLeads = [...filteredLeads].sort((a, b) => {
+    let aVal: any = ''
+    let bVal: any = ''
+
+    if (sortConfig.key === 'clientName') { aVal = a.clientName || ''; bVal = b.clientName || ''; }
+    else if (sortConfig.key === 'phone1') { aVal = a.clientPhone || ''; bVal = b.clientPhone || ''; }
+    else if (sortConfig.key === 'phone2') { aVal = getLeadColumnValue(a, 'phone2'); bVal = getLeadColumnValue(b, 'phone2'); }
+    else if (sortConfig.key === 'regNo') { aVal = a.vehicleNo || ''; bVal = b.vehicleNo || ''; }
+    else if (sortConfig.key === 'expiryDate') { aVal = a.expiryDate ? new Date(a.expiryDate).getTime() : 0; bVal = b.expiryDate ? new Date(b.expiryDate).getTime() : 0; }
+    else if (sortConfig.key === 'gvw') { aVal = parseFloat(a.gvw || '0') || 0; bVal = parseFloat(b.gvw || '0') || 0; }
+    else if (sortConfig.key === 'cat') { aVal = getLeadColumnValue(a, 'cat'); bVal = getLeadColumnValue(b, 'cat'); }
+    else if (sortConfig.key === 'model') { aVal = getLeadColumnValue(a, 'model'); bVal = getLeadColumnValue(b, 'model'); }
+    else if (sortConfig.key === 'company') { aVal = getLeadColumnValue(a, 'company'); bVal = getLeadColumnValue(b, 'company'); }
+    else if (sortConfig.key === 'tpFull') { aVal = getLeadColumnValue(a, 'tpFull'); bVal = getLeadColumnValue(b, 'tpFull'); }
+    else if (sortConfig.key === 'via') { aVal = getLeadColumnValue(a, 'via'); bVal = getLeadColumnValue(b, 'via'); }
+    else { aVal = new Date(a.createdAt).getTime(); bVal = new Date(b.createdAt).getTime(); }
+
+    if (typeof aVal === 'string') {
+      return sortConfig.direction === 'asc' 
+        ? aVal.localeCompare(bVal)
+        : bVal.localeCompare(aVal)
+    }
+    return sortConfig.direction === 'asc' ? aVal - bVal : bVal - aVal
   })
 
   // Get selected WhatsApp template text
@@ -394,6 +581,8 @@ export default function LeadsPage() {
     return template.text(detailedLead.clientName, detailedLead.vehicleNo || 'Vehicle')
   }
 
+  const hasActiveColumnFilters = Object.keys(columnSelectedValues).some(k => columnSelectedValues[k] && columnSelectedValues[k].size > 0) || sortConfig.key !== 'createdAt'
+
   return (
     <AdminLayout>
       {/* Top action block */}
@@ -403,11 +592,24 @@ export default function LeadsPage() {
           <p className="text-sm text-slate-500 mt-1">Track monthly renewals and employee performance.</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <input type="file" id="csv-import" className="hidden" accept=".csv,.xlsx" onChange={handleImport} />
-          <label htmlFor="csv-import" className="cursor-pointer px-4 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-50 transition-all flex items-center gap-2 shadow-sm">
+          {/* Bulk Delete Button */}
+          {selectedIds.size > 0 && (
+            <button 
+              onClick={() => setShowDeleteConfirm(true)}
+              className="flex items-center gap-2 px-4 py-2.5 bg-rose-600 text-white rounded-xl text-xs font-bold hover:bg-rose-700 transition-all shadow-md"
+            >
+              <Trash2 size={14} />
+              Delete ({selectedIds.size})
+            </button>
+          )}
+          {/* Import Leads → redirect to /data/import */}
+          <button 
+            onClick={() => router.push('/data/import')}
+            className="cursor-pointer px-4 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-50 transition-all flex items-center gap-2 shadow-sm"
+          >
             <Upload size={14} />
-            {importing ? 'Importing...' : 'Import Leads'}
-          </label>
+            Import Leads
+          </button>
           <button 
             onClick={() => setShowAddModal(true)}
             className="flex items-center gap-2 px-5 py-2.5 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-black transition-all shadow-md"
@@ -422,7 +624,7 @@ export default function LeadsPage() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mt-6">
         <StatCard 
           title="Total Leads" 
-          value={stats?.total || 0} 
+          value={stats?.total || leads.length || 0} 
           icon={<Users className="text-blue-600" />} 
           color="bg-white hover:bg-blue-50/20" 
           isActive={statusFilter === 'all'}
@@ -454,7 +656,15 @@ export default function LeadsPage() {
         />
       </div>
 
-      {/* Filters & Search */}
+      {/* Error notification if any */}
+      {errorMessage && (
+        <div className="bg-rose-50 border border-rose-200 text-rose-700 p-4 rounded-2xl text-xs font-bold mt-4 flex items-center justify-between">
+          <span>{errorMessage}</span>
+          <button onClick={fetchData} className="px-3 py-1 bg-rose-600 text-white rounded-lg text-[10px]">Retry</button>
+        </div>
+      )}
+
+      {/* Search Bar, Sort Indicator & Reset */}
       <div className="flex flex-col lg:flex-row lg:items-center gap-4 bg-white p-4 rounded-2xl border border-slate-100 shadow-sm mt-6">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
@@ -465,6 +675,18 @@ export default function LeadsPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
+        </div>
+
+        {/* Global Sort Pill */}
+        <div className="flex items-center gap-2 bg-slate-50 border border-slate-100 rounded-xl px-3 py-2 text-xs font-bold text-slate-700">
+          <ArrowUpDown size={14} className="text-blue-600" />
+          <span>Sort:</span>
+          <button 
+            onClick={() => setSortConfig({ key: 'createdAt', direction: sortConfig.direction === 'desc' ? 'asc' : 'desc' })}
+            className={`px-2 py-1 rounded-lg text-[10px] font-bold ${sortConfig.key === 'createdAt' ? 'bg-slate-900 text-white' : 'bg-white text-slate-600 border border-slate-200'}`}
+          >
+            {sortConfig.key === 'createdAt' && sortConfig.direction === 'desc' ? '⚡ Recently Added' : 'Oldest First'}
+          </button>
         </div>
 
         {/* Date Range Picker */}
@@ -489,101 +711,270 @@ export default function LeadsPage() {
             </button>
           )}
         </div>
+
+        {/* Clear all filters */}
+        {hasActiveColumnFilters && (
+          <button 
+            onClick={() => {
+              setColumnSelectedValues({})
+              setSortConfig({ key: 'createdAt', direction: 'desc' })
+            }}
+            className="flex items-center gap-1 px-3 py-2 bg-rose-50 text-rose-600 rounded-xl text-[10px] font-bold border border-rose-100 hover:bg-rose-100 transition-all cursor-pointer"
+          >
+            <X size={12} /> Clear All Filters
+          </button>
+        )}
       </div>
 
       {/* Table */}
       <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden mt-6">
         <div className="overflow-x-auto">
-          <table className="w-full text-left">
+          <table className="w-full text-left min-w-[1300px]">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-100">
-                <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Vehicle & Owner</th>
-                <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Status</th>
-                <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Assigned To</th>
-                <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Created</th>
-                <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest text-right">Actions</th>
+                <th className="px-3 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest w-10">
+                  <input 
+                    type="checkbox" 
+                    checked={sortedLeads.length > 0 && selectedIds.size === sortedLeads.length}
+                    onChange={toggleSelectAll}
+                    className="rounded border-slate-300 accent-slate-900 cursor-pointer"
+                  />
+                </th>
+
+                {/* Columns with Excel / Google Sheets Filter Popover */}
+                {[
+                  { key: 'clientName', label: 'Name', type: 'text' },
+                  { key: 'phone1', label: 'Mo No. 1', type: 'text' },
+                  { key: 'phone2', label: 'Mo No. 2', type: 'text' },
+                  { key: 'regNo', label: 'REG no.', type: 'text' },
+                  { key: 'expiryDate', label: 'Expiry date', type: 'date' },
+                  { key: 'gvw', label: 'GVW', type: 'number' },
+                  { key: 'cat', label: 'CAT', type: 'select' },
+                  { key: 'model', label: 'Model', type: 'select' },
+                  { key: 'company', label: 'Company', type: 'select' },
+                  { key: 'tpFull', label: 'TP/Full', type: 'select' },
+                  { key: 'via', label: 'VIA', type: 'select' }
+                ].map(col => {
+                  const isSorted = sortConfig.key === col.key
+                  const selectedSet = columnSelectedValues[col.key]
+                  const hasFilter = selectedSet && selectedSet.size > 0
+                  const distinctVals = getDistinctColumnValues(col.key)
+                  const filteredDistinctVals = distinctVals.filter(v => v.toLowerCase().includes(popoverSearch.toLowerCase()))
+
+                  return (
+                    <th key={col.key} className="px-3 py-4 text-xs font-bold text-slate-600 uppercase tracking-wider relative">
+                      <div 
+                        className="flex items-center gap-1.5 cursor-pointer select-none group" 
+                        onClick={() => {
+                          setPopoverSearch('')
+                          setActiveFilterHeader(activeFilterHeader === col.key ? null : col.key)
+                        }}
+                      >
+                        <span className={isSorted ? 'text-blue-600 font-extrabold' : ''}>{col.label}</span>
+                        
+                        {/* Filter Funnel Icon with Active indicator */}
+                        <div className={`p-1 rounded-md transition-all ${hasFilter ? 'bg-blue-600 text-white' : 'hover:bg-slate-200 text-slate-400'}`}>
+                          <Filter size={11} className={hasFilter ? 'fill-white' : ''} />
+                        </div>
+                      </div>
+
+                      {/* Excel / Google Sheets Style Popover Card */}
+                      {activeFilterHeader === col.key && (
+                        <div ref={popoverRef} className="absolute left-2 top-full mt-1 z-40 bg-white border border-slate-200 p-3 rounded-2xl shadow-2xl w-60 space-y-3 font-normal text-slate-700 normal-case">
+                          {/* Header */}
+                          <div className="flex items-center justify-between text-[10px] font-black text-slate-400 uppercase tracking-wider">
+                            <span>Filter & Sort {col.label}</span>
+                            <button onClick={(e) => { e.stopPropagation(); setActiveFilterHeader(null); }} className="hover:text-slate-600"><X size={12} /></button>
+                          </div>
+
+                          {/* Excel Style Sort Options */}
+                          <div className="space-y-1">
+                            <button 
+                              onClick={() => { setSortConfig({ key: col.key, direction: 'asc' }); setActiveFilterHeader(null); }}
+                              className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                                sortConfig.key === col.key && sortConfig.direction === 'asc' ? 'bg-slate-900 text-white border-slate-900' : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                              }`}
+                            >
+                              <span>{col.type === 'date' ? 'Sort Oldest to Newest' : col.type === 'number' ? 'Sort Smallest to Largest' : 'Sort A to Z'}</span>
+                              <ArrowUp size={12} />
+                            </button>
+                            <button 
+                              onClick={() => { setSortConfig({ key: col.key, direction: 'desc' }); setActiveFilterHeader(null); }}
+                              className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                                sortConfig.key === col.key && sortConfig.direction === 'desc' ? 'bg-slate-900 text-white border-slate-900' : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                              }`}
+                            >
+                              <span>{col.type === 'date' ? 'Sort Newest to Oldest' : col.type === 'number' ? 'Sort Largest to Smallest' : 'Sort Z to A'}</span>
+                              <ArrowDown size={12} />
+                            </button>
+                          </div>
+
+                          <hr className="border-slate-100" />
+
+                          {/* Search Box inside Popover */}
+                          <div className="relative">
+                            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={12} />
+                            <input 
+                              type="text" 
+                              autoFocus
+                              placeholder="Search..."
+                              value={popoverSearch}
+                              onChange={e => setPopoverSearch(e.target.value)}
+                              className="w-full bg-slate-50 border border-slate-200 rounded-lg pl-7 pr-2.5 py-1.5 text-xs outline-none focus:ring-2 focus:ring-blue-100"
+                            />
+                          </div>
+
+                          {/* Filter by Values (Select All / Distinct Checkbox List) */}
+                          <div className="space-y-1">
+                            <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 uppercase py-0.5">
+                              <span>Filter by Values</span>
+                              <div className="flex gap-2">
+                                <button onClick={() => selectAllColumnValues(col.key)} className="text-blue-600 hover:underline">Select All</button>
+                                <span>•</span>
+                                <button onClick={() => clearColumnValues(col.key)} className="text-rose-500 hover:underline">Clear</button>
+                              </div>
+                            </div>
+
+                            <div className="max-h-36 overflow-y-auto space-y-1 border border-slate-100 rounded-xl p-2 bg-slate-50/50 custom-scrollbar">
+                              {filteredDistinctVals.length === 0 ? (
+                                <p className="text-[10px] text-slate-400 italic py-1 text-center">No values found</p>
+                              ) : (
+                                filteredDistinctVals.map(val => {
+                                  const isChecked = selectedSet ? selectedSet.has(val) : true
+                                  return (
+                                    <label key={val} className="flex items-center gap-2 text-xs font-medium text-slate-700 cursor-pointer hover:bg-slate-100 p-1 rounded transition-colors">
+                                      <input 
+                                        type="checkbox"
+                                        checked={isChecked}
+                                        onChange={() => toggleColumnValue(col.key, val)}
+                                        className="rounded border-slate-300 accent-slate-900 cursor-pointer"
+                                      />
+                                      <span className="truncate">{val}</span>
+                                    </label>
+                                  )
+                                })
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Apply & Cancel Footer */}
+                          <div className="flex gap-2 pt-1">
+                            <button 
+                              onClick={() => {
+                                const newFilterObj = { ...columnSelectedValues }
+                                delete newFilterObj[col.key]
+                                setColumnSelectedValues(newFilterObj)
+                                setActiveFilterHeader(null)
+                              }} 
+                              className="flex-1 py-1.5 border border-slate-200 text-slate-600 rounded-xl text-xs font-bold hover:bg-slate-50 transition-all text-center"
+                            >
+                              Reset
+                            </button>
+                            <button 
+                              onClick={() => setActiveFilterHeader(null)}
+                              className="flex-1 py-1.5 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-black transition-all text-center"
+                            >
+                              OK
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </th>
+                  )
+                })}
+
+                <th className="px-3 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest text-center">Actions</th>
               </tr>
             </thead>
+
             <tbody className="divide-y divide-slate-50">
               {isLoading ? (
-                <tr><td colSpan={5} className="px-6 py-20 text-center text-slate-400 font-semibold">Loading leads...</td></tr>
-              ) : filteredLeads.length === 0 ? (
-                <tr><td colSpan={5} className="px-6 py-20 text-center text-slate-400 font-medium">No leads found in this period.</td></tr>
-              ) : filteredLeads.map((lead) => (
-                <tr 
-                  key={lead.id} 
-                  onClick={() => handleOpenDrawer(lead.id)}
-                  className={`hover:bg-slate-50/50 transition-colors cursor-pointer ${
-                    selectedLeadId === lead.id ? 'bg-slate-50' : ''
-                  }`}
-                >
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-3">
-                      <div>
-                        <div className="font-bold text-slate-900 text-sm">{lead.clientName}</div>
-                        <div className="text-xs text-slate-400 mt-0.5">{lead.vehicleNo || 'Unknown vehicle'}</div>
-                      </div>
-                      <div className="flex items-center gap-2 ml-2" onClick={e => e.stopPropagation()}>
+                <tr><td colSpan={13} className="px-6 py-20 text-center text-slate-400 font-semibold">Loading leads...</td></tr>
+              ) : sortedLeads.length === 0 ? (
+                <tr><td colSpan={13} className="px-6 py-20 text-center text-slate-400 font-medium">No matching leads found.</td></tr>
+              ) : sortedLeads.map((lead) => {
+                const phone1 = getLeadColumnValue(lead, 'phone1')
+                const phone2 = getLeadColumnValue(lead, 'phone2')
+                const regNo = getLeadColumnValue(lead, 'regNo')
+                const expiryDate = getLeadColumnValue(lead, 'expiryDate')
+                const gvw = getLeadColumnValue(lead, 'gvw')
+                const cat = getLeadColumnValue(lead, 'cat')
+                const model = getLeadColumnValue(lead, 'model')
+                const company = getLeadColumnValue(lead, 'company')
+                const tpFull = getLeadColumnValue(lead, 'tpFull')
+                const via = getLeadColumnValue(lead, 'via')
+
+                return (
+                  <tr 
+                    key={lead.id} 
+                    onClick={() => handleOpenDrawer(lead.id)}
+                    className={`hover:bg-slate-50/50 transition-colors cursor-pointer ${
+                      selectedLeadId === lead.id ? 'bg-slate-50' : ''
+                    } ${selectedIds.has(lead.id) ? 'bg-blue-50/30' : ''}`}
+                  >
+                    <td className="px-3 py-3" onClick={e => e.stopPropagation()}>
+                      <input 
+                        type="checkbox" 
+                        checked={selectedIds.has(lead.id)}
+                        onChange={() => toggleSelect(lead.id)}
+                        className="rounded border-slate-300 accent-slate-900 cursor-pointer"
+                      />
+                    </td>
+                    <td className="px-3 py-3">
+                      <span className="font-bold text-slate-900 text-xs">{lead.clientName}</span>
+                    </td>
+                    <td className="px-3 py-3 text-xs text-slate-700 whitespace-nowrap">{phone1}</td>
+                    <td className="px-3 py-3 text-xs text-slate-700 whitespace-nowrap">{phone2}</td>
+                    <td className="px-3 py-3">
+                      <span className="text-xs font-mono text-slate-800 font-bold whitespace-nowrap">{regNo}</span>
+                    </td>
+                    <td className="px-3 py-3 text-xs text-slate-600 whitespace-nowrap">{expiryDate}</td>
+                    <td className="px-3 py-3 text-xs text-slate-600 whitespace-nowrap">{gvw}</td>
+                    <td className="px-3 py-3 text-xs text-slate-600 max-w-[100px] truncate">{cat}</td>
+                    <td className="px-3 py-3 text-xs text-slate-600 max-w-[100px] truncate">{model}</td>
+                    <td className="px-3 py-3 text-xs text-slate-600 max-w-[100px] truncate">{company}</td>
+                    <td className="px-3 py-3 text-xs text-slate-600 whitespace-nowrap">{tpFull}</td>
+                    <td className="px-3 py-3 text-xs text-slate-600 max-w-[110px] truncate">{via}</td>
+
+                    {/* Dedicated Column for Call, WhatsApp & Details Buttons in one line */}
+                    <td className="px-3 py-3" onClick={e => e.stopPropagation()}>
+                      <div className="flex items-center gap-1.5 justify-center">
                         <button 
                           onClick={(e) => {
                             e.stopPropagation();
                             if (lead.clientPhone) {
-                              triggerNativeLink(`tel:${lead.clientPhone}`);
+                              triggerNativeLink(`tel:${lead.clientPhone.replace(/\s+/g, '')}`);
                             }
                           }}
-                          className="p-2 bg-emerald-50 text-emerald-600 rounded-xl hover:bg-emerald-100 transition-all shadow-sm flex items-center justify-center cursor-pointer hover:scale-105 active:scale-95"
+                          className="p-1.5 bg-emerald-50 text-emerald-600 rounded-lg hover:bg-emerald-100 transition-all flex items-center justify-center cursor-pointer hover:scale-105 active:scale-95 shadow-sm"
                           title="Call now"
                         >
-                          <Phone size={16} />
+                          <Phone size={14} />
                         </button>
                         <button 
                           onClick={(e) => {
                             e.stopPropagation();
                             if (lead.clientPhone) {
-                              triggerNativeLink(`https://api.whatsapp.com/send?phone=91${lead.clientPhone}`);
+                              triggerNativeLink(`https://api.whatsapp.com/send?phone=91${lead.clientPhone.replace(/[^0-9]/g, '')}`, true);
                             }
                           }}
-                          className="p-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-100 transition-all shadow-sm flex items-center justify-center cursor-pointer hover:scale-105 active:scale-95"
-                          title="WhatsApp message"
+                          className="p-1.5 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-all flex items-center justify-center cursor-pointer hover:scale-105 active:scale-95 shadow-sm"
+                          title="WhatsApp message (opens new tab)"
                         >
-                          <MessageCircle size={16} />
+                          <MessageCircle size={14} />
+                        </button>
+                        <button 
+                          onClick={() => handleOpenDrawer(lead.id)}
+                          className="p-1.5 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-all"
+                          title="View Details"
+                        >
+                          <ChevronRight size={14} />
                         </button>
                       </div>
-                    </div>
-                  </td>
-
-                  <td className="px-6 py-4">
-                    <span className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest border ${
-                      lead.status?.toUpperCase() === 'CONVERTED' ? 'bg-emerald-50 border-emerald-200 text-emerald-600' :
-                      lead.status?.toUpperCase() === 'FOLLOW UP' ? 'bg-amber-50 border-amber-200 text-amber-600' :
-                      lead.status?.toUpperCase() === 'IN PROGRESS' ? 'bg-indigo-50 border-indigo-200 text-indigo-600' :
-                      lead.status?.toUpperCase() === 'LOST' ? 'bg-rose-50 border-rose-200 text-rose-600' :
-                      'bg-slate-100 border-slate-200 text-slate-500'
-                    }`}>
-                      {lead.status || 'New'}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-2">
-                      <div className="w-6 h-6 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-[10px] font-extrabold text-slate-600">
-                        {lead.assignee?.fullName?.charAt(0)?.toUpperCase() || 'U'}
-                      </div>
-                      <span className="text-xs font-semibold text-slate-600">{lead.assignee?.fullName || 'Unassigned'}</span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 text-xs font-medium text-slate-400">
-                    {new Date(lead.createdAt).toLocaleDateString()}
-                  </td>
-                  <td className="px-6 py-4 text-right" onClick={e => e.stopPropagation()}>
-                    <button 
-                      onClick={() => handleOpenDrawer(lead.id)}
-                      className="p-1.5 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-all"
-                    >
-                      <ChevronRight size={16} />
-                    </button>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>
@@ -627,10 +1018,10 @@ export default function LeadsPage() {
                 </div>
 
                 {/* Tabs */}
-                <div className="px-6 border-b border-slate-100 flex gap-4 text-xs font-bold bg-white">
+                <div className="px-6 border-b border-slate-100 flex gap-4 text-xs font-bold bg-white overflow-x-auto">
                   <button 
                     onClick={() => setActiveTab('info')}
-                    className={`py-3.5 border-b-2 transition-all uppercase tracking-wider ${
+                    className={`py-3.5 border-b-2 transition-all uppercase tracking-wider whitespace-nowrap ${
                       activeTab === 'info' ? 'border-slate-900 text-slate-900' : 'border-transparent text-slate-400 hover:text-slate-600'
                     }`}
                   >
@@ -638,7 +1029,7 @@ export default function LeadsPage() {
                   </button>
                   <button 
                     onClick={() => setActiveTab('call')}
-                    className={`py-3.5 border-b-2 transition-all uppercase tracking-wider ${
+                    className={`py-3.5 border-b-2 transition-all uppercase tracking-wider whitespace-nowrap ${
                       activeTab === 'call' ? 'border-slate-900 text-slate-900' : 'border-transparent text-slate-400 hover:text-slate-600'
                     }`}
                   >
@@ -646,11 +1037,19 @@ export default function LeadsPage() {
                   </button>
                   <button 
                     onClick={() => setActiveTab('whatsapp')}
-                    className={`py-3.5 border-b-2 transition-all uppercase tracking-wider ${
+                    className={`py-3.5 border-b-2 transition-all uppercase tracking-wider whitespace-nowrap ${
                       activeTab === 'whatsapp' ? 'border-slate-900 text-slate-900' : 'border-transparent text-slate-400 hover:text-slate-600'
                     }`}
                   >
-                    WhatsApp Templates
+                    WhatsApp
+                  </button>
+                  <button 
+                    onClick={() => setActiveTab('response')}
+                    className={`py-3.5 border-b-2 transition-all uppercase tracking-wider whitespace-nowrap ${
+                      activeTab === 'response' ? 'border-slate-900 text-slate-900' : 'border-transparent text-slate-400 hover:text-slate-600'
+                    }`}
+                  >
+                    Response
                   </button>
                 </div>
 
@@ -681,9 +1080,9 @@ export default function LeadsPage() {
                               />
                             </div>
                             <div>
-                              <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Client Email</label>
+                              <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Client Email / Phone 2</label>
                               <input 
-                                type="email"
+                                type="text"
                                 value={editForm.clientEmail}
                                 onChange={e => setEditForm({ ...editForm, clientEmail: e.target.value })}
                                 className="w-full bg-slate-50 border border-slate-100 rounded-xl p-3 text-xs outline-none focus:ring-2 focus:ring-slate-100"
@@ -732,7 +1131,7 @@ export default function LeadsPage() {
                           </div>
                           <div className="grid grid-cols-2 gap-4">
                             <div>
-                              <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">City</label>
+                              <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">City / VIA</label>
                               <input 
                                 type="text"
                                 value={editForm.city}
@@ -814,10 +1213,10 @@ export default function LeadsPage() {
                           <div className="space-y-4">
                             <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Metadata sheet</h4>
                             <div className="grid grid-cols-2 gap-4">
-                              <DetailItem label="Client Phone" value={detailedLead.clientPhone || 'N/A'} isCopyable />
-                              <DetailItem label="Client Email" value={detailedLead.clientEmail || 'N/A'} />
+                              <DetailItem label="Mo No. 1" value={detailedLead.clientPhone || 'N/A'} isCopyable />
+                              <DetailItem label="Mo No. 2" value={getLeadColumnValue(detailedLead, 'phone2')} isCopyable />
                               <DetailItem label="Gross Vehicle Weight (GVW)" value={detailedLead.gvw || 'N/A'} />
-                              <DetailItem label="City Location" value={detailedLead.city || 'N/A'} />
+                              <DetailItem label="City / VIA" value={getLeadColumnValue(detailedLead, 'via')} />
                               <DetailItem label="Policy Expiry Date" value={detailedLead.expiryDate ? new Date(detailedLead.expiryDate).toLocaleDateString() : 'N/A'} />
                               <DetailItem label="Created On" value={new Date(detailedLead.createdAt).toLocaleDateString()} />
                             </div>
@@ -954,7 +1353,7 @@ export default function LeadsPage() {
                         <button 
                           onClick={() => {
                             if (detailedLead.clientPhone) {
-                              triggerNativeLink(`https://api.whatsapp.com/send?phone=91${detailedLead.clientPhone}&text=${encodeURIComponent(getWhatsAppText())}`);
+                              triggerNativeLink(`https://api.whatsapp.com/send?phone=91${detailedLead.clientPhone.replace(/[^0-9]/g, '')}&text=${encodeURIComponent(getWhatsAppText())}`, true);
                             }
                           }}
                           className="flex-1 flex items-center justify-center gap-2 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer"
@@ -963,6 +1362,81 @@ export default function LeadsPage() {
                           Open WhatsApp
                         </button>
                       </div>
+                    </div>
+                  )}
+
+                  {/* TAB 4: RESPONSE */}
+                  {activeTab === 'response' && (
+                    <div className="space-y-6">
+                      <div>
+                        <h5 className="text-[10px] font-black text-slate-800 uppercase tracking-widest mb-3">Select lead response</h5>
+                        <p className="text-[10px] text-slate-400 mb-4">Choose the response given by the lead during the call or WhatsApp conversation.</p>
+                      </div>
+                      
+                      {predefinedResponses.length === 0 ? (
+                        <div className="bg-slate-50 border border-slate-100 rounded-2xl p-6 text-center">
+                          <p className="text-xs text-slate-400">No predefined responses available yet.</p>
+                          <p className="text-[10px] text-slate-300 mt-1">Admin can add responses from Settings → Lead Responses</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {predefinedResponses.map((resp: any) => (
+                            <button
+                              key={resp.id}
+                              onClick={() => setSelectedResponseId(resp.id === selectedResponseId ? null : resp.id)}
+                              className={`w-full text-left px-4 py-3 rounded-xl border text-xs font-medium transition-all ${
+                                selectedResponseId === resp.id 
+                                  ? 'bg-slate-900 text-white border-slate-900 shadow-md' 
+                                  : 'bg-white text-slate-700 border-slate-100 hover:bg-slate-50 hover:border-slate-200'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between">
+                                <span>{resp.text}</span>
+                                {resp.requiresFollowUp && (
+                                  <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded ${
+                                    selectedResponseId === resp.id ? 'bg-white/20 text-white' : 'bg-amber-50 text-amber-600'
+                                  }`}>Follow-up</span>
+                                )}
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
+                      {selectedResponseId && (
+                        <div className="space-y-3">
+                          <div>
+                            <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Additional Notes (Optional)</label>
+                            <textarea 
+                              placeholder="Add any extra notes about the conversation..."
+                              rows={2}
+                              value={responseNotes}
+                              onChange={e => setResponseNotes(e.target.value)}
+                              className="w-full bg-slate-50 border border-slate-100 rounded-xl p-2.5 text-xs outline-none resize-none"
+                            />
+                          </div>
+                          <button 
+                            onClick={handleSaveResponse}
+                            disabled={isSavingResponse}
+                            className="w-full flex items-center justify-center gap-2 py-3 bg-slate-900 hover:bg-black text-white rounded-xl text-xs font-bold uppercase transition-all disabled:opacity-50"
+                          >
+                            <Check size={14} /> {isSavingResponse ? 'Saving...' : 'Save Response'}
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Past response logs from calls */}
+                      {detailedLead.calls && detailedLead.calls.filter((c: any) => c.notes?.startsWith('[Response:')).length > 0 && (
+                        <div className="space-y-3 pt-4 border-t border-slate-100">
+                          <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Previous Responses</h5>
+                          {detailedLead.calls.filter((c: any) => c.notes?.startsWith('[Response:')).map((c: any) => (
+                            <div key={c.id} className="bg-slate-50 border border-slate-100 rounded-xl p-3">
+                              <p className="text-xs text-slate-700 font-medium">{c.notes}</p>
+                              <p className="text-[10px] text-slate-400 mt-1">{new Date(c.createdAt).toLocaleString()}</p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -986,16 +1460,16 @@ export default function LeadsPage() {
                 <input required type="text" className="w-full bg-slate-50 border border-slate-100 rounded-xl p-3 text-xs outline-none" value={newLead.clientName} onChange={e => setNewLead({...newLead, clientName: e.target.value})} placeholder="e.g. Rahul Sharma" />
               </div>
               <div>
-                <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Phone Number *</label>
+                <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Phone Number 1 *</label>
                 <input required type="text" className="w-full bg-slate-50 border border-slate-100 rounded-xl p-3 text-xs outline-none" value={newLead.clientPhone} onChange={e => setNewLead({...newLead, clientPhone: e.target.value})} placeholder="e.g. +919876543210" />
               </div>
               <div>
-                <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Vehicle Number *</label>
+                <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Vehicle Number (REG no.) *</label>
                 <input required type="text" className="w-full bg-slate-50 border border-slate-100 rounded-xl p-3 text-xs outline-none" value={newLead.vehicleNo} onChange={e => setNewLead({...newLead, vehicleNo: e.target.value})} placeholder="e.g. MH-12-AB-1234" />
               </div>
               <div>
-                <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Email (Optional)</label>
-                <input type="email" className="w-full bg-slate-50 border border-slate-100 rounded-xl p-3 text-xs outline-none" value={newLead.clientEmail} onChange={e => setNewLead({...newLead, clientEmail: e.target.value})} placeholder="e.g. rahul@gmail.com" />
+                <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Phone Number 2 / Email (Optional)</label>
+                <input type="text" className="w-full bg-slate-50 border border-slate-100 rounded-xl p-3 text-xs outline-none" value={newLead.clientEmail} onChange={e => setNewLead({...newLead, clientEmail: e.target.value})} placeholder="e.g. 9876543210" />
               </div>
               <div className="flex gap-3 mt-8">
                 <button type="button" onClick={() => setShowAddModal(false)} className="flex-1 px-4 py-3 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold font-sans">Cancel</button>
@@ -1004,6 +1478,38 @@ export default function LeadsPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Delete Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-3xl w-full max-w-sm p-8 shadow-2xl border border-slate-100">
+            <div className="text-center space-y-4">
+              <div className="w-14 h-14 bg-rose-50 rounded-full flex items-center justify-center mx-auto">
+                <Trash2 size={24} className="text-rose-600" />
+              </div>
+              <h2 className="text-lg font-black text-slate-900">Move to Trash?</h2>
+              <p className="text-xs text-slate-500">
+                {selectedIds.size} lead{selectedIds.size > 1 ? 's' : ''} will be moved to trash. You can restore them later from the Trashed Leads section.
+              </p>
+              <div className="flex gap-3 pt-4">
+                <button 
+                  onClick={() => setShowDeleteConfirm(false)} 
+                  className="flex-1 px-4 py-3 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-200 transition-all"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={handleBulkDelete}
+                  disabled={isDeleting}
+                  className="flex-1 px-4 py-3 bg-rose-600 text-white rounded-xl text-xs font-bold shadow-lg hover:bg-rose-700 transition-all disabled:opacity-50"
+                >
+                  {isDeleting ? 'Deleting...' : 'Move to Trash'}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -1057,7 +1563,7 @@ export default function LeadsPage() {
               <div>
                 <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Follow-up Notes / Instructions</label>
                 <textarea 
-                  placeholder="What is the context of this callback? (e.g. 'Customer asked to call back after 4 PM regarding commercial vehicle premium copy.')" 
+                  placeholder="What is the context of this callback?" 
                   className="w-full bg-slate-50 border border-slate-100 rounded-xl p-3 text-xs outline-none resize-none" 
                   rows={3}
                   value={followupData.notes} 

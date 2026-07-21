@@ -23,6 +23,7 @@ const MENU_GROUPS = [
       { name: 'Quotations', href: '/quotations' },
       { name: 'Policies', href: '/policies' },
       { name: 'Follow-ups', href: '/follow-ups' },
+      { name: 'Trashed Leads', href: '/leads/trash' },
     ]
   },
   {

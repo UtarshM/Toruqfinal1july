@@ -17,7 +17,9 @@ export async function GET(req: NextRequest) {
     const fromParam = searchParams.get('startDate') || searchParams.get('from')
     const toParam = searchParams.get('endDate') || searchParams.get('to')
     
-    const where: any = {}
+    const where: any = {
+      deletedAt: null  // Exclude soft-deleted leads
+    }
     if (importName) {
       where.importName = importName
     }
@@ -71,20 +73,44 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const [leads, total] = await Promise.all([
-      prisma.lead.findMany({
-        where,
-        take: limit,
-        skip: offset,
-        orderBy: { createdAt: 'desc' },
-        include: {
-          assignee: {
-            select: { fullName: true }
+    let leads: any[] = []
+    let total = 0
+    try {
+      [leads, total] = await Promise.all([
+        prisma.lead.findMany({
+          where,
+          take: limit,
+          skip: offset,
+          orderBy: { createdAt: 'desc' },
+          include: {
+            assignee: {
+              select: { fullName: true }
+            }
           }
-        }
-      }),
-      prisma.lead.count({ where })
-    ])
+        }),
+        prisma.lead.count({ where })
+      ])
+    } catch (err: any) {
+      if (err?.message?.includes('deletedAt')) {
+        delete where.deletedAt
+        ;[leads, total] = await Promise.all([
+          prisma.lead.findMany({
+            where,
+            take: limit,
+            skip: offset,
+            orderBy: { createdAt: 'desc' },
+            include: {
+              assignee: {
+                select: { fullName: true }
+              }
+            }
+          }),
+          prisma.lead.count({ where })
+        ])
+      } else {
+        throw err
+      }
+    }
 
     return NextResponse.json({
       leads,
@@ -94,9 +120,9 @@ export async function GET(req: NextRequest) {
         offset
       }
     })
-  } catch (error) {
+  } catch (error: any) {
     console.error('Leads GET Error:', error)
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })
+    return NextResponse.json({ error: 'Internal Server Error', details: error?.message || String(error) }, { status: 500 })
   }
 }
 
@@ -134,3 +160,32 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 })
   }
 }
+
+// Bulk soft-delete
+export async function DELETE(req: NextRequest) {
+  const { error, context } = await validateAuth(req, 'lead.delete')
+  if (error) return error
+
+  try {
+    const body = await req.json()
+    const ids: string[] = body.ids
+
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      return NextResponse.json({ error: 'ids array is required' }, { status: 400 })
+    }
+
+    await prisma.lead.updateMany({
+      where: { id: { in: ids } },
+      data: {
+        deletedAt: new Date(),
+        deletedBy: context!.userId
+      }
+    })
+
+    return NextResponse.json({ success: true, count: ids.length })
+  } catch (error: any) {
+    console.error('Leads Bulk DELETE Error:', error)
+    return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 })
+  }
+}
+
