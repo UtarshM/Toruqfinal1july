@@ -21,6 +21,7 @@ const MENU_GROUPS = [
       { name: 'Import Leads', href: '/data/import' },
       { name: 'CRM', href: '/crm' },
       { name: 'Quotations', href: '/quotations' },
+      { name: 'Rate Calculator', href: '/rate-calculator' },
       { name: 'Policies', href: '/policies' },
       { name: 'Follow-ups', href: '/follow-ups' },
       { name: 'Trashed Leads', href: '/leads/trash' },
