@@ -174,13 +174,21 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: 'ids array is required' }, { status: 400 })
     }
 
-    await prisma.lead.updateMany({
-      where: { id: { in: ids } },
-      data: {
-        deletedAt: new Date(),
-        deletedBy: context!.userId
-      }
-    })
+    try {
+      await prisma.lead.updateMany({
+        where: { id: { in: ids } },
+        data: {
+          deletedAt: new Date(),
+          deletedBy: context!.userId
+        }
+      })
+    } catch (prismaErr: any) {
+      // Fallback: execute raw SQL to update PostgreSQL deletedAt column directly
+      const formattedIds = ids.map(id => `'${id}'`).join(',')
+      await prisma.$executeRawUnsafe(
+        `UPDATE "leads" SET "deletedAt" = NOW(), "deletedBy" = '${context!.userId}' WHERE "id"::text IN (${formattedIds})`
+      )
+    }
 
     return NextResponse.json({ success: true, count: ids.length })
   } catch (error: any) {

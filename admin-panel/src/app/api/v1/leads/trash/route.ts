@@ -45,13 +45,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'ids array is required' }, { status: 400 })
     }
 
-    await prisma.lead.updateMany({
-      where: { id: { in: ids } },
-      data: {
-        deletedAt: null,
-        deletedBy: null
-      }
-    })
+    try {
+      await prisma.lead.updateMany({
+        where: { id: { in: ids } },
+        data: {
+          deletedAt: null,
+          deletedBy: null
+        }
+      })
+    } catch (prismaErr: any) {
+      const formattedIds = ids.map(id => `'${id}'`).join(',')
+      await prisma.$executeRawUnsafe(
+        `UPDATE "leads" SET "deletedAt" = NULL, "deletedBy" = NULL WHERE "id"::text IN (${formattedIds})`
+      )
+    }
 
     return NextResponse.json({ success: true, count: ids.length })
   } catch (error: any) {
@@ -73,13 +80,10 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: 'ids array is required' }, { status: 400 })
     }
 
-    // Only allow permanent deletion of already-trashed leads
-    await prisma.lead.deleteMany({
-      where: {
-        id: { in: ids },
-        deletedAt: { not: null }
-      }
-    })
+    const formattedIds = ids.map(id => `'${id}'`).join(',')
+    await prisma.$executeRawUnsafe(
+      `DELETE FROM "leads" WHERE "id"::text IN (${formattedIds})`
+    )
 
     return NextResponse.json({ success: true, count: ids.length })
   } catch (error: any) {
