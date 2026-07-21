@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 
 export async function POST(req: NextRequest) {
-  const { context, error } = await validateAuth(req, 'quotations.create')
+  const { context, error } = await validateAuth(req, 'quotation.create')
   if (error) return error
 
   try {
@@ -11,29 +11,34 @@ export async function POST(req: NextRequest) {
     const role = context!.role
     const userId = context!.userId
 
-    const finalAmount = body.rate !== undefined ? body.rate : body.amount
+    const finalAmount = (body.rate !== undefined && body.rate !== null) 
+      ? body.rate 
+      : ((body.amount !== undefined && body.amount !== null) ? body.amount : 0)
+
+    const quotationData: any = {
+      leadId: body.lead_id || body.leadId || null,
+      createdBy: userId,
+      amount: finalAmount,
+      status: role === 'EXECUTIVE' ? 'Approval Pending' : (body.status || 'Draft'),
+      details: body.details || {}
+    }
+
+    if (body.rate !== undefined && body.rate !== null) quotationData.rate = body.rate
+    if (body.benefit !== undefined && body.benefit !== null) quotationData.benefit = body.benefit
+    if (body.companyId) quotationData.companyId = body.companyId
+    if (body.categoryId) quotationData.categoryId = body.categoryId
+    if (body.netPremium !== undefined && body.netPremium !== null) quotationData.netPremium = body.netPremium
+    if (body.totalPremium !== undefined && body.totalPremium !== null) quotationData.totalPremium = body.totalPremium
+    if (body.percentage !== undefined && body.percentage !== null) quotationData.percentage = body.percentage
+    if (body.profit !== undefined && body.profit !== null) quotationData.profit = body.profit
 
     const quotation = await prisma.quotation.create({
-      data: {
-        leadId: body.lead_id || body.leadId,
-        createdBy: userId,
-        amount: finalAmount,
-        status: role === 'EXECUTIVE' ? 'Approval Pending' : (body.status || 'Draft'),
-        details: body.details || {},
-        rate: body.rate !== undefined ? body.rate : null,
-        benefit: body.benefit !== undefined ? body.benefit : null,
-        companyId: body.companyId || null,
-        categoryId: body.categoryId || null,
-        netPremium: body.netPremium !== undefined ? body.netPremium : null,
-        totalPremium: body.totalPremium !== undefined ? body.totalPremium : null,
-        percentage: body.percentage !== undefined ? body.percentage : null,
-        profit: body.profit !== undefined ? body.profit : null
-      }
+      data: quotationData
     })
     return NextResponse.json(quotation)
-  } catch (error) {
+  } catch (error: any) {
     console.error('Quotation POST Error:', error)
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })
+    return NextResponse.json({ error: error?.message || 'Internal Server Error' }, { status: 500 })
   }
 }
 
@@ -77,4 +82,3 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })
   }
 }
-
