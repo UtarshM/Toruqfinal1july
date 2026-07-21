@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
     const toParam = searchParams.get('endDate') || searchParams.get('to')
     
     const where: any = {
-      deletedAt: null
+      status: { not: 'Trashed' }
     }
     
     if (fromParam || toParam) {

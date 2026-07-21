@@ -214,19 +214,9 @@ export async function DELETE(
 
   try {
     const { id } = await params
-    try {
-      await prisma.lead.update({
-        where: { id },
-        data: {
-          deletedAt: new Date(),
-          deletedBy: context!.userId
-        }
-      })
-    } catch (prismaErr: any) {
-      await prisma.$executeRawUnsafe(
-        `UPDATE "leads" SET "deletedAt" = NOW(), "deletedBy" = '${context!.userId}' WHERE "id"::text = '${id}'`
-      )
-    }
+    await prisma.$executeRawUnsafe(
+      `UPDATE "leads" SET "deletedAt" = NOW(), "deletedBy" = '${context!.userId}', "status" = 'Trashed' WHERE "id"::text = '${id}'`
+    )
     return NextResponse.json({ success: true })
   } catch (error: any) {
     console.error('Lead Detail DELETE Error:', error)

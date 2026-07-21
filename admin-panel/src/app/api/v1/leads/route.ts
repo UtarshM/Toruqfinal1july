@@ -11,14 +11,14 @@ export async function GET(req: NextRequest) {
     const status = searchParams.get('status')
     const search = searchParams.get('search')
     const importName = searchParams.get('importName')
-    const limit = parseInt(searchParams.get('limit') || '50')
+    const limit = parseInt(searchParams.get('limit') || '500')
     const offset = parseInt(searchParams.get('offset') || '0')
 
     const fromParam = searchParams.get('startDate') || searchParams.get('from')
     const toParam = searchParams.get('endDate') || searchParams.get('to')
     
     const where: any = {
-      deletedAt: null  // Exclude soft-deleted leads
+      status: { not: 'Trashed' }
     }
     if (importName) {
       where.importName = importName
@@ -50,15 +50,13 @@ export async function GET(req: NextRequest) {
         select: { id: true }
       })
       const teamIds = team.map(t => t.id)
-      // Manager sees their own leads + team leads
       where.assignedTo = { in: [context!.userId, ...teamIds] }
     }
-    // Admin / Super Admin sees everything (no assignedTo filter)
-
 
     if (status && status !== 'all') {
       where.status = status
     }
+
     if (search) {
       const searchFilter = [
         { clientName: { contains: search, mode: 'insensitive' } },
@@ -73,49 +71,28 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    let leads: any[] = []
-    let total = 0
-    try {
-      [leads, total] = await Promise.all([
-        prisma.lead.findMany({
-          where,
-          take: limit,
-          skip: offset,
-          orderBy: { createdAt: 'desc' },
-          include: {
-            assignee: {
-              select: { fullName: true }
-            }
+    let [leads, total] = await Promise.all([
+      prisma.lead.findMany({
+        where,
+        take: limit,
+        skip: offset,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          assignee: {
+            select: { fullName: true }
           }
-        }),
-        prisma.lead.count({ where })
-      ])
-    } catch (err: any) {
-      if (err?.message?.includes('deletedAt')) {
-        delete where.deletedAt
-        ;[leads, total] = await Promise.all([
-          prisma.lead.findMany({
-            where,
-            take: limit,
-            skip: offset,
-            orderBy: { createdAt: 'desc' },
-            include: {
-              assignee: {
-                select: { fullName: true }
-              }
-            }
-          }),
-          prisma.lead.count({ where })
-        ])
-      } else {
-        throw err
-      }
-    }
+        }
+      }),
+      prisma.lead.count({ where })
+    ])
+
+    // Filter out trashed leads in memory to be 100% fail-safe
+    leads = leads.filter((l: any) => l.status !== 'Trashed' && !l.deletedAt)
 
     return NextResponse.json({
       leads,
       pagination: {
-        total,
+        total: leads.length,
         limit,
         offset
       }
@@ -140,7 +117,7 @@ export async function POST(req: NextRequest) {
 
     if (isExecutive) {
       status = 'Pending'
-      assignedTo = null // only admin will assign the lead
+      assignedTo = null
     }
 
     const lead = await prisma.lead.create({
@@ -174,21 +151,10 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: 'ids array is required' }, { status: 400 })
     }
 
-    try {
-      await prisma.lead.updateMany({
-        where: { id: { in: ids } },
-        data: {
-          deletedAt: new Date(),
-          deletedBy: context!.userId
-        }
-      })
-    } catch (prismaErr: any) {
-      // Fallback: execute raw SQL to update PostgreSQL deletedAt column directly
-      const formattedIds = ids.map(id => `'${id}'`).join(',')
-      await prisma.$executeRawUnsafe(
-        `UPDATE "leads" SET "deletedAt" = NOW(), "deletedBy" = '${context!.userId}' WHERE "id"::text IN (${formattedIds})`
-      )
-    }
+    const formattedIds = ids.map(id => `'${id}'`).join(',')
+    await prisma.$executeRawUnsafe(
+      `UPDATE "leads" SET "deletedAt" = NOW(), "deletedBy" = '${context!.userId}', "status" = 'Trashed' WHERE "id"::text IN (${formattedIds})`
+    )
 
     return NextResponse.json({ success: true, count: ids.length })
   } catch (error: any) {
@@ -196,4 +162,3 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 })
   }
 }
-

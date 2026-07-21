@@ -8,22 +8,24 @@ export async function GET(req: NextRequest) {
   if (error) return error
 
   try {
-    let leads: any[] = []
-    try {
-      leads = await prisma.lead.findMany({
-        where: { deletedAt: { not: null } },
-        orderBy: { deletedAt: 'desc' },
-        include: {
-          assignee: { select: { fullName: true } }
-        }
-      })
-    } catch (err: any) {
-      if (err?.message?.includes('deletedAt')) {
-        leads = []
-      } else {
-        throw err
+    const leads = await prisma.lead.findMany({
+      where: {
+        OR: [
+          { status: 'Trashed' },
+          { deletedAt: { not: null } }
+        ]
+      },
+      orderBy: { updatedAt: 'desc' },
+      include: {
+        assignee: { select: { fullName: true } }
       }
-    }
+    }).catch(async () => {
+      return prisma.lead.findMany({
+        where: { status: 'Trashed' },
+        orderBy: { updatedAt: 'desc' },
+        include: { assignee: { select: { fullName: true } } }
+      })
+    })
 
     return NextResponse.json({ leads })
   } catch (error) {
@@ -45,20 +47,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'ids array is required' }, { status: 400 })
     }
 
-    try {
-      await prisma.lead.updateMany({
-        where: { id: { in: ids } },
-        data: {
-          deletedAt: null,
-          deletedBy: null
-        }
-      })
-    } catch (prismaErr: any) {
-      const formattedIds = ids.map(id => `'${id}'`).join(',')
-      await prisma.$executeRawUnsafe(
-        `UPDATE "leads" SET "deletedAt" = NULL, "deletedBy" = NULL WHERE "id"::text IN (${formattedIds})`
-      )
-    }
+    const formattedIds = ids.map(id => `'${id}'`).join(',')
+    await prisma.$executeRawUnsafe(
+      `UPDATE "leads" SET "deletedAt" = NULL, "deletedBy" = NULL, "status" = 'New' WHERE "id"::text IN (${formattedIds})`
+    )
 
     return NextResponse.json({ success: true, count: ids.length })
   } catch (error: any) {
