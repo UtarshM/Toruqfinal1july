@@ -1,5 +1,5 @@
 {
-  "buildCommand": "cd admin-panel && npx prisma generate && npm run build && cp -r .next ../.next",
+  "buildCommand": "cd admin-panel && npx prisma generate && npm run build",
   "outputDirectory": ".next",
   "framework": "nextjs"
 }
