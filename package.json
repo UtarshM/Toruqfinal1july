@@ -13,7 +13,7 @@
     "prisma:generate": "cd admin-panel && npx prisma generate",
     "prisma:push": "cd admin-panel && npx prisma db push",
     "build": "cd admin-panel && npx prisma generate && npm run build",
-    "vercel-build": "cd admin-panel && npx prisma generate && npm run build"
+    "vercel-build": "cd admin-panel && npx prisma generate && npm run build && cp -r .next ../.next"
   },
   "devDependencies": {
     "babel-preset-expo": "~54.0.11",
