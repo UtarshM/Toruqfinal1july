@@ -120,6 +120,44 @@ export async function POST(req: NextRequest) {
       assignedTo = null
     }
 
+    // Round-robin assignment if no assignedTo specified and user is not executive
+    if (!assignedTo && !isExecutive) {
+      try {
+        const salesExecutives = await prisma.user.findMany({
+          where: {
+            isActive: true,
+            role: {
+              OR: [
+                { name: { equals: 'Sales Executive', mode: 'insensitive' } },
+                { name: { equals: 'EXECUTIVE', mode: 'insensitive' } }
+              ]
+            }
+          },
+          orderBy: { createdAt: 'asc' },
+          select: { id: true }
+        })
+
+        if (salesExecutives.length > 0) {
+          const lastAssignedLead = await prisma.lead.findFirst({
+            where: { assignedTo: { not: null } },
+            orderBy: { createdAt: 'desc' }
+          })
+
+          let nextIndex = 0
+          if (lastAssignedLead?.assignedTo) {
+            const foundIndex = salesExecutives.findIndex(se => se.id === lastAssignedLead.assignedTo)
+            if (foundIndex !== -1) {
+              nextIndex = (foundIndex + 1) % salesExecutives.length
+            }
+          }
+          assignedTo = salesExecutives[nextIndex].id
+        }
+      } catch (rrErr) {
+        console.error('Round-robin assignment error:', rrErr)
+        // Continue without assignment
+      }
+    }
+
     const lead = await prisma.lead.create({
       data: {
         clientName: body.clientName || body.client_name,

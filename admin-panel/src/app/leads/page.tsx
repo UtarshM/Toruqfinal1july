@@ -465,7 +465,7 @@ export default function LeadsPage() {
       if (lead.customFields?.phone2 || lead.customFields?.mobile2) {
         return lead.customFields?.phone2 || lead.customFields?.mobile2
       }
-      if (lead.clientEmail && /^[0-[#]?[0-9\s+-]{7,15}$/.test(lead.clientEmail.trim())) {
+      if (lead.clientEmail && /^[0-9\s+-]{7,15}$/.test(lead.clientEmail.trim())) {
         return lead.clientEmail
       }
       return '—'
@@ -478,6 +478,7 @@ export default function LeadsPage() {
     if (colKey === 'company') return lead.customFields?.company || lead.customFields?.insuranceCompany || '—'
     if (colKey === 'tpFull') return lead.customFields?.tpFull || lead.customFields?.policyType || '—'
     if (colKey === 'via') return lead.existingAgent || lead.city || lead.customFields?.via || '—'
+    if (colKey === 'assignedTo') return lead.assignee?.fullName || 'Unassigned'
     return '—'
   }
 
@@ -513,12 +514,21 @@ export default function LeadsPage() {
 
   // Filter Leads based on Search Query AND status cards AND Excel-style selected values
   const filteredLeads = leads.filter(l => {
-    const searchMatch = 
-      l.clientName?.toLowerCase().includes(search.toLowerCase()) ||
-      l.vehicleNo?.toLowerCase().includes(search.toLowerCase()) ||
-      l.clientPhone?.includes(search)
+    // Support #sheetname search to filter by importName
+    if (search.startsWith('#')) {
+      const importSearch = search.slice(1).toLowerCase().trim()
+      if (importSearch && !(l.importName?.toLowerCase() === importSearch)) {
+        return false
+      }
+    } else {
+      const searchMatch = 
+        l.clientName?.toLowerCase().includes(search.toLowerCase()) ||
+        l.vehicleNo?.toLowerCase().includes(search.toLowerCase()) ||
+        l.clientPhone?.includes(search) ||
+        l.assignee?.fullName?.toLowerCase().includes(search.toLowerCase())
 
-    if (!searchMatch) return false
+      if (!searchMatch) return false
+    }
 
     // Active Card Filters
     if (statusFilter !== 'all') {
@@ -555,6 +565,7 @@ export default function LeadsPage() {
     else if (sortConfig.key === 'company') { aVal = getLeadColumnValue(a, 'company'); bVal = getLeadColumnValue(b, 'company'); }
     else if (sortConfig.key === 'tpFull') { aVal = getLeadColumnValue(a, 'tpFull'); bVal = getLeadColumnValue(b, 'tpFull'); }
     else if (sortConfig.key === 'via') { aVal = getLeadColumnValue(a, 'via'); bVal = getLeadColumnValue(b, 'via'); }
+    else if (sortConfig.key === 'assignedTo') { aVal = getLeadColumnValue(a, 'assignedTo'); bVal = getLeadColumnValue(b, 'assignedTo'); }
     else { aVal = new Date(a.createdAt).getTime(); bVal = new Date(b.createdAt).getTime(); }
 
     if (typeof aVal === 'string') {
@@ -670,7 +681,7 @@ export default function LeadsPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
           <input 
             type="text" 
-            placeholder="Search by name, phone or vehicle number..." 
+            placeholder="Search by name, phone, vehicle... or #sheetname for import batches" 
             className="w-full bg-slate-50 border border-slate-100 rounded-xl py-2.5 pl-10 pr-4 text-xs outline-none focus:ring-2 focus:ring-slate-200 transition-all"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -753,7 +764,8 @@ export default function LeadsPage() {
                   { key: 'model', label: 'Model', type: 'select' },
                   { key: 'company', label: 'Company', type: 'select' },
                   { key: 'tpFull', label: 'TP/Full', type: 'select' },
-                  { key: 'via', label: 'VIA', type: 'select' }
+                  { key: 'via', label: 'VIA', type: 'select' },
+                  { key: 'assignedTo', label: 'Assigned To', type: 'select' }
                 ].map(col => {
                   const isSorted = sortConfig.key === col.key
                   const selectedSet = columnSelectedValues[col.key]
@@ -889,9 +901,9 @@ export default function LeadsPage() {
 
             <tbody className="divide-y divide-slate-50">
               {isLoading ? (
-                <tr><td colSpan={13} className="px-6 py-20 text-center text-slate-400 font-semibold">Loading leads...</td></tr>
+                <tr><td colSpan={14} className="px-6 py-20 text-center text-slate-400 font-semibold">Loading leads...</td></tr>
               ) : sortedLeads.length === 0 ? (
-                <tr><td colSpan={13} className="px-6 py-20 text-center text-slate-400 font-medium">No matching leads found.</td></tr>
+                <tr><td colSpan={14} className="px-6 py-20 text-center text-slate-400 font-medium">No matching leads found.</td></tr>
               ) : sortedLeads.map((lead) => {
                 const phone1 = getLeadColumnValue(lead, 'phone1')
                 const phone2 = getLeadColumnValue(lead, 'phone2')
@@ -935,6 +947,13 @@ export default function LeadsPage() {
                     <td className="px-3 py-3 text-xs text-slate-600 max-w-[100px] truncate">{company}</td>
                     <td className="px-3 py-3 text-xs text-slate-600 whitespace-nowrap">{tpFull}</td>
                     <td className="px-3 py-3 text-xs text-slate-600 max-w-[110px] truncate">{via}</td>
+                    <td className="px-3 py-3 text-xs text-slate-600 max-w-[120px] truncate">
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                        lead.assignee?.fullName ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'
+                      }`}>
+                        {lead.assignee?.fullName || 'Unassigned'}
+                      </span>
+                    </td>
 
                     {/* Dedicated Column for Call, WhatsApp & Details Buttons in one line */}
                     <td className="px-3 py-3" onClick={e => e.stopPropagation()}>

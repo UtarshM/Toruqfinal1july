@@ -108,18 +108,23 @@ export async function POST(req: NextRequest) {
       const clientPhoneStr = item.clientPhone ? String(item.clientPhone).trim() : null
       const vehicleNoStr = item.vehicleNo ? String(item.vehicleNo).trim() : null
 
-      // Check if a Lead already exists with the same vehicle registration number or client phone
+      // Check if a Lead already exists - only consider it a duplicate if BOTH vehicleNo AND clientPhone match
       let existingLead = null
 
-      if (vehicleNoStr) {
+      if (vehicleNoStr && clientPhoneStr) {
+        // Both present: only match if BOTH match
+        existingLead = await prisma.lead.findFirst({
+          where: {
+            AND: [
+              { vehicleNo: { equals: vehicleNoStr, mode: 'insensitive' } },
+              { clientPhone: { equals: clientPhoneStr } }
+            ]
+          }
+        })
+      } else if (vehicleNoStr) {
+        // Only vehicleNo present: match by vehicleNo alone
         existingLead = await prisma.lead.findFirst({
           where: { vehicleNo: { equals: vehicleNoStr, mode: 'insensitive' } }
-        })
-      }
-
-      if (!existingLead && clientPhoneStr) {
-        existingLead = await prisma.lead.findFirst({
-          where: { clientPhone: { equals: clientPhoneStr } }
         })
       }
 

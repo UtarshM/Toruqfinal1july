@@ -93,10 +93,10 @@ export async function GET(req: NextRequest) {
       })
     }
 
-    // HR Report (Active employees)
+    // HR Report (Employees who joined within date range)
     if (type === 'hr') {
       const employees = await prisma.user.findMany({
-        where: { joiningDate: { lte: to } }, // Employees who joined before or during the end date
+        where: { joiningDate: strictDateFilter },
         select: {
           id: true, fullName: true, email: true,
           joiningDate: true, highestQualification: true,
@@ -119,7 +119,7 @@ export async function GET(req: NextRequest) {
       prisma.policy.count({ where: { createdAt: strictDateFilter } }),
       prisma.claim.count({ where: { createdAt: strictDateFilter } }),
       prisma.loan.count({ where: { createdAt: strictDateFilter } }),
-      prisma.user.count({ where: { isActive: true, joiningDate: { lte: to } } })
+      prisma.user.count({ where: { isActive: true, joiningDate: strictDateFilter } })
     ])
 
     return NextResponse.json({ 

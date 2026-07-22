@@ -2,6 +2,7 @@ import { validateAuth } from '@/lib/auth-guard'
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { notifyRole } from '@/lib/notify'
 
 export async function POST(req: NextRequest) {
   // Public endpoint for new employee registration
@@ -75,6 +76,31 @@ export async function POST(req: NextRequest) {
         } : undefined
       }
     })
+
+    // Notify all admins about the new onboarding request
+    try {
+      // Notify ADMIN role
+      await notifyRole('ADMIN', {
+        title: '🆕 New Employee Onboarding',
+        body: `${fullName} (${email}) has submitted an onboarding application and is awaiting approval.`,
+        type: 'action',
+        entityType: 'User',
+        entityId: user.id,
+        data: { action: 'onboarding_approval', userId: user.id, fullName, email }
+      })
+      // Also notify SUPER ADMIN role if it exists
+      await notifyRole('SUPER ADMIN', {
+        title: '🆕 New Employee Onboarding',
+        body: `${fullName} (${email}) has submitted an onboarding application and is awaiting approval.`,
+        type: 'action',
+        entityType: 'User',
+        entityId: user.id,
+        data: { action: 'onboarding_approval', userId: user.id, fullName, email }
+      })
+    } catch (notifyErr) {
+      console.error('[onboarding] Failed to send admin notifications:', notifyErr)
+      // Don't fail the request if notifications fail
+    }
 
     return NextResponse.json({
       message: 'Onboarding application submitted. Please wait for admin approval.',

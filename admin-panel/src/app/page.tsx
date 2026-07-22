@@ -70,9 +70,41 @@ export default function DashboardPage() {
     }
   }, [cacheKey])
 
-  const downloadReport = () => {
-    const params = new URLSearchParams({ type: 'summary', from: startDate, to: endDate })
-    window.open(`/api/v1/reports?${params}`, '_blank')
+  const downloadReport = async () => {
+    try {
+      const params = new URLSearchParams({ type: 'summary', from: startDate, to: endDate })
+      const data = await fetchApi(`/api/v1/reports?${params}`)
+      
+      // Convert to CSV and trigger download
+      const records = data.records || []
+      if (!records.length) {
+        // For summary type, create a single-row summary
+        const summaryRow = { ...data }
+        delete summaryRow.type
+        const headers = Object.keys(summaryRow)
+        const csv = [headers.join(','), headers.map(h => JSON.stringify(summaryRow[h] ?? '')).join(',')].join('\n')
+        const blob = new Blob([csv], { type: 'text/csv' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `summary_report_${startDate}_${endDate}.csv`
+        a.click()
+        URL.revokeObjectURL(url)
+        return
+      }
+      const headers = Object.keys(records[0])
+      const rows = records.map((r: any) => headers.map(h => JSON.stringify(r[h] ?? '')).join(','))
+      const csv = [headers.join(','), ...rows].join('\n')
+      const blob = new Blob([csv], { type: 'text/csv' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `summary_report_${startDate}_${endDate}.csv`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (err: any) {
+      alert(err.message || 'Failed to download report')
+    }
   }
 
   return (

@@ -95,6 +95,9 @@ export default function LeadImportPage() {
     updatedCount: number
   } | null>(null)
 
+  // Import Name State (sheet/batch name for #search)
+  const [importName, setImportName] = useState('')
+
   // Fetch mappings from DB settings on mount
   useEffect(() => {
     const loadMappings = async () => {
@@ -248,6 +251,10 @@ export default function LeadImportPage() {
           mappedRecord[m.dbField] = null
         }
       })
+      // Attach importName to each lead
+      if (importName.trim()) {
+        mappedRecord.importName = importName.trim()
+      }
       return mappedRecord
     })
   }
@@ -494,6 +501,24 @@ export default function LeadImportPage() {
                 </p>
               </div>
             </div>
+
+            {/* Import Name / Sheet Name Input */}
+            <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-3">
+              <div className="flex items-center gap-2">
+                <FileSpreadsheet size={18} className="text-slate-500" />
+                <h4 className="font-bold text-slate-800 text-sm">Name This Import (Optional)</h4>
+              </div>
+              <p className="text-xs text-slate-500">
+                Give this batch a name (e.g. <b>may-leads</b>, <b>july-renewals</b>). You can later search <code className="bg-slate-100 px-1.5 py-0.5 rounded font-mono text-[10px]">#may-leads</code> in the Leads page to view only leads from this import.
+              </p>
+              <input
+                type="text"
+                placeholder="e.g. may-leads, sonali-list, july-renewals"
+                value={importName}
+                onChange={e => setImportName(e.target.value)}
+                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+              />
+            </div>
           </div>
         )}
 
@@ -513,6 +538,21 @@ export default function LeadImportPage() {
                     <Lock size={10} /> Read Only
                   </span>
                 )}
+              </div>
+
+              {/* Import Name / Sheet Name Input in Step 2 */}
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-1.5">
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                  <FileSpreadsheet size={13} className="text-blue-600" />
+                  Import / Sheet Name (for #search)
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. may-leads, sonali-list, july-renewals"
+                  value={importName}
+                  onChange={e => setImportName(e.target.value)}
+                  className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-blue-500/20"
+                />
               </div>
 
               {/* Add Column Inline Form */}

@@ -23,8 +23,15 @@ export async function GET(req: NextRequest) {
         }
       }
     })
+
+    if (!user) {
+      console.error('[auth/me] User not found in DB for id:', context!.userId)
+      return NextResponse.json({ error: 'User profile not found' }, { status: 404 })
+    }
+
     return NextResponse.json(user)
-  } catch (error) {
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })
+  } catch (error: any) {
+    console.error('[auth/me] Internal error:', error?.message || error)
+    return NextResponse.json({ error: 'Internal Server Error', details: error?.message }, { status: 500 })
   }
 }

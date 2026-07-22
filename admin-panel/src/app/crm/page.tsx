@@ -1,9 +1,9 @@
 "use client"
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import AdminLayout from '@/components/layout/AdminLayout'
 import { fetchApi } from '@/lib/api'
-import { Users, UserPlus, Mail, Phone, MapPin, MoreVertical, Search, CheckCircle, Clock, X } from 'lucide-react'
+import { Users, UserPlus, Mail, Phone, MapPin, MoreVertical, Search, CheckCircle, Clock, X, Eye, Edit, Trash2, ShieldCheck } from 'lucide-react'
 
 export default function CRMPage() {
   const router = useRouter()
@@ -11,6 +11,9 @@ export default function CRMPage() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [kycFilter, setKycFilter] = useState<'all' | 'verified' | 'pending'>('all')
+  const [activeMenuId, setActiveMenuId] = useState<string | null>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
   const [newClient, setNewClient] = useState({
     name: '',
     phone: '',
@@ -21,6 +24,17 @@ export default function CRMPage() {
 
   useEffect(() => {
     fetchData()
+  }, [])
+
+  // Close context menu on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setActiveMenuId(null)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
   const fetchData = async () => {
@@ -51,11 +65,49 @@ export default function CRMPage() {
     }
   }
 
-  const filteredCustomers = customers.filter(c => 
-    c.name?.toLowerCase().includes(search.toLowerCase()) ||
-    c.phone?.includes(search) ||
-    c.email?.toLowerCase().includes(search.toLowerCase())
-  )
+  const handleToggleKyc = async (customer: any) => {
+    const newStatus = customer.kycStatus === 'verified' ? 'pending' : 'verified'
+    try {
+      await fetchApi(`/api/v1/crm`, {
+        method: 'POST',
+        body: JSON.stringify({
+          ...customer,
+          kyc_status: newStatus,
+          lead_id: customer.leadId
+        })
+      })
+      // Update local state
+      setCustomers(prev => prev.map(c => 
+        c.id === customer.id ? { ...c, kycStatus: newStatus } : c
+      ))
+      setActiveMenuId(null)
+    } catch (err: any) {
+      alert(err.message || 'Failed to update KYC status')
+    }
+  }
+
+  const handleViewProfile = (customer: any) => {
+    if (customer.leadId) {
+      router.push(`/leads/${customer.leadId}`)
+    } else {
+      router.push(`/leads?search=${customer.phone}`)
+    }
+    setActiveMenuId(null)
+  }
+
+  // Apply both search and KYC filter
+  const filteredCustomers = customers.filter(c => {
+    const searchMatch = 
+      c.name?.toLowerCase().includes(search.toLowerCase()) ||
+      c.phone?.includes(search) ||
+      c.email?.toLowerCase().includes(search.toLowerCase())
+    
+    if (!searchMatch) return false
+
+    if (kycFilter === 'verified') return c.kycStatus === 'verified'
+    if (kycFilter === 'pending') return c.kycStatus === 'pending'
+    return true
+  })
 
   return (
     <AdminLayout>
@@ -74,9 +126,30 @@ export default function CRMPage() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8">
-        <StatCard title="Total Clients" value={customers.length} icon={<Users className="text-blue-600" />} color="bg-blue-50" />
-        <StatCard title="Verified KYC" value={customers.filter(c => c.kycStatus === 'verified').length} icon={<CheckCircle className="text-green-600" />} color="bg-green-50" />
-        <StatCard title="Pending KYC" value={customers.filter(c => c.kycStatus === 'pending').length} icon={<Clock className="text-amber-600" />} color="bg-amber-50" />
+        <StatCard 
+          title="Total Clients" 
+          value={customers.length} 
+          icon={<Users className="text-blue-600" />} 
+          color="bg-blue-50" 
+          isActive={kycFilter === 'all'}
+          onClick={() => setKycFilter('all')}
+        />
+        <StatCard 
+          title="Verified KYC" 
+          value={customers.filter(c => c.kycStatus === 'verified').length} 
+          icon={<CheckCircle className="text-green-600" />} 
+          color="bg-green-50"
+          isActive={kycFilter === 'verified'}
+          onClick={() => setKycFilter('verified')}
+        />
+        <StatCard 
+          title="Pending KYC" 
+          value={customers.filter(c => c.kycStatus === 'pending').length} 
+          icon={<Clock className="text-amber-600" />} 
+          color="bg-amber-50"
+          isActive={kycFilter === 'pending'}
+          onClick={() => setKycFilter('pending')}
+        />
       </div>
 
       <div className="mt-8 bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-4">
@@ -103,9 +176,52 @@ export default function CRMPage() {
           <div className="col-span-full py-20 text-center text-gray-500">No customers found.</div>
         ) : filteredCustomers.map((customer) => (
           <div key={customer.id} className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow relative group">
-            <button className="absolute top-4 right-4 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity">
-              <MoreVertical size={20} />
-            </button>
+            {/* 3-dot Context Menu */}
+            <div className="absolute top-4 right-4" ref={activeMenuId === customer.id ? menuRef : null}>
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setActiveMenuId(activeMenuId === customer.id ? null : customer.id)
+                }}
+                className="text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-gray-100 rounded-lg"
+              >
+                <MoreVertical size={20} />
+              </button>
+
+              {activeMenuId === customer.id && (
+                <div className="absolute right-0 top-full mt-1 w-48 bg-white border border-gray-200 rounded-xl shadow-2xl z-50 overflow-hidden py-1">
+                  <button 
+                    onClick={() => handleViewProfile(customer)}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                  >
+                    <Eye size={16} className="text-blue-600" />
+                    View Full Profile
+                  </button>
+                  <button 
+                    onClick={() => handleToggleKyc(customer)}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                  >
+                    <ShieldCheck size={16} className="text-emerald-600" />
+                    {customer.kycStatus === 'verified' ? 'Set KYC Pending' : 'Mark KYC Verified'}
+                  </button>
+                  <hr className="border-gray-100 my-1" />
+                  <button 
+                    onClick={() => {
+                      if (confirm(`Delete client "${customer.name}"? This cannot be undone.`)) {
+                        // For now just close menu - no delete API exists
+                        setActiveMenuId(null)
+                        alert('Delete functionality requires backend API implementation.')
+                      }
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                  >
+                    <Trash2 size={16} />
+                    Delete Client
+                  </button>
+                </div>
+              )}
+            </div>
+
             <div className="flex items-center gap-4">
               <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-2xl flex items-center justify-center text-xl font-bold uppercase">
                 {customer.name?.charAt(0) || '?'}
@@ -197,9 +313,16 @@ export default function CRMPage() {
   )
 }
 
-function StatCard({ title, value, icon, color }: any) {
+function StatCard({ title, value, icon, color, isActive, onClick }: any) {
   return (
-    <div className={`p-6 rounded-2xl border border-gray-100 shadow-sm ${color}`}>
+    <div 
+      className={`p-6 rounded-2xl border shadow-sm cursor-pointer transition-all ${color} ${
+        isActive 
+          ? 'border-blue-400 ring-2 ring-blue-200 scale-[1.02]' 
+          : 'border-gray-100 hover:border-gray-200 hover:shadow-md'
+      }`}
+      onClick={onClick}
+    >
       <div className="flex items-center justify-between">
         <div>
           <p className="text-sm font-medium text-gray-600">{title}</p>
