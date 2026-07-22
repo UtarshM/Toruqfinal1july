@@ -26,13 +26,15 @@ export async function GET(req: NextRequest) {
     if (relation) {
       return NextResponse.json({
         qtr_percentage: parseFloat(relation.percentage.toString()),
-        qtr_profit: parseFloat(relation.profit.toString())
+        qtr_profit: parseFloat(relation.profit.toString()),
+        qtr_remarks: (relation as any).remarks || ''
       })
     }
 
     return NextResponse.json({
       qtr_percentage: 0,
-      qtr_profit: 0
+      qtr_profit: 0,
+      qtr_remarks: ''
     })
   } catch (err) {
     console.error('Relationship lookup GET error:', err)

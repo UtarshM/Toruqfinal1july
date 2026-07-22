@@ -17,7 +17,7 @@ export async function PATCH(
   try {
     const { id } = await params
     const body = await req.json()
-    const { companyId, categoryId, percentage, profit, status } = body
+    const { companyId, categoryId, percentage, profit, remarks, status } = body
 
     const relation = await prisma.quotationRelationship.findUnique({
       where: { id }
@@ -33,6 +33,7 @@ export async function PATCH(
 
     if (companyId !== undefined) data.companyId = companyId
     if (categoryId !== undefined) data.categoryId = categoryId
+    if (remarks !== undefined) data.remarks = remarks ? String(remarks).trim() : null
     if (percentage !== undefined) {
       const pct = parseFloat(percentage)
       if (isNaN(pct) || pct < 0 || pct > 100) {

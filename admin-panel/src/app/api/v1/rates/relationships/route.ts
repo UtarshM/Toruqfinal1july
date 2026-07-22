@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json()
-    const { companyId, categoryId, percentage, profit, status } = body
+    const { companyId, categoryId, percentage, profit, remarks, status } = body
 
     if (!companyId || !categoryId || percentage === undefined || profit === undefined) {
       return NextResponse.json({ error: 'companyId, categoryId, percentage, and profit are required' }, { status: 400 })
@@ -62,16 +62,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Quotation relationship already exists for this Company and Category' }, { status: 400 })
     }
 
+    const createData: any = {
+      companyId,
+      categoryId,
+      percentage: pct,
+      profit: prof,
+      status: status !== undefined ? parseInt(status) : 1,
+      addedBy: context.userId,
+      updatedBy: context.userId
+    }
+    if (remarks) createData.remarks = String(remarks).trim()
+
     const relation = await prisma.quotationRelationship.create({
-      data: {
-        companyId,
-        categoryId,
-        percentage: pct,
-        profit: prof,
-        status: status !== undefined ? parseInt(status) : 1,
-        addedBy: context.userId,
-        updatedBy: context.userId
-      }
+      data: createData
     })
 
     return NextResponse.json(relation)
