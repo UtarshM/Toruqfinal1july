@@ -75,7 +75,7 @@ export default function Sidebar() {
       if (group.label === 'OPERATIONS') {
         items = items.filter(i => ['Claims', 'Loans'].includes(i.name))
       }
-      items = items.filter(i => !['CRM', 'Reports'].includes(i.name))
+      items = items.filter(i => !['CRM', 'Reports', 'Import Leads'].includes(i.name))
     } else if (role === 'MANAGER') {
       // Strict role-based filtering for Managers
       if (group.label === 'OPERATIONS') return null

@@ -37,6 +37,7 @@ export default function LeadsPage() {
   const { user } = useAuth()
   const router = useRouter()
   const role = (user?.role?.name || 'EXECUTIVE').toUpperCase()
+  const isExecutive = role.endsWith('EXECUTIVE') || role === 'VIEWER'
   const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null
   const initialSearch = searchParams?.get('search') || ''
 
@@ -613,14 +614,16 @@ export default function LeadsPage() {
               Delete ({selectedIds.size})
             </button>
           )}
-          {/* Import Leads → redirect to /data/import */}
-          <button 
-            onClick={() => router.push('/data/import')}
-            className="cursor-pointer px-4 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-50 transition-all flex items-center gap-2 shadow-sm"
-          >
-            <Upload size={14} />
-            Import Leads
-          </button>
+          {/* Import Leads → redirect to /data/import (Only visible for Admins / Managers) */}
+          {!isExecutive && (
+            <button 
+              onClick={() => router.push('/data/import')}
+              className="cursor-pointer px-4 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-50 transition-all flex items-center gap-2 shadow-sm"
+            >
+              <Upload size={14} />
+              Import Leads
+            </button>
+          )}
           <button 
             onClick={() => setShowAddModal(true)}
             className="flex items-center gap-2 px-5 py-2.5 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-black transition-all shadow-md"

@@ -63,7 +63,9 @@ export default function LeadImportPage() {
   const router = useRouter()
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const isAdmin = user?.role?.name?.toUpperCase() === 'ADMIN' || user?.role?.name?.toUpperCase() === 'SUPER ADMIN'
+  const roleName = user?.role?.name?.toUpperCase() || ''
+  const isExecutive = roleName.endsWith('EXECUTIVE') || roleName === 'VIEWER'
+  const isAdmin = roleName === 'ADMIN' || roleName === 'SUPER ADMIN'
 
   // States
   const [step, setStep] = useState(1) // 1: Upload, 2: Map & Preview, 3: Completed
@@ -391,6 +393,26 @@ export default function LeadImportPage() {
     } finally {
       setSavingMappings(false)
     }
+  }
+
+  if (isExecutive) {
+    return (
+      <AdminLayout>
+        <div className="p-12 text-center max-w-md mx-auto space-y-4 my-12 bg-white rounded-2xl border border-slate-200 shadow-sm">
+          <div className="h-16 w-16 bg-red-50 text-red-600 rounded-2xl flex items-center justify-center mx-auto">
+            <Lock size={32} />
+          </div>
+          <h2 className="text-xl font-bold text-slate-900">Access Restricted</h2>
+          <p className="text-sm text-slate-500">Only Administrators and Managers have permission to import bulk leads into the system.</p>
+          <button 
+            onClick={() => router.push('/leads')}
+            className="px-5 py-2.5 bg-slate-900 text-white font-bold text-xs rounded-xl hover:bg-black transition-all cursor-pointer"
+          >
+            Back to Leads
+          </button>
+        </div>
+      </AdminLayout>
+    )
   }
 
   return (
