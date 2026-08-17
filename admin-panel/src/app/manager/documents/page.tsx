@@ -29,7 +29,13 @@ interface PolicySubmissionItem {
     reviewedAt?: string
     reviewedByName?: string
     salesPersonName?: string
+    visibleToSalesPerson?: boolean
+    approvedAt?: string
+    pushedToPolicy?: boolean
+    policyId?: string
+    history?: any[]
     copyableSummary: string
+    [key: string]: any
   }
   updatedAt: string
 }
