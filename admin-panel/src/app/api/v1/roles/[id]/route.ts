@@ -1,6 +1,7 @@
 import { validateAuth } from '@/lib/auth-guard'
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
+import { supabaseAdmin } from '@/lib/supabase-admin'
 
 export async function GET(
   req: NextRequest,
@@ -48,9 +49,23 @@ export async function PATCH(
       },
       include: {
         permissions: true,
+        users: { select: { id: true } },
         _count: { select: { users: true } }
       }
     })
+
+    // If role name changed, sync all users with this role in Supabase Auth
+    if (name && role.users && role.users.length > 0) {
+      for (const u of role.users) {
+        try {
+          await supabaseAdmin.auth.admin.updateUserById(u.id, {
+            user_metadata: { role: name }
+          })
+        } catch (authErr) {
+          console.warn(`Failed to update Supabase Auth role for user ${u.id}:`, authErr)
+        }
+      }
+    }
 
     return NextResponse.json(role)
   } catch (error) {

@@ -56,6 +56,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   return NextResponse.json(updated)
 }
 
+import path from 'path'
+import fs from 'fs'
+import * as XLSX from 'xlsx'
+
 /**
  * Applies the approved change to the actual database entity.
  */
@@ -64,7 +68,74 @@ async function applyChange(entityType: string, entityId: string, field: string, 
   try {
     switch (entityType.toLowerCase()) {
       case 'lead':
-        await prisma.lead.update({ where: { id: entityId }, data: update })
+        if (field === 'existingAgent' && newValue === 'Agent') {
+          const lead = await prisma.lead.findUnique({ where: { id: entityId } })
+          if (lead) {
+            // 1. Mark as Agent and unassign
+            await prisma.lead.update({
+              where: { id: entityId },
+              data: { existingAgent: 'Agent', assignedTo: null }
+            })
+
+            // Update any matching leads with same phone number
+            if (lead.clientPhone) {
+              await prisma.lead.updateMany({
+                where: { clientPhone: lead.clientPhone },
+                data: { existingAgent: 'Agent', assignedTo: null }
+              })
+            }
+
+            // 2. Update the spreadsheet file on disk
+            try {
+              const cleanBatch = (lead.importName || 'batch').replace(/[^a-zA-Z0-9_-]/g, '_')
+              const fileName = `import_${cleanBatch}.xlsx`
+              const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'imports')
+              const fullFilePath = path.join(uploadDir, fileName)
+
+              if (fs.existsSync(fullFilePath)) {
+                const fileBuffer = fs.readFileSync(fullFilePath)
+                const wb = XLSX.read(fileBuffer, { type: 'buffer' })
+                const sheetName = wb.SheetNames[0] || 'Leads'
+                const rows: any[][] = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1 })
+
+                if (rows && rows.length > 0) {
+                  let agentColIdx = rows[0].findIndex((h: any) => String(h || '').toLowerCase().trim() === 'agent')
+                  if (agentColIdx === -1) {
+                    agentColIdx = rows[0].length
+                    rows[0][agentColIdx] = 'Agent'
+                  }
+
+                  const leadVehicle = (lead.vehicleNo || '').toLowerCase().trim()
+                  const leadPhone = (lead.clientPhone || '').trim()
+                  const leadName = (lead.clientName || '').toLowerCase().trim()
+
+                  for (let i = 1; i < rows.length; i++) {
+                    const rowStr = JSON.stringify(rows[i] || []).toLowerCase()
+                    if ((leadVehicle && rowStr.includes(leadVehicle)) || (leadPhone && rowStr.includes(leadPhone)) || (leadName && rowStr.includes(leadName))) {
+                      rows[i][agentColIdx] = 'agent'
+                    }
+                  }
+
+                  const newWs = XLSX.utils.aoa_to_sheet(rows)
+                  const newWb = XLSX.utils.book_new()
+                  XLSX.utils.book_append_sheet(newWb, newWs, 'Leads')
+                  try {
+                    XLSX.writeFile(newWb, fullFilePath)
+                  } catch {
+                    const buf = XLSX.write(newWb, { type: 'buffer', bookType: 'xlsx' })
+                    const tempPath = `${fullFilePath}.tmp`
+                    fs.writeFileSync(tempPath, buf)
+                    try { fs.renameSync(tempPath, fullFilePath) } catch {}
+                  }
+                }
+              }
+            } catch (sheetErr) {
+              console.error('[applyChange:existingAgent] Spreadsheet update error:', sheetErr)
+            }
+          }
+        } else {
+          await prisma.lead.update({ where: { id: entityId }, data: update })
+        }
         break
       case 'customer':
         await prisma.customer.update({ where: { id: entityId }, data: update })

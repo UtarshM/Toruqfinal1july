@@ -216,6 +216,33 @@ export default function LeadDetailScreen() {
     }
   };
 
+  const [notifyingAdmin, setNotifyingAdmin] = useState(false);
+
+  const handleNotifyAgent = async () => {
+    Alert.alert(
+      'Notify Admin',
+      'Send a notification to Admin saying "its a agent"?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Send Notification',
+          onPress: async () => {
+            setNotifyingAdmin(true);
+            try {
+              const res = await api.post(`/leads/${id}/flag-agent`, {});
+              Alert.alert('Success', res.message || 'Notification sent to admin saying "its a agent"');
+              loadData();
+            } catch (err: any) {
+              Alert.alert('Error', err.message || 'Failed to send notification');
+            } finally {
+              setNotifyingAdmin(false);
+            }
+          }
+        }
+      ]
+    );
+  };
+
   const handleSaveSuggestion = async () => {
     if (!suggestion.trim()) {
       Alert.alert('Empty Text', 'Please type a suggestion first.');
@@ -380,6 +407,16 @@ export default function LeadDetailScreen() {
         </View>
 
         <View style={[styles.actionsRow, { borderTopWidth: 0, paddingTop: 0, marginTop: -Spacing.sm }]}>
+          <Pressable 
+            style={[styles.actionBtn, { backgroundColor: '#F59E0B15', borderColor: '#F59E0B30' }]} 
+            onPress={handleNotifyAgent}
+            disabled={notifyingAdmin}
+          >
+            <Ionicons name="notifications" size={18} color="#D97706" />
+            <Text style={[styles.actionLabel, { color: '#D97706' }]}>
+              {notifyingAdmin ? 'Sending...' : 'Notify Admin'}
+            </Text>
+          </Pressable>
           <Pressable 
             style={[styles.actionBtn, { backgroundColor: Colors.primaryLight, borderColor: Colors.primary + '30' }]} 
             onPress={() => {

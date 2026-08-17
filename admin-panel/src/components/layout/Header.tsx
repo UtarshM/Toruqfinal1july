@@ -15,14 +15,68 @@ export default function Header() {
   const [showNotifications, setShowNotifications] = useState(false)
   const [loadingNotifs, setLoadingNotifs] = useState(false)
   const notifRef = useRef<HTMLDivElement>(null)
+  const prevCountRef = useRef<number | null>(null)
+  const knownIdsRef = useRef<Set<string>>(new Set())
+
+  // Web Audio Notification Chime (Crystal clear ding-dong)
+  const playNotificationSound = () => {
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext
+      if (!AudioCtx) return
+      const ctx = new AudioCtx()
+      
+      // First tone: 659.25 Hz (E5)
+      const osc1 = ctx.createOscillator()
+      const gain1 = ctx.createGain()
+      osc1.type = 'sine'
+      osc1.frequency.setValueAtTime(659.25, ctx.currentTime)
+      gain1.gain.setValueAtTime(0.18, ctx.currentTime)
+      gain1.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35)
+      osc1.connect(gain1)
+      gain1.connect(ctx.destination)
+      osc1.start(ctx.currentTime)
+      osc1.stop(ctx.currentTime + 0.35)
+
+      // Second tone: 880 Hz (A5)
+      const osc2 = ctx.createOscillator()
+      const gain2 = ctx.createGain()
+      osc2.type = 'sine'
+      osc2.frequency.setValueAtTime(880, ctx.currentTime + 0.14)
+      gain2.gain.setValueAtTime(0.22, ctx.currentTime + 0.14)
+      gain2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6)
+      osc2.connect(gain2)
+      gain2.connect(ctx.destination)
+      osc2.start(ctx.currentTime + 0.14)
+      osc2.stop(ctx.currentTime + 0.6)
+    } catch (e) {
+      console.warn('Audio chime playback error:', e)
+    }
+  }
 
   const fetchNotifications = async () => {
     try {
       setLoadingNotifs(true)
       const data = await fetchApi('/api/v1/notifications?limit=20')
       if (data) {
-        setNotifications(data.notifications || [])
-        setUnreadCount(data.unreadCount || 0)
+        const notifs = data.notifications || []
+        const currentUnread = data.unreadCount || 0
+
+        // Check if new unread notification arrived
+        if (prevCountRef.current !== null && currentUnread > prevCountRef.current) {
+          playNotificationSound()
+        } else if (prevCountRef.current !== null) {
+          // Also check if any new notification id appeared
+          const hasNewId = notifs.some((n: any) => !knownIdsRef.current.has(n.id))
+          if (hasNewId && currentUnread > 0) {
+            playNotificationSound()
+          }
+        }
+
+        prevCountRef.current = currentUnread
+        knownIdsRef.current = new Set(notifs.map((n: any) => n.id))
+
+        setNotifications(notifs)
+        setUnreadCount(currentUnread)
       }
     } catch (error) {
       console.error('Failed to fetch notifications:', error)
@@ -31,10 +85,10 @@ export default function Header() {
     }
   }
 
-  // Fetch notifications on mount and poll every 30 seconds
+  // Fetch notifications on mount and poll every 10 seconds for real-time responsiveness
   useEffect(() => {
     fetchNotifications()
-    const interval = setInterval(fetchNotifications, 30000)
+    const interval = setInterval(fetchNotifications, 10000)
     return () => clearInterval(interval)
   }, [])
 
@@ -167,7 +221,34 @@ export default function Header() {
                   notifications.map(notif => (
                     <div 
                       key={notif.id}
-                      onClick={() => !notif.isRead && markAsRead(notif.id)}
+                      onClick={() => {
+                        if (!notif.isRead) markAsRead(notif.id)
+                        setShowNotifications(false)
+
+                        const roleName = (typeof user?.role === 'string' ? user.role : user?.role?.name || '').toUpperCase()
+                        const isManagerOrAdmin = roleName.includes('MANAGER') || roleName.includes('ADMIN')
+                        const searchParam = notif.data?.vehicleNo || notif.data?.clientName || ''
+
+                        // 1. Policy Submission / Review / Revert / Approval
+                        if (
+                          notif.type === 'policy_submission' || 
+                          notif.title?.includes('Policy Submission') || 
+                          notif.title?.includes('Policy Approved') || 
+                          notif.title?.includes('Policy Reverted')
+                        ) {
+                          if (isManagerOrAdmin) {
+                            router.push(`/manager/documents?search=${encodeURIComponent(searchParam)}`)
+                          } else {
+                            router.push(`/leads?search=${encodeURIComponent(searchParam)}`)
+                          }
+                        } else if (notif.entityType === 'DataChangeRequest' || notif.title?.includes('Agent Approval') || notif.title?.includes('Agent')) {
+                          router.push('/data')
+                        } else if ((notif.entityType === 'Lead' || notif.entityType === 'lead') && (notif.entityId || notif.data?.leadId)) {
+                          router.push(`/leads?search=${encodeURIComponent(searchParam)}`)
+                        } else {
+                          router.push('/leads')
+                        }
+                      }}
                       className={`px-4 py-3 border-b border-gray-50 hover:bg-gray-50/50 transition-colors cursor-pointer ${
                         !notif.isRead ? 'bg-blue-50/30' : ''
                       }`}

@@ -2,14 +2,19 @@
 import React, { useState, useEffect } from 'react'
 import AdminLayout from '@/components/layout/AdminLayout'
 import { fetchApi } from '@/lib/api'
-import { Shield, Search, FileText, Download, Filter, Plus, X, Calendar, RefreshCw } from 'lucide-react'
+import { useAuth } from '@/context/AuthContext'
+import { Shield, Search, FileText, Download, Filter, Plus, X, Calendar, RefreshCw, Eye, CheckCircle2, User } from 'lucide-react'
 
 export default function PoliciesPage() {
+  const { user } = useAuth()
   const [policies, setPolicies] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [isModalOpen, setIsModalOpen] = useState(false)
   
+  const roleName = (typeof user?.role === 'string' ? user.role : user?.role?.name || '').toUpperCase()
+  const isManagerOrAdmin = roleName.includes('MANAGER') || roleName.includes('ADMIN') || roleName.includes('SUPER')
+
   // Date Range State
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
@@ -30,8 +35,10 @@ export default function PoliciesPage() {
   }, [startDate, endDate])
 
   useEffect(() => {
-    fetchLeads()
-  }, [])
+    if (isManagerOrAdmin) {
+      fetchLeads()
+    }
+  }, [isManagerOrAdmin])
 
   const fetchData = async () => {
     setLoading(true)
@@ -74,14 +81,39 @@ export default function PoliciesPage() {
     }
   }
 
+  // Toggle Visibility for Sales Person
+  const handleToggleSalesVisibility = async (policy: any, newVisibility: boolean) => {
+    if (!policy.lead?.id) return
+    try {
+      await fetchApi('/api/v1/manager/submissions', {
+        method: 'POST',
+        body: JSON.stringify({
+          leadId: policy.lead.id,
+          action: 'TOGGLE_VISIBILITY',
+          visibleToSalesPerson: newVisibility
+        })
+      })
+      setPolicies(prev => prev.map(p => p.id === policy.id ? { ...p, visibleToSalesPerson: newVisibility } : p))
+    } catch (err: any) {
+      alert(err.message || 'Failed to update visibility')
+    }
+  }
+
   const exportCSV = () => {
     if (!policies.length) {
       alert('No policies found to export.')
       return
     }
-    const headers = ['Policy No', 'Customer', 'Provider', 'Type', 'Premium', 'Expiry']
+    const headers = ['Policy No', 'Customer', 'Vehicle No', 'Sales Person', 'Provider', 'Type', 'Premium', 'Expiry']
     const rows = policies.map(p => [
-      `"${p.policyNumber}"`, `"${p.lead?.clientName || 'N/A'}"`, `"${p.provider}"`, `"${p.type}"`, p.premiumAmount, new Date(p.endDate).toLocaleDateString()
+      `"${p.policyNumber}"`, 
+      `"${p.lead?.clientName || 'N/A'}"`, 
+      `"${p.lead?.vehicleNo || 'N/A'}"`, 
+      `"${p.salesPersonName || 'Direct'}"`, 
+      `"${p.provider}"`, 
+      `"${p.type}"`, 
+      p.premiumAmount, 
+      new Date(p.endDate).toLocaleDateString()
     ].join(','))
     const csv = [headers.join(','), ...rows].join('\n')
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
@@ -96,7 +128,9 @@ export default function PoliciesPage() {
 
   const filteredPolicies = policies.filter(p => 
     p.policyNumber?.toLowerCase().includes(search.toLowerCase()) ||
-    p.lead?.clientName?.toLowerCase().includes(search.toLowerCase())
+    p.lead?.clientName?.toLowerCase().includes(search.toLowerCase()) ||
+    p.lead?.vehicleNo?.toLowerCase().includes(search.toLowerCase()) ||
+    p.salesPersonName?.toLowerCase().includes(search.toLowerCase())
   )
 
   return (
@@ -104,23 +138,31 @@ export default function PoliciesPage() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Policies & Insurance</h1>
-          <p className="text-sm text-gray-500 mt-1">Manage active policies, renewals, and certificates.</p>
+          <p className="text-sm text-gray-500 mt-1">
+            {isManagerOrAdmin 
+              ? 'Manage active approved policies, team submissions, and issuance.'
+              : 'View approved policies assigned to your portfolio.'}
+          </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <button 
             onClick={exportCSV}
-            className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-xl text-sm font-semibold hover:bg-gray-50 transition-all shadow-sm"
+            className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-xl text-sm font-semibold hover:bg-gray-50 transition-all shadow-sm cursor-pointer"
           >
             <Download size={16} />
             Export
           </button>
-          <button 
-            onClick={() => setIsModalOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 transition-all shadow-md"
-          >
-            <Plus size={18} />
-            Issue New Policy
-          </button>
+          
+          {/* Issue New Policy only visible to Admin / Manager */}
+          {isManagerOrAdmin && (
+            <button 
+              onClick={() => setIsModalOpen(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 transition-all shadow-md cursor-pointer"
+            >
+              <Plus size={18} />
+              Issue New Policy
+            </button>
+          )}
         </div>
       </div>
 
@@ -130,7 +172,7 @@ export default function PoliciesPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
           <input 
             type="text" 
-            placeholder="Search by Policy No or Customer..." 
+            placeholder="Search by Policy No, Customer, Vehicle Plate, or Sales Person..." 
             className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none shadow-sm"
             value={search}
             onChange={e => setSearch(e.target.value)}
@@ -144,17 +186,17 @@ export default function PoliciesPage() {
             type="date" 
             value={startDate} 
             onChange={e => setStartDate(e.target.value)}
-            className="text-xs font-semibold outline-none bg-transparent w-28"
+            className="text-xs font-semibold outline-none bg-transparent w-28 cursor-pointer"
           />
           <span className="text-gray-300">—</span>
           <input 
             type="date" 
             value={endDate} 
             onChange={e => setEndDate(e.target.value)}
-            className="text-xs font-semibold outline-none bg-transparent w-28"
+            className="text-xs font-semibold outline-none bg-transparent w-28 cursor-pointer"
           />
           {(startDate || endDate) && (
-            <button onClick={() => {setStartDate(''); setEndDate('')}} className="text-gray-400 hover:text-red-500 ml-1">
+            <button onClick={() => {setStartDate(''); setEndDate('')}} className="text-gray-400 hover:text-red-500 ml-1 cursor-pointer">
               <RefreshCw size={14} />
             </button>
           )}
@@ -165,45 +207,90 @@ export default function PoliciesPage() {
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead>
-              <tr className="bg-gray-50/50 border-b border-gray-50">
-                <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase">Policy Info</th>
-                <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase">Customer</th>
-                <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase">Premium</th>
-                <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase">Expiry Date</th>
-                <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase">Status</th>
+              <tr className="bg-gray-50/50 border-b border-gray-50 text-xs font-bold text-gray-500 uppercase">
+                <th className="px-6 py-4">Policy Info</th>
+                <th className="px-6 py-4">Customer & Vehicle</th>
+                {isManagerOrAdmin && <th className="px-6 py-4">Sales Executive</th>}
+                <th className="px-6 py-4">Premium</th>
+                <th className="px-6 py-4">Expiry Date</th>
+                {isManagerOrAdmin && <th className="px-6 py-4">Sales Visibility</th>}
+                <th className="px-6 py-4">Status & Docs</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
               {loading ? (
-                <tr><td colSpan={5} className="p-10 text-center text-gray-400">Loading...</td></tr>
+                <tr><td colSpan={isManagerOrAdmin ? 7 : 5} className="p-10 text-center text-gray-400 font-medium">Loading policies...</td></tr>
               ) : filteredPolicies.length === 0 ? (
-                <tr><td colSpan={5} className="p-10 text-center text-gray-400 italic">No policies found in this period.</td></tr>
+                <tr><td colSpan={isManagerOrAdmin ? 7 : 5} className="p-10 text-center text-gray-400 italic">No policies found matching criteria.</td></tr>
               ) : filteredPolicies.map((p) => (
                 <tr key={p.id} className="hover:bg-gray-50/50 transition-colors text-sm">
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center">
+                      <div className="w-9 h-9 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center shrink-0">
                         <Shield size={18} />
                       </div>
                       <div>
-                        <p className="font-bold text-gray-900">{p.policyNumber}</p>
+                        <p className="font-bold text-gray-900 font-mono text-xs">{p.policyNumber}</p>
                         <p className="text-[10px] text-gray-500 font-bold uppercase">{p.provider} • {p.type}</p>
                       </div>
                     </div>
                   </td>
                   <td className="px-6 py-4">
-                    <p className="font-medium text-gray-900">{p.lead?.clientName || 'Unknown'}</p>
+                    <p className="font-bold text-gray-900">{p.lead?.clientName || 'Unknown'}</p>
+                    {p.lead?.vehicleNo && (
+                      <span className="text-xs font-mono font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200 mt-0.5 inline-block">
+                        {p.lead.vehicleNo}
+                      </span>
+                    )}
                   </td>
-                  <td className="px-6 py-4 font-bold text-gray-900">₹{p.premiumAmount?.toLocaleString()}</td>
-                  <td className="px-6 py-4 text-gray-600">
-                    {new Date(p.endDate).toLocaleDateString()}
+                  {isManagerOrAdmin && (
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
+                        <User size={13} className="text-slate-400" />
+                        <span>{p.salesPersonName || 'Direct'}</span>
+                      </div>
+                    </td>
+                  )}
+                  <td className="px-6 py-4 font-bold text-gray-900">₹{Number(p.premiumAmount)?.toLocaleString()}</td>
+                  <td className="px-6 py-4 text-xs font-semibold text-gray-600">
+                    {p.endDate ? new Date(p.endDate).toLocaleDateString() : 'N/A'}
                   </td>
+                  
+                  {/* Manager/Admin Sales Visibility Checkbox */}
+                  {isManagerOrAdmin && (
+                    <td className="px-6 py-4">
+                      <label className="flex items-center gap-2 cursor-pointer text-xs font-bold">
+                        <input
+                          type="checkbox"
+                          checked={p.visibleToSalesPerson !== false}
+                          onChange={e => handleToggleSalesVisibility(p, e.target.checked)}
+                          className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer accent-blue-600"
+                        />
+                        <span className={p.visibleToSalesPerson !== false ? 'text-emerald-700' : 'text-slate-400'}>
+                          {p.visibleToSalesPerson !== false ? 'Visible' : 'Hidden'}
+                        </span>
+                      </label>
+                    </td>
+                  )}
+
                   <td className="px-6 py-4">
-                    <span className={`px-2 py-1 rounded-md text-[10px] font-bold uppercase ${
-                      p.status === 'Active' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
-                    }`}>
-                      {p.status}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase ${
+                        p.status === 'Active' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'
+                      }`}>
+                        {p.status}
+                      </span>
+                      {p.compiledPdfUrl && (
+                        <a
+                          href={p.compiledPdfUrl}
+                          download={`policy_${p.lead?.clientName || 'customer'}.pdf`}
+                          className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-colors cursor-pointer"
+                          title="Download Merged Customer PDF"
+                        >
+                          <Download size={13} />
+                        </a>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}

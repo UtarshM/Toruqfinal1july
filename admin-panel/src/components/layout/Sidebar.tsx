@@ -19,6 +19,7 @@ const MENU_GROUPS = [
     items: [
       { name: 'Leads', href: '/leads' },
       { name: 'Import Leads', href: '/data/import' },
+      { name: 'Imported Spreadsheets', href: '/data/sheets' },
       { name: 'CRM', href: '/crm' },
       { name: 'Quotations', href: '/quotations' },
       { name: 'Rate Calculator', href: '/rate-calculator' },
@@ -39,6 +40,7 @@ const MENU_GROUPS = [
   {
     label: 'MANAGEMENT',
     items: [
+      { name: 'Policy Approvals', href: '/manager/documents' },
       { name: 'Users', href: '/users' },
       { name: 'Onboarding Approvals', href: '/users/onboarding' },
       { name: 'Roles & Permissions', href: '/roles' },
@@ -63,27 +65,29 @@ export default function Sidebar() {
     setOpen(false)
   }
 
-  const role = (user?.role?.name || 'EXECUTIVE').toUpperCase()
-  const isExecutive = role.endsWith('EXECUTIVE') || role === 'VIEWER'
+  const role = (user?.role?.name || (typeof user?.role === 'string' ? user.role : 'EXECUTIVE')).toUpperCase()
+  const isAdmin = role.includes('ADMIN') || role.includes('SUPER')
+  const isManager = role.includes('MANAGER')
+  const isExecutive = !isAdmin && !isManager
 
   const filteredGroups = MENU_GROUPS.map(group => {
     let items = group.items
 
     if (isExecutive) {
-      // Hide most admin and oversight items for Executives
+      // Hide all management oversight items and policy approvals for Executives
       if (group.label === 'MANAGEMENT') return null
       if (group.label === 'OPERATIONS') {
         items = items.filter(i => ['Claims', 'Loans'].includes(i.name))
       }
-      items = items.filter(i => !['CRM', 'Reports', 'Import Leads'].includes(i.name))
-    } else if (role === 'MANAGER') {
-      // Strict role-based filtering for Managers
+      items = items.filter(i => !['CRM', 'Reports', 'Import Leads', 'Policy Approvals'].includes(i.name))
+    } else if (isManager && !isAdmin) {
+      // Role-based filtering for Managers
       if (group.label === 'OPERATIONS') return null
       if (group.label === 'SALES') {
-        items = items.filter(i => ['Leads', 'CRM', 'Quotations', 'Follow-ups'].includes(i.name))
+        items = items.filter(i => ['Leads', 'CRM', 'Quotations', 'Policies', 'Follow-ups'].includes(i.name))
       }
       if (group.label === 'MANAGEMENT') {
-        items = items.filter(i => ['Users', 'Settings'].includes(i.name))
+        items = items.filter(i => ['Policy Approvals', 'Users', 'Settings'].includes(i.name))
       }
     }
 

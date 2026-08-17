@@ -11,14 +11,15 @@ export async function GET(req: NextRequest) {
     const status = searchParams.get('status')
     const search = searchParams.get('search')
     const importName = searchParams.get('importName')
-    const limit = parseInt(searchParams.get('limit') || '500')
+    const limit = parseInt(searchParams.get('limit') || '5000')
     const offset = parseInt(searchParams.get('offset') || '0')
 
     const fromParam = searchParams.get('startDate') || searchParams.get('from')
     const toParam = searchParams.get('endDate') || searchParams.get('to')
     
     const where: any = {
-      status: { not: 'Trashed' }
+      status: { not: 'Trashed' },
+      deletedAt: null
     }
     if (importName) {
       where.importName = importName
@@ -40,7 +41,10 @@ export async function GET(req: NextRequest) {
 
     // RBAC: Dynamic filtering based on role
     const roleUpper = context?.role?.toUpperCase() || ''
-    const isExecutive = roleUpper.endsWith('EXECUTIVE') || roleUpper === 'VIEWER'
+    const isAdminOrManager = roleUpper.includes('ADMIN') || roleUpper.includes('MANAGER')
+    const isExecutive = !isAdminOrManager && (roleUpper.endsWith('EXECUTIVE') || roleUpper.includes('SALES') || roleUpper.includes('EXECUTIVE') || roleUpper === 'VIEWER')
+    
+    console.log('[leads GET DEBUG] context.role:', context?.role, 'roleUpper:', roleUpper, 'isAdminOrManager:', isAdminOrManager, 'isExecutive:', isExecutive)
     
     if (isExecutive) {
       where.assignedTo = context!.userId
@@ -58,17 +62,31 @@ export async function GET(req: NextRequest) {
     }
 
     if (search) {
-      const searchFilter = [
-        { clientName: { contains: search, mode: 'insensitive' } },
-        { clientPhone: { contains: search, mode: 'insensitive' } },
-        { vehicleNo: { contains: search, mode: 'insensitive' } }
-      ]
-      if (where.OR) {
-        where.AND = [{ OR: where.OR }, { OR: searchFilter }]
-        delete where.OR
-      } else {
-        where.OR = searchFilter
+      const cleanSearch = search.startsWith('#') ? search.slice(1).trim() : search
+      if (cleanSearch) {
+        const searchFilter = [
+          { clientName: { contains: cleanSearch, mode: 'insensitive' } },
+          { clientPhone: { contains: cleanSearch, mode: 'insensitive' } },
+          { vehicleNo: { contains: cleanSearch, mode: 'insensitive' } },
+          { importName: { contains: cleanSearch, mode: 'insensitive' } }
+        ]
+        if (where.OR) {
+          where.AND = [{ OR: where.OR }, { OR: searchFilter }]
+          delete where.OR
+        } else {
+          where.OR = searchFilter
+        }
       }
+    }
+
+    const sortBy = searchParams.get('sortBy') || 'expiryDate'
+    const sortOrder = searchParams.get('sortOrder') || 'asc'
+
+    let orderBy: any = [{ expiryDate: 'asc' }, { createdAt: 'desc' }]
+    if (sortBy && sortBy !== 'expiryDate') {
+      orderBy = [{ [sortBy]: sortOrder }]
+    } else if (sortBy === 'expiryDate') {
+      orderBy = [{ expiryDate: sortOrder }, { createdAt: 'desc' }]
     }
 
     let [leads, total] = await Promise.all([
@@ -76,7 +94,7 @@ export async function GET(req: NextRequest) {
         where,
         take: limit,
         skip: offset,
-        orderBy: { createdAt: 'desc' },
+        orderBy,
         include: {
           assignee: {
             select: { fullName: true }
@@ -110,18 +128,45 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
     const roleUpper = context?.role?.toUpperCase() || ''
-    const isExecutive = roleUpper.includes('EXECUTIVE') || roleUpper === 'VIEWER'
-
-    let status = body.status || 'New'
-    let assignedTo = body.assignedTo || body.assigned_to
+    const isExecutive = roleUpper.includes('EXECUTIVE') || roleUpper.includes('SALES') || roleUpper === 'VIEWER'
 
     if (isExecutive) {
-      status = 'Pending'
-      assignedTo = null
+      return NextResponse.json({ error: 'Forbidden: Sales Executives are not permitted to add new leads. Only Admins and Managers can add leads.' }, { status: 403 })
     }
 
-    // Round-robin assignment if no assignedTo specified and user is not executive
-    if (!assignedTo && !isExecutive) {
+    let status = body.status || 'New'
+    let assignedTo = body.assignedTo || body.assigned_to || null
+    const clientPhone = (body.clientPhone || body.client_phone) ? String(body.clientPhone || body.client_phone).trim() : null
+    let existingAgent = body.existingAgent || body.existing_agent || null
+
+    // Check if this contact number is already known as an Agent or if marked as Agent
+    let isAgentLead = false
+    if (existingAgent && String(existingAgent).toLowerCase().trim() === 'agent') {
+      isAgentLead = true
+      existingAgent = 'Agent'
+    } else if (clientPhone) {
+      const cleanDigits = clientPhone.replace(/\D/g, '')
+      const norm10 = cleanDigits.length >= 10 ? cleanDigits.slice(-10) : cleanDigits
+      const knownAgent = await prisma.lead.findFirst({
+        where: {
+          existingAgent: 'Agent',
+          OR: [
+            { clientPhone: clientPhone },
+            ...(norm10.length >= 7 ? [{ clientPhone: { contains: norm10 } }] : [])
+          ]
+        }
+      })
+      if (knownAgent) {
+        isAgentLead = true
+        existingAgent = 'Agent'
+      }
+    }
+
+    if (isAgentLead) {
+      // Agent contact numbers MUST NOT be assigned to any staff
+      assignedTo = null
+    } else if (!assignedTo && !isExecutive) {
+      // Round-robin assignment for regular (non-agent) leads
       try {
         const salesExecutives = await prisma.user.findMany({
           where: {
@@ -154,7 +199,6 @@ export async function POST(req: NextRequest) {
         }
       } catch (rrErr) {
         console.error('Round-robin assignment error:', rrErr)
-        // Continue without assignment
       }
     }
 
@@ -162,10 +206,11 @@ export async function POST(req: NextRequest) {
       data: {
         clientName: body.clientName || body.client_name,
         clientEmail: body.clientEmail || body.client_email,
-        clientPhone: (body.clientPhone || body.client_phone) ? String(body.clientPhone || body.client_phone) : undefined,
+        clientPhone: clientPhone || undefined,
         vehicleNo: body.vehicleNo || body.vehicle_no,
         gvw: body.gvw !== undefined ? String(body.gvw) : undefined,
         status,
+        existingAgent,
         assignedTo
       }
     })

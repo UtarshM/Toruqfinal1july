@@ -71,8 +71,8 @@ export async function GET(req: NextRequest) {
     // ── Agent view ─────────────────────────────────────
     if (effectiveView === 'agent') {
       const [myLeads, myLeadsToday, myFollowupsPending, myCallsToday, myQuotations] = await Promise.all([
-        prisma.lead.count({ where: { assignedTo: userId, createdAt: dateFilter } }),
-        prisma.lead.count({ where: { assignedTo: userId, createdAt: todayFilter } }),
+        prisma.lead.count({ where: { assignedTo: userId, status: { not: 'Trashed' } } }),
+        prisma.lead.count({ where: { assignedTo: userId, createdAt: todayFilter, status: { not: 'Trashed' } } }),
         prisma.followUp.count({ where: { assignedTo: userId, status: 'pending' } }),
         prisma.call.count({ where: { userId, createdAt: dateFilter || todayFilter } }),
         prisma.quotation.count({ where: { createdBy: userId, createdAt: dateFilter } })
@@ -98,8 +98,8 @@ export async function GET(req: NextRequest) {
 
       // Batch simple counts to stay well below Supabase connection pool limitations (max 15 concurrent clients)
       const [totalLeads, activeLeads, wonLeads, lostLeads] = await Promise.all([
-        prisma.lead.count({ where: { assignedTo: { in: teamIds }, createdAt: dateFilter } }),
-        prisma.lead.count({ where: { assignedTo: { in: teamIds }, status: { in: ['New', 'Contacted', 'Qualified', 'Proposal', 'Negotiation'] }, createdAt: dateFilter } }),
+        prisma.lead.count({ where: { assignedTo: { in: teamIds }, status: { not: 'Trashed' } } }),
+        prisma.lead.count({ where: { assignedTo: { in: teamIds }, status: { in: ['New', 'Contacted', 'Qualified', 'Proposal', 'Negotiation'] } } }),
         prisma.lead.count({ where: { assignedTo: { in: teamIds }, status: 'Won', createdAt: dateFilter } }),
         prisma.lead.count({ where: { assignedTo: { in: teamIds }, status: 'Lost', createdAt: dateFilter } }),
       ])
@@ -113,7 +113,7 @@ export async function GET(req: NextRequest) {
 
       const pipeline = await prisma.lead.groupBy({
         by: ['status'],
-        where: { assignedTo: { in: teamIds }, createdAt: dateFilter },
+        where: { assignedTo: { in: teamIds }, status: { not: 'Trashed' } },
         _count: { _all: true }
       })
 
@@ -134,46 +134,55 @@ export async function GET(req: NextRequest) {
 
 
     // ── Admin view ─────────────────────────────────
-    // Batch counts sequentially to stay well below Supabase connection pool limitations (max 15 concurrent clients)
-    const [totalLeads, newLeadsToday, totalPolicies, activePolicies, totalQuotations] = await Promise.all([
-      prisma.lead.count({ where: { createdAt: dateFilter } }),
-      prisma.lead.count({ where: { createdAt: todayFilter } }),
+    const sixMonthsAgo = new Date(); sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6)
+
+    const [
+      totalLeads,
+      newLeadsToday,
+      totalPolicies,
+      activePolicies,
+      totalQuotations,
+      totalCalls,
+      pendingFollowups,
+      overdueFollowups,
+      activeClaims,
+      pendingRto,
+      pendingFitness,
+      activeLoans,
+      totalCustomers,
+      todayVisits,
+      totalUsers,
+      revenueData,
+      topAgents
+    ] = await Promise.all([
+      prisma.lead.count({ where: { status: { not: 'Trashed' } } }),
+      prisma.lead.count({ where: { createdAt: todayFilter, status: { not: 'Trashed' } } }),
       prisma.policy.count({ where: { createdAt: dateFilter } }),
       prisma.policy.count({ where: { status: 'Active', createdAt: dateFilter } }),
       prisma.quotation.count({ where: { createdAt: dateFilter } }),
-    ])
-
-    const [totalCalls, pendingFollowups, overdueFollowups, activeClaims, pendingRto] = await Promise.all([
       prisma.call.count({ where: { createdAt: dateFilter } }),
       prisma.followUp.count({ where: { status: 'pending', createdAt: dateFilter } }),
       prisma.followUp.count({ where: { isOverdue: true, createdAt: dateFilter } }),
       prisma.claim.count({ where: { status: { in: ['filed', 'under_review', 'approved'] }, createdAt: dateFilter } }),
       prisma.rTOWork.count({ where: { status: 'pending', createdAt: dateFilter } }),
-    ])
-
-    const [pendingFitness, activeLoans, totalCustomers, todayVisits, totalUsers] = await Promise.all([
       prisma.fitnessWork.count({ where: { status: 'pending', createdAt: dateFilter } }),
       prisma.loan.count({ where: { status: { in: ['applied', 'under_review', 'approved', 'disbursed'] }, createdAt: dateFilter } }),
       prisma.customer.count({ where: { createdAt: dateFilter } }),
       prisma.visit.count({ where: { scheduledAt: dateFilter || todayFilter } }),
-      prisma.user.count({ where: { isActive: true } })
+      prisma.user.count({ where: { isActive: true } }),
+      prisma.transaction.groupBy({
+        by: ['date'],
+        where: { type: 'income', date: dateFilter || { gte: sixMonthsAgo } },
+        _sum: { amount: true }
+      }),
+      prisma.lead.groupBy({
+        by: ['assignedTo'],
+        where: { assignedTo: { not: null }, createdAt: dateFilter },
+        _count: { _all: true },
+        orderBy: { _count: { assignedTo: 'desc' } },
+        take: 5
+      })
     ])
-
-    // Monthly revenue (respect date filter if provided)
-    const sixMonthsAgo = new Date(); sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6)
-    const revenueData = await prisma.transaction.groupBy({
-      by: ['date'],
-      where: { type: 'income', date: dateFilter || { gte: sixMonthsAgo } },
-      _sum: { amount: true }
-    })
-
-    const topAgents = await prisma.lead.groupBy({
-      by: ['assignedTo'],
-      where: { assignedTo: { not: null }, createdAt: dateFilter },
-      _count: { _all: true },
-      orderBy: { _count: { assignedTo: 'desc' } },
-      take: 5
-    })
 
     return NextResponse.json({
       view: 'admin',

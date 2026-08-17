@@ -28,7 +28,8 @@ const DB_LEAD_FIELDS: ColumnMapping[] = [
   { dbField: 'registrationDate', label: 'REG NO', required: false, mappedHeader: '' },
   { dbField: 'gvw', label: 'Gross Vehicle Weight (GVW)', required: false, mappedHeader: '' },
   { dbField: 'address', label: 'Address', required: false, mappedHeader: '' },
-  { dbField: 'city', label: 'City', required: false, mappedHeader: '' }
+  { dbField: 'city', label: 'City', required: false, mappedHeader: '' },
+  { dbField: 'existingAgent', label: 'Agent', required: false, mappedHeader: '' }
 ]
 
 // List of available predefined database fields (excluding the ones already in default list)
@@ -87,8 +88,7 @@ export default function LeadImportPage() {
   // Add new column mapping states
   const [showAddForm, setShowAddForm] = useState(false)
   const [newColLabel, setNewColLabel] = useState('')
-  const [newColDbField, setNewColDbField] = useState('custom')
-  const [newColCustomKey, setNewColCustomKey] = useState('')
+  const [selectedSheetHeader, setSelectedSheetHeader] = useState('')
 
   // Outcome State
   const [importResult, setImportResult] = useState<{
@@ -129,15 +129,16 @@ export default function LeadImportPage() {
         if (header === fieldLabel) return true
 
         // Fallbacks for default fields
-        if (field.dbField === 'clientName') return header === 'name' || header === 'client name' || header === 'customer name'
-        if (field.dbField === 'clientPhone') return header === 'phone' || header === 'mobile' || header === 'contact' || header === 'client phone'
-        if (field.dbField === 'clientEmail') return header === 'email' || header === 'client email' || header === 'mail'
-        if (field.dbField === 'vehicleNo') return header === 'vehicle' || header === 'vehicle no' || header === 'vehicle number' || header === 'reg no'
-        if (field.dbField === 'expiryDate') return header === 'expiry' || header === 'expiry date' || header === 'policy expiry'
-        if (field.dbField === 'registrationDate') return header === 'registration' || header === 'registration date' || header === 'reg date'
-        if (field.dbField === 'gvw') return header === 'gvw' || header === 'gross weight' || header === 'weight'
-        if (field.dbField === 'address') return header === 'address' || header === 'location'
-        if (field.dbField === 'city') return header === 'city'
+        if (field.dbField === 'clientName') return ['name', 'client name', 'customer name', 'owner name', 'insured name', 'party name', 'insured', 'customer', 'client', 'party'].includes(header)
+        if (field.dbField === 'clientPhone') return ['phone', 'mobile', 'contact', 'client phone', 'mobile no', 'contact no', 'phone no', 'mobile number', 'cust mobile', 'phone_no'].includes(header)
+        if (field.dbField === 'clientEmail') return ['email', 'client email', 'mail', 'email id', 'email_id'].includes(header)
+        if (field.dbField === 'vehicleNo') return ['vehicle', 'vehicle no', 'vehicle number', 'reg no', 'registration no', 'vahan no', 'vehicle_no', 'reg_no', 'rc no', 'registration number'].includes(header)
+        if (field.dbField === 'expiryDate') return ['expiry', 'expiry date', 'policy expiry', 'policy expiry date', 'exp date', 'due date', 'policy end date', 'exp_date', 'policy expiry_date'].includes(header)
+        if (field.dbField === 'registrationDate') return ['registration', 'registration date', 'reg date', 'reg_date'].includes(header)
+        if (field.dbField === 'gvw') return ['gvw', 'gross weight', 'weight', 'gross vehicle weight'].includes(header)
+        if (field.dbField === 'address') return ['address', 'location'].includes(header)
+        if (field.dbField === 'city') return ['city', 'state'].includes(header)
+        if (field.dbField === 'existingAgent') return ['is agent', 'existing agent', 'is_agent', 'agent status', 'agent?'].includes(header)
         
         return header === dbFieldName
       })
@@ -145,17 +146,70 @@ export default function LeadImportPage() {
     })
   }
 
+function inferHeaderFromColumnData(values: any[], colIndex: number): string {
+  const cleanVals = values.map(v => String(v || '').trim()).filter(Boolean)
+  if (cleanVals.length === 0) return `Column_${colIndex + 1}`
+
+  // 1. Check for 10-digit Phone numbers first (so secondary phones aren't misclassified)
+  const phoneRegex = /^[6-9]\d{9}$/
+  const phoneCount = cleanVals.filter(v => phoneRegex.test(v.replace(/\D/g, '').slice(-10))).length
+  if (phoneCount >= Math.max(1, Math.floor(cleanVals.length * 0.3))) {
+    return colIndex > 0 ? `Phone Number ${colIndex + 1}` : 'Phone Number'
+  }
+
+  // 2. Check for Vehicle Number pattern (e.g. GJ18AV5577, MH01AB1234, DL3C1234)
+  const vehicleRegex = /^[A-Z]{2}[0-9]{1,2}[A-Z]{1,3}[0-9]{4}$/i
+  if (cleanVals.filter(v => vehicleRegex.test(v.replace(/\s+/g, ''))).length >= Math.min(2, cleanVals.length)) {
+    return 'Vehicle Number'
+  }
+
+  // 3. Check for Agent/Broker indicators ONLY if values are text/status
+  if (cleanVals.filter(v => ['agent', 'broker', 'direct agent'].includes(v.toLowerCase())).length >= 1) {
+    return 'Agent'
+  }
+
+  // 4. Check for Dates
+  const dateCount = cleanVals.filter(v => !isNaN(Date.parse(v)) && (v.includes('/') || v.includes('-'))).length
+  if (dateCount >= Math.min(2, cleanVals.length)) {
+    return 'Policy Expiry Date'
+  }
+
+  // 5. Check for Email
+  if (cleanVals.some(v => v.includes('@') && v.includes('.'))) {
+    return 'Email Address'
+  }
+
+  return `Column_${colIndex + 1}`
+}
+
   // Parse CSV File
   const parseCSV = (file: File) => {
     Papa.parse(file, {
-      header: true,
+      header: false,
       skipEmptyLines: true,
       complete: (results) => {
-        if (results.data.length > 0) {
-          const sheetHeaders = Object.keys(results.data[0] as object)
-          setHeaders(sheetHeaders)
-          setParsedRows(results.data)
-          setMappings(prev => autoDetectMappings(sheetHeaders, prev))
+        const rawAoa = results.data as any[][]
+        if (rawAoa.length > 1) {
+          const headers: string[] = rawAoa[0].map(h => String(h || '').trim())
+          // Automatically infer any empty/missing headers by analyzing column data
+          for (let c = 0; c < headers.length; c++) {
+            if (!headers[c] || headers[c] === '') {
+              const colValues = rawAoa.slice(1).map(r => r[c])
+              headers[c] = inferHeaderFromColumnData(colValues, c)
+            }
+          }
+
+          const parsedData = rawAoa.slice(1).map(row => {
+            const obj: any = {}
+            headers.forEach((h, idx) => {
+              obj[h] = row[idx] !== undefined ? row[idx] : ''
+            })
+            return obj
+          })
+
+          setHeaders(headers)
+          setParsedRows(parsedData)
+          setMappings(prev => autoDetectMappings(headers, prev))
           setStep(2)
         } else {
           setError('The uploaded CSV file is empty.')
@@ -178,13 +232,30 @@ export default function LeadImportPage() {
         const workbook = XLSX.read(data, { type: 'binary', cellDates: true })
         const firstSheetName = workbook.SheetNames[0]
         const worksheet = workbook.Sheets[firstSheetName]
-        const jsonData = XLSX.utils.sheet_to_json(worksheet, { defval: '' })
+        const rawAoa: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' })
 
-        if (jsonData.length > 0) {
-          const sheetHeaders = Object.keys(jsonData[0] as object)
-          setHeaders(sheetHeaders)
+        if (rawAoa.length > 1) {
+          const headers: string[] = rawAoa[0].map((h: any) => String(h || '').trim())
+          
+          // Automatically infer any empty/missing headers by analyzing column data
+          for (let c = 0; c < headers.length; c++) {
+            if (!headers[c] || headers[c] === '') {
+              const colValues = rawAoa.slice(1).map(r => r[c])
+              headers[c] = inferHeaderFromColumnData(colValues, c)
+            }
+          }
+
+          const jsonData = rawAoa.slice(1).map(row => {
+            const obj: any = {}
+            headers.forEach((h, idx) => {
+              obj[h] = row[idx] !== undefined ? row[idx] : ''
+            })
+            return obj
+          })
+
+          setHeaders(headers)
           setParsedRows(jsonData)
-          setMappings(prev => autoDetectMappings(sheetHeaders, prev))
+          setMappings(prev => autoDetectMappings(headers, prev))
           setStep(2)
         } else {
           setError('The uploaded Excel file is empty.')
@@ -253,6 +324,12 @@ export default function LeadImportPage() {
           mappedRecord[m.dbField] = null
         }
       })
+      // Also pass all original row columns so any raw/custom agent or broker columns are never lost
+      Object.keys(row).forEach(k => {
+        if (row[k] !== undefined && row[k] !== null && mappedRecord[k] === undefined) {
+          mappedRecord[k] = row[k]
+        }
+      })
       // Attach importName to each lead
       if (importName.trim()) {
         mappedRecord.importName = importName.trim()
@@ -270,10 +347,16 @@ export default function LeadImportPage() {
       return
     }
 
-    // Check if there are valid rows
-    const validLeads = mappedLeads.filter(l => l.clientName && l.clientName.trim() !== '')
+    // Check if there are valid rows (has client name, phone number, OR vehicle number)
+    const validLeads = mappedLeads.filter(l => {
+      const hasName = l.clientName && String(l.clientName).trim() !== ''
+      const hasPhone = l.clientPhone && String(l.clientPhone).trim() !== ''
+      const hasVehicle = l.vehicleNo && String(l.vehicleNo).trim() !== ''
+      return hasName || hasPhone || hasVehicle
+    })
+
     if (validLeads.length === 0) {
-      setError('Error: No rows contain a valid Client Name. Check your mapping.')
+      setError('Error: No rows contain a valid Client Name, Phone Number, or Vehicle Registration. Please check your column mappings.')
       return
     }
 
@@ -328,39 +411,59 @@ export default function LeadImportPage() {
     setMappings(prev => prev.filter(m => m.dbField !== dbField))
   }
 
-  const addMapping = () => {
-    if (!newColLabel.trim()) {
-      setError('Please enter a column label.')
+  const addAllUnmappedSheetColumns = () => {
+    const mappedHeaders = new Set(mappings.map(m => m.mappedHeader).filter(Boolean))
+    const unmappedSheetHeaders = headers.filter(h => !mappedHeaders.has(h))
+
+    if (unmappedSheetHeaders.length === 0) {
+      setError('All spreadsheet columns are already mapped!')
       return
     }
 
-    let finalDbField = newColDbField
-    if (newColDbField === 'custom') {
-      const sanitized = newColCustomKey.trim() || sanitizeFieldKey(newColLabel)
-      if (!sanitized) {
-        setError('Invalid custom field key.')
-        return
+    const newMappings: ColumnMapping[] = unmappedSheetHeaders.map(h => {
+      const key = sanitizeFieldKey(h) || 'customCol'
+      let uniqueKey = key
+      let counter = 1
+      while (mappings.some(m => m.dbField === uniqueKey)) {
+        uniqueKey = `${key}_${counter++}`
       }
-      finalDbField = sanitized
+      return {
+        dbField: uniqueKey,
+        label: h,
+        required: false,
+        mappedHeader: h
+      }
+    })
+
+    setMappings(prev => [...prev, ...newMappings])
+    setError(null)
+  }
+
+  const addMapping = () => {
+    const label = newColLabel.trim() || selectedSheetHeader
+    if (!label) {
+      setError('Please select a spreadsheet column or enter a column label.')
+      return
     }
 
-    if (mappings.some(m => m.dbField === finalDbField)) {
-      setError(`A mapping for database field "${finalDbField}" already exists.`)
-      return
+    const key = sanitizeFieldKey(label) || 'customCol'
+    let finalDbField = key
+    let counter = 1
+    while (mappings.some(m => m.dbField === finalDbField)) {
+      finalDbField = `${key}_${counter++}`
     }
 
     const newField: ColumnMapping = {
       dbField: finalDbField,
-      label: newColLabel.trim(),
+      label,
       required: false,
-      mappedHeader: ''
+      mappedHeader: selectedSheetHeader || (headers.includes(label) ? label : '')
     }
 
     setMappings(prev => [...prev, newField])
     setShowAddForm(false)
     setNewColLabel('')
-    setNewColDbField('custom')
-    setNewColCustomKey('')
+    setSelectedSheetHeader('')
     setError(null)
   }
 
@@ -433,6 +536,14 @@ export default function LeadImportPage() {
           {/* Admin Schema Action Button */}
           {isAdmin && step === 2 && (
             <div className="flex gap-2">
+              <button
+                onClick={addAllUnmappedSheetColumns}
+                className="flex items-center gap-1.5 px-3 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-bold rounded-xl transition-all cursor-pointer border border-blue-200 shadow-sm"
+                title="Automatically map all remaining unmapped columns from your spreadsheet"
+              >
+                <Plus size={14} />
+                Add All Sheet Columns ({headers.filter(h => !mappings.some(m => m.mappedHeader === h)).length})
+              </button>
               <button
                 onClick={() => setShowAddForm(prev => !prev)}
                 className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-all cursor-pointer border border-slate-200"
@@ -588,47 +699,42 @@ export default function LeadImportPage() {
                   </div>
 
                   <div className="space-y-3">
+                    {headers.length > 0 && (
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Select Column from Spreadsheet</label>
+                        <select
+                          value={selectedSheetHeader}
+                          onChange={(e) => {
+                            const val = e.target.value
+                            setSelectedSheetHeader(val)
+                            if (val && !newColLabel) {
+                              setNewColLabel(val)
+                            }
+                          }}
+                          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20"
+                        >
+                          <option value="">-- Pick Spreadsheet Column --</option>
+                          {headers.map(h => (
+                            <option key={h} value={h}>{h}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
                     <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Column Label</label>
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Or Enter Column Label</label>
                       <input
                         type="text"
-                        placeholder="e.g. Engine Number"
+                        placeholder="e.g. Engine Number, NCB %, Model"
                         value={newColLabel}
                         onChange={(e) => setNewColLabel(e.target.value)}
                         className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20"
                       />
                     </div>
 
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">DB Property Type</label>
-                      <select
-                        value={newColDbField}
-                        onChange={(e) => setNewColDbField(e.target.value)}
-                        className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20"
-                      >
-                        <option value="custom">-- Custom Field (JSON metadata) --</option>
-                        {AVAILABLE_DB_FIELDS.map(f => (
-                          <option key={f.value} value={f.value}>{f.label} ({f.value})</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    {newColDbField === 'custom' && (
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">JSON Property Key (Optional)</label>
-                        <input
-                          type="text"
-                          placeholder={newColLabel ? sanitizeFieldKey(newColLabel) : "e.g. engineNo"}
-                          value={newColCustomKey}
-                          onChange={(e) => setNewColCustomKey(e.target.value)}
-                          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20"
-                        />
-                      </div>
-                    )}
-
                     <button
                       onClick={addMapping}
-                      className="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md shadow-blue-100 transition-all cursor-pointer"
+                      className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md shadow-blue-100 transition-all cursor-pointer"
                     >
                       Add Column Mapping
                     </button>
@@ -836,10 +942,10 @@ export default function LeadImportPage() {
               </button>
               
               <button
-                onClick={() => router.push('/leads')}
-                className="flex-1 py-3 bg-slate-900 hover:bg-black text-white text-xs font-extrabold uppercase tracking-wider rounded-xl transition-all cursor-pointer"
+                onClick={() => router.push(importName.trim() ? `/leads?search=%23${encodeURIComponent(importName.trim())}` : '/leads')}
+                className="flex-[2] py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md shadow-blue-100 transition-all cursor-pointer"
               >
-                View Leads Database
+                View Leads in Database →
               </button>
             </div>
           </div>

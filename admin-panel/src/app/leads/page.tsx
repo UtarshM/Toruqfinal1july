@@ -8,8 +8,9 @@ import {
   Search, Filter, Plus, Upload, CheckCircle, 
   AlertCircle, Users, Calendar, RefreshCw, Phone, MessageCircle, 
   X, Check, Clipboard, ChevronRight, Trash2, ArrowUpDown, ArrowUp, ArrowDown,
-  ChevronDown
+  ChevronDown, FileSpreadsheet, FileText, Shield
 } from 'lucide-react'
+import LeadPolicySubmissionModal from '@/components/leads/LeadPolicySubmissionModal'
 
 // Premium WhatsApp Message Templates
 const WHATSAPP_TEMPLATES = [
@@ -36,8 +37,9 @@ const WHATSAPP_TEMPLATES = [
 export default function LeadsPage() {
   const { user } = useAuth()
   const router = useRouter()
-  const role = (user?.role?.name || 'EXECUTIVE').toUpperCase()
-  const isExecutive = role.endsWith('EXECUTIVE') || role === 'VIEWER'
+  const roleName = (typeof user?.role === 'string' ? user.role : user?.role?.name || '').toUpperCase()
+  const isAdminOrManager = roleName.includes('ADMIN') || roleName.includes('MANAGER')
+  const isExecutive = !isAdminOrManager && Boolean(roleName) && (roleName.endsWith('EXECUTIVE') || roleName.includes('SALES') || roleName === 'VIEWER')
   const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null
   const initialSearch = searchParams?.get('search') || ''
 
@@ -81,11 +83,32 @@ export default function LeadsPage() {
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
 
-  // Sorting Config (Default: Recently Added First!)
+  // Sorting Config (Default: Expiry Date Ascending - Earlier expiry first!)
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({
     key: 'createdAt',
     direction: 'desc'
   })
+
+  const [isFlaggingAgent, setIsFlaggingAgent] = useState(false)
+
+  const handleFlagAgent = async (leadId: string) => {
+    if (typeof window !== 'undefined' && !confirm('Send a notification to Admin saying "its a agent" for this lead?')) return
+    setIsFlaggingAgent(true)
+    try {
+      const res = await fetchApi(`/api/v1/leads/${leadId}/flag-agent`, {
+        method: 'POST'
+      })
+      alert(res.message || 'Notification sent to admin saying "its a agent"')
+      if (detailedLead && detailedLead.id === leadId) {
+        fetchLeadDetails(leadId)
+      }
+      fetchData()
+    } catch (err: any) {
+      alert(err.message || 'Failed to send notification to admin')
+    } finally {
+      setIsFlaggingAgent(false)
+    }
+  }
 
   // Selected values checklist per column (Excel / Google Sheets style)
   const [columnSelectedValues, setColumnSelectedValues] = useState<Record<string, Set<string>>>({})
@@ -127,10 +150,14 @@ export default function LeadsPage() {
   })
   const [isScheduling, setIsScheduling] = useState(false)
 
+  // Policy Submission Modal State
+  const [policyModalLead, setPolicyModalLead] = useState<any | null>(null)
+
   // Response Tab State
   const [predefinedResponses, setPredefinedResponses] = useState<any[]>([])
   const [selectedResponseId, setSelectedResponseId] = useState<string | null>(null)
   const [responseNotes, setResponseNotes] = useState('')
+  const [customResponseText, setCustomResponseText] = useState('')
   const [isSavingResponse, setIsSavingResponse] = useState(false)
 
   useEffect(() => {
@@ -159,7 +186,7 @@ export default function LeadsPage() {
       const params = new URLSearchParams()
       if (startDate) params.append('startDate', startDate)
       if (endDate) params.append('endDate', endDate)
-      params.append('limit', '500')
+      params.append('limit', '5000')
 
       const [leadsData, statsData] = await Promise.all([
         fetchApi(`/api/v1/leads?${params}`),
@@ -167,6 +194,7 @@ export default function LeadsPage() {
       ])
       
       setLeads(leadsData?.leads || [])
+      setColumnSelectedValues({})
       setStats(statsData?.summary || null)
     } catch (error: any) {
       console.error('Failed to fetch leads:', error)
@@ -179,7 +207,9 @@ export default function LeadsPage() {
   const fetchEmployees = async () => {
     try {
       const data = await fetchApi('/api/v1/users?limit=100')
-      setEmployees(Array.isArray(data) ? data : [])
+      // Only include active users for assignment
+      const activeUsers = Array.isArray(data) ? data.filter((u: any) => u.isActive !== false) : []
+      setEmployees(activeUsers)
     } catch (error) {
       console.error('Failed to fetch employees list:', error)
     }
@@ -368,6 +398,51 @@ export default function LeadsPage() {
     }
   }
 
+  const handleSaveResponse = async () => {
+    if (!detailedLead) return
+    const selectedResp = predefinedResponses.find(r => r.id === selectedResponseId)
+    const responseText = selectedResp ? selectedResp.text : customResponseText.trim()
+    
+    if (!responseText && !responseNotes.trim()) {
+      alert('Please enter or select a response')
+      return
+    }
+
+    setIsSavingResponse(true)
+    try {
+      const fullNote = selectedResp
+        ? `[Response: ${selectedResp.text}] ${responseNotes.trim()}`
+        : `[Custom Response] ${responseText} ${responseNotes.trim()}`.trim()
+
+      await fetchApi(`/api/v1/leads/${detailedLead.id}/response`, {
+        method: 'POST',
+        body: JSON.stringify({
+          status: selectedResp?.requiresFollowUp ? 'Follow Up' : 'Contacted',
+          notes: fullNote,
+          outcome: responseText
+        })
+      })
+
+      if (selectedResp?.requiresFollowUp) {
+        await fetchApi(`/api/v1/leads/${detailedLead.id}`, {
+          method: 'PUT',
+          body: JSON.stringify({ status: 'Follow Up' })
+        })
+      }
+
+      setCustomResponseText('')
+      setResponseNotes('')
+      setSelectedResponseId(null)
+      fetchLeadDetails(detailedLead.id)
+      fetchData()
+      alert('Lead response logged successfully!')
+    } catch (err: any) {
+      alert(err.message || 'Failed to save response')
+    } finally {
+      setIsSavingResponse(false)
+    }
+  }
+
   const handleCopyTemplate = (text: string) => {
     navigator.clipboard.writeText(text)
     setCopiedText(true)
@@ -430,34 +505,6 @@ export default function LeadsPage() {
     }
   }
 
-  // Save predefined response for a lead
-  const handleSaveResponse = async () => {
-    if (!detailedLead || !selectedResponseId) return
-    setIsSavingResponse(true)
-    try {
-      const selectedResponse = predefinedResponses.find(r => r.id === selectedResponseId)
-      const notesText = selectedResponse ? `[Response: ${selectedResponse.text}]${responseNotes ? ` — ${responseNotes}` : ''}` : responseNotes
-
-      await fetchApi(`/api/v1/leads/${detailedLead.id}/response`, {
-        method: 'POST',
-        body: JSON.stringify({
-          status: selectedResponse?.requiresFollowUp ? 'Follow Up' : detailedLead.status,
-          notes: notesText
-        })
-      })
-
-      setSelectedResponseId(null)
-      setResponseNotes('')
-      fetchLeadDetails(detailedLead.id)
-      fetchData()
-      alert('Response recorded successfully!')
-    } catch (err: any) {
-      alert(err.message || 'Failed to save response')
-    } finally {
-      setIsSavingResponse(false)
-    }
-  }
-
   // Value getter helper for any column key
   const getLeadColumnValue = (lead: any, colKey: string): string => {
     if (colKey === 'clientName') return lead.clientName || '—'
@@ -478,17 +525,17 @@ export default function LeadsPage() {
     if (colKey === 'model') return lead.customFields?.model || lead.customFields?.vehicleModel || '—'
     if (colKey === 'company') return lead.customFields?.company || lead.customFields?.insuranceCompany || '—'
     if (colKey === 'tpFull') return lead.customFields?.tpFull || lead.customFields?.policyType || '—'
-    if (colKey === 'via') return lead.existingAgent || lead.city || lead.customFields?.via || '—'
+    if (colKey === 'via') return lead.customFields?.via || lead.city || '—'
     if (colKey === 'assignedTo') return lead.assignee?.fullName || 'Unassigned'
     return '—'
   }
 
-  // Get distinct non-empty values for a column
+  // Get distinct values for a column
   const getDistinctColumnValues = (colKey: string): string[] => {
     const set = new Set<string>()
     leads.forEach(l => {
       const val = getLeadColumnValue(l, colKey)
-      if (val && val !== '—') set.add(val)
+      if (val !== undefined && val !== null) set.add(val)
     })
     return Array.from(set).sort()
   }
@@ -515,20 +562,30 @@ export default function LeadsPage() {
 
   // Filter Leads based on Search Query AND status cards AND Excel-style selected values
   const filteredLeads = leads.filter(l => {
-    // Support #sheetname search to filter by importName
-    if (search.startsWith('#')) {
-      const importSearch = search.slice(1).toLowerCase().trim()
-      if (importSearch && !(l.importName?.toLowerCase() === importSearch)) {
-        return false
-      }
-    } else {
-      const searchMatch = 
-        l.clientName?.toLowerCase().includes(search.toLowerCase()) ||
-        l.vehicleNo?.toLowerCase().includes(search.toLowerCase()) ||
-        l.clientPhone?.includes(search) ||
-        l.assignee?.fullName?.toLowerCase().includes(search.toLowerCase())
+    // Role-based safeguard
+    if (isExecutive && l.assignedTo !== user?.id) {
+      return false
+    }
 
-      if (!searchMatch) return false
+    // Search Query filter (only filter if a search term is entered)
+    if (search && search.trim() !== '') {
+      const q = search.toLowerCase().trim()
+      if (q.startsWith('#')) {
+        const importSearch = q.slice(1).trim()
+        if (importSearch && !(l.importName?.toLowerCase().includes(importSearch))) {
+          return false
+        }
+      } else {
+        const nameMatch = l.clientName ? l.clientName.toLowerCase().includes(q) : false
+        const vehicleMatch = l.vehicleNo ? l.vehicleNo.toLowerCase().includes(q) : false
+        const phoneMatch = l.clientPhone ? String(l.clientPhone).includes(q) : false
+        const assigneeMatch = l.assignee?.fullName ? l.assignee.fullName.toLowerCase().includes(q) : false
+        const importMatch = l.importName ? l.importName.toLowerCase().includes(q) : false
+
+        if (!nameMatch && !vehicleMatch && !phoneMatch && !assigneeMatch && !importMatch) {
+          return false
+        }
+      }
     }
 
     // Active Card Filters
@@ -543,7 +600,10 @@ export default function LeadsPage() {
     // Excel-style Distinct Value Checkboxes per column
     for (const [colKey, selectedSet] of Object.entries(columnSelectedValues)) {
       if (!selectedSet || selectedSet.size === 0) continue
+      const distinct = getDistinctColumnValues(colKey)
+      if (distinct.length === 0 || selectedSet.size >= distinct.length) continue
       const val = getLeadColumnValue(l, colKey)
+      if (val === '—') continue // Never block leads with null/unspecified column values
       if (!selectedSet.has(val)) return false
     }
 
@@ -559,7 +619,12 @@ export default function LeadsPage() {
     else if (sortConfig.key === 'phone1') { aVal = a.clientPhone || ''; bVal = b.clientPhone || ''; }
     else if (sortConfig.key === 'phone2') { aVal = getLeadColumnValue(a, 'phone2'); bVal = getLeadColumnValue(b, 'phone2'); }
     else if (sortConfig.key === 'regNo') { aVal = a.vehicleNo || ''; bVal = b.vehicleNo || ''; }
-    else if (sortConfig.key === 'expiryDate') { aVal = a.expiryDate ? new Date(a.expiryDate).getTime() : 0; bVal = b.expiryDate ? new Date(b.expiryDate).getTime() : 0; }
+    else if (sortConfig.key === 'expiryDate') { 
+      // Earliest expiry date first when sorting ascending (nulls last)
+      const farFuture = 9999999999999
+      aVal = a.expiryDate ? new Date(a.expiryDate).getTime() : (sortConfig.direction === 'asc' ? farFuture : -1)
+      bVal = b.expiryDate ? new Date(b.expiryDate).getTime() : (sortConfig.direction === 'asc' ? farFuture : -1)
+    }
     else if (sortConfig.key === 'gvw') { aVal = parseFloat(a.gvw || '0') || 0; bVal = parseFloat(b.gvw || '0') || 0; }
     else if (sortConfig.key === 'cat') { aVal = getLeadColumnValue(a, 'cat'); bVal = getLeadColumnValue(b, 'cat'); }
     else if (sortConfig.key === 'model') { aVal = getLeadColumnValue(a, 'model'); bVal = getLeadColumnValue(b, 'model'); }
@@ -593,7 +658,12 @@ export default function LeadsPage() {
     return template.text(detailedLead.clientName, detailedLead.vehicleNo || 'Vehicle')
   }
 
-  const hasActiveColumnFilters = Object.keys(columnSelectedValues).some(k => columnSelectedValues[k] && columnSelectedValues[k].size > 0) || sortConfig.key !== 'createdAt'
+  const hasActiveColumnFilters = Object.keys(columnSelectedValues).some(k => {
+    const set = columnSelectedValues[k]
+    if (!set || set.size === 0) return false
+    const distinct = getDistinctColumnValues(k)
+    return set.size < distinct.length
+  }) || Boolean(search) || Boolean(startDate) || Boolean(endDate)
 
   return (
     <AdminLayout>
@@ -614,23 +684,32 @@ export default function LeadsPage() {
               Delete ({selectedIds.size})
             </button>
           )}
-          {/* Import Leads → redirect to /data/import (Only visible for Admins / Managers) */}
+          {/* Import Leads, View Spreadsheets & New Lead → Only visible for Admins / Managers */}
           {!isExecutive && (
-            <button 
-              onClick={() => router.push('/data/import')}
-              className="cursor-pointer px-4 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-50 transition-all flex items-center gap-2 shadow-sm"
-            >
-              <Upload size={14} />
-              Import Leads
-            </button>
+            <>
+              <button 
+                onClick={() => router.push('/data/sheets')}
+                className="cursor-pointer px-4 py-2.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-bold hover:bg-emerald-100 transition-all flex items-center gap-2 shadow-sm"
+              >
+                <FileSpreadsheet size={14} />
+                View Spreadsheets
+              </button>
+              <button 
+                onClick={() => router.push('/data/import')}
+                className="cursor-pointer px-4 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-50 transition-all flex items-center gap-2 shadow-sm"
+              >
+                <Upload size={14} />
+                Import Leads
+              </button>
+              <button 
+                onClick={() => setShowAddModal(true)}
+                className="flex items-center gap-2 px-5 py-2.5 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-black transition-all shadow-md cursor-pointer"
+              >
+                <Plus size={16} />
+                New Lead
+              </button>
+            </>
           )}
-          <button 
-            onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-2 px-5 py-2.5 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-black transition-all shadow-md"
-          >
-            <Plus size={16} />
-            New Lead
-          </button>
         </div>
       </div>
 
@@ -675,6 +754,29 @@ export default function LeadsPage() {
         <div className="bg-rose-50 border border-rose-200 text-rose-700 p-4 rounded-2xl text-xs font-bold mt-4 flex items-center justify-between">
           <span>{errorMessage}</span>
           <button onClick={fetchData} className="px-3 py-1 bg-rose-600 text-white rounded-lg text-[10px]">Retry</button>
+        </div>
+      )}
+
+      {/* Active Filter Recovery Banner */}
+      {leads.length > 0 && filteredLeads.length === 0 && (
+        <div className="bg-amber-50 border border-amber-200 text-amber-900 p-4 rounded-2xl text-xs font-bold mt-4 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-sm">
+          <div className="flex items-center gap-2">
+            <AlertCircle size={16} className="text-amber-600 shrink-0" />
+            <span>{leads.length} leads exist in database, but active column or search filters are hiding them.</span>
+          </div>
+          <button 
+            onClick={() => {
+              setSearch('')
+              setStartDate('')
+              setEndDate('')
+              setStatusFilter('all')
+              setColumnSelectedValues({})
+              setSortConfig({ key: 'expiryDate', direction: 'asc' })
+            }} 
+            className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition-all shadow cursor-pointer whitespace-nowrap"
+          >
+            Show All {leads.length} Leads
+          </button>
         </div>
       )}
 
@@ -730,8 +832,12 @@ export default function LeadsPage() {
         {hasActiveColumnFilters && (
           <button 
             onClick={() => {
+              setSearch('')
+              setStartDate('')
+              setEndDate('')
+              setStatusFilter('all')
               setColumnSelectedValues({})
-              setSortConfig({ key: 'createdAt', direction: 'desc' })
+              setSortConfig({ key: 'expiryDate', direction: 'asc' })
             }}
             className="flex items-center gap-1 px-3 py-2 bg-rose-50 text-rose-600 rounded-xl text-[10px] font-bold border border-rose-100 hover:bg-rose-100 transition-all cursor-pointer"
           >
@@ -768,7 +874,8 @@ export default function LeadsPage() {
                   { key: 'company', label: 'Company', type: 'select' },
                   { key: 'tpFull', label: 'TP/Full', type: 'select' },
                   { key: 'via', label: 'VIA', type: 'select' },
-                  { key: 'assignedTo', label: 'Assigned To', type: 'select' }
+                  { key: 'assignedTo', label: 'Assigned To', type: 'select' },
+                  { key: 'policyStatus', label: 'Policy / Docs', type: 'select' }
                 ].map(col => {
                   const isSorted = sortConfig.key === col.key
                   const selectedSet = columnSelectedValues[col.key]
@@ -938,7 +1045,16 @@ export default function LeadsPage() {
                     <td className="px-3 py-3">
                       <span className="font-bold text-slate-900 text-xs">{lead.clientName}</span>
                     </td>
-                    <td className="px-3 py-3 text-xs text-slate-700 whitespace-nowrap">{phone1}</td>
+                    <td className="px-3 py-3 text-xs text-slate-700 whitespace-nowrap">
+                      <div className="flex items-center gap-1.5">
+                        <span>{phone1}</span>
+                        {lead.existingAgent === 'Agent' && (
+                          <span className="px-1.5 py-0.5 bg-amber-100 text-amber-800 text-[9px] font-black rounded-md border border-amber-200 uppercase tracking-wide shrink-0" title="Contact number belongs to an agent">
+                            AGENT
+                          </span>
+                        )}
+                      </div>
+                    </td>
                     <td className="px-3 py-3 text-xs text-slate-700 whitespace-nowrap">{phone2}</td>
                     <td className="px-3 py-3">
                       <span className="text-xs font-mono text-slate-800 font-bold whitespace-nowrap">{regNo}</span>
@@ -956,6 +1072,30 @@ export default function LeadsPage() {
                       }`}>
                         {lead.assignee?.fullName || 'Unassigned'}
                       </span>
+                    </td>
+
+                    {/* Policy / Docs Column */}
+                    <td className="px-3 py-3" onClick={e => e.stopPropagation()}>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setPolicyModalLead(lead);
+                        }}
+                        className={`px-2.5 py-1 rounded-lg text-[10px] font-black transition-all flex items-center gap-1 cursor-pointer shadow-xs whitespace-nowrap ${
+                          lead.customFields?.policySubmission?.status === 'Approved' ? 'bg-emerald-600 hover:bg-emerald-700 text-white' :
+                          lead.customFields?.policySubmission?.status === 'Pending_Review' ? 'bg-amber-500 hover:bg-amber-600 text-white animate-pulse' :
+                          lead.customFields?.policySubmission?.status === 'Reverted' ? 'bg-rose-600 hover:bg-rose-700 text-white' :
+                          'bg-blue-600 hover:bg-blue-700 text-white'
+                        }`}
+                        title="Upload Documents, Convert to Single PDF & Submit to Manager"
+                      >
+                        <FileText size={11} />
+                        <span>
+                          {lead.customFields?.policySubmission?.status === 'Approved' ? 'Approved ✓' :
+                           lead.customFields?.policySubmission?.status === 'Pending_Review' ? 'In Review' :
+                           lead.customFields?.policySubmission?.status === 'Reverted' ? 'Reverted' : 'Make Policy'}
+                        </span>
+                      </button>
                     </td>
 
                     {/* Dedicated Column for Call, WhatsApp & Details Buttons in one line */}
@@ -984,6 +1124,16 @@ export default function LeadsPage() {
                           title="WhatsApp message (opens new tab)"
                         >
                           <MessageCircle size={14} />
+                        </button>
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleFlagAgent(lead.id);
+                          }}
+                          className="p-1.5 bg-amber-50 text-amber-600 rounded-lg hover:bg-amber-100 transition-all flex items-center justify-center cursor-pointer hover:scale-105 active:scale-95 shadow-sm"
+                          title="Notify Admin: It's an agent"
+                        >
+                          <AlertCircle size={14} />
                         </button>
                         <button 
                           onClick={() => handleOpenDrawer(lead.id)}
@@ -1021,22 +1171,53 @@ export default function LeadsPage() {
             ) : detailedLead ? (
               <>
                 {/* Header */}
-                <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-                  <div>
-                    <h3 className="text-lg font-black text-slate-900">{detailedLead.clientName}</h3>
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className="px-2 py-0.5 bg-slate-900 text-white rounded font-mono text-[9px] uppercase font-bold tracking-wider">
-                        {detailedLead.vehicleNo || 'NO PLATE'}
-                      </span>
-                      <span className="text-[10px] text-slate-400 font-bold">{detailedLead.city || 'Out of City'}</span>
+                <div className="p-6 border-b border-slate-100 bg-slate-50/50">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-lg font-black text-slate-900">{detailedLead.clientName}</h3>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="px-2 py-0.5 bg-slate-900 text-white rounded font-mono text-[9px] uppercase font-bold tracking-wider">
+                          {detailedLead.vehicleNo || 'NO PLATE'}
+                        </span>
+                        <span className="text-[10px] text-slate-400 font-bold">{detailedLead.city || 'Out of City'}</span>
+                      </div>
                     </div>
+                    <button 
+                      onClick={handleCloseDrawer}
+                      className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-all"
+                    >
+                      <X size={18} />
+                    </button>
                   </div>
-                  <button 
-                    onClick={handleCloseDrawer}
-                    className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-all"
-                  >
-                    <X size={18} />
-                  </button>
+                  
+                  {/* Drawer Action Buttons */}
+                  <div className="mt-3 flex items-center gap-2">
+                    <button
+                      onClick={() => setPolicyModalLead(detailedLead)}
+                      className="flex-1 py-2 px-3 bg-gradient-to-r from-slate-900 to-blue-900 hover:from-black hover:to-blue-950 text-white rounded-xl text-xs font-bold shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
+                      title="Upload 7 documents, fill 25 policy fields, compile single PDF and submit to manager"
+                    >
+                      <FileText size={13} className="text-emerald-400" />
+                      <span>Make Policy & 7 Docs</span>
+                      <span className={`px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider ${
+                        detailedLead.customFields?.policySubmission?.status === 'Approved' ? 'bg-emerald-500 text-white' :
+                        detailedLead.customFields?.policySubmission?.status === 'Pending_Review' ? 'bg-amber-500 text-white animate-pulse' :
+                        detailedLead.customFields?.policySubmission?.status === 'Reverted' ? 'bg-rose-500 text-white' : 'bg-slate-700 text-slate-200'
+                      }`}>
+                        {detailedLead.customFields?.policySubmission?.status || 'Draft'}
+                      </span>
+                    </button>
+
+                    <button
+                      onClick={() => handleFlagAgent(detailedLead.id)}
+                      disabled={isFlaggingAgent}
+                      className="py-2 px-3 bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shrink-0"
+                      title="Send notification to admin saying 'its a agent'"
+                    >
+                      <AlertCircle size={14} />
+                      <span className="hidden sm:inline">Agent Alert</span>
+                    </button>
+                  </div>
                 </div>
 
                 {/* Tabs */}
@@ -1048,6 +1229,13 @@ export default function LeadsPage() {
                     }`}
                   >
                     Overview
+                  </button>
+                  <button 
+                    onClick={() => setPolicyModalLead(detailedLead)}
+                    className="py-3.5 border-b-2 border-transparent text-emerald-600 hover:text-emerald-700 font-extrabold uppercase tracking-wider whitespace-nowrap flex items-center gap-1"
+                  >
+                    <FileText size={12} />
+                    <span>Policy & Docs</span>
                   </button>
                   <button 
                     onClick={() => setActiveTab('call')}
@@ -1219,23 +1407,36 @@ export default function LeadsPage() {
                           {/* Lead Assignee Card Controls */}
                           <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4">
                             <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Assign to auto advisor</label>
-                            <select 
-                              value={detailedLead.assignedTo || 'unassigned'}
-                              onChange={e => handleUpdateLeadAssignee(e.target.value)}
-                              className="w-full bg-white border border-slate-200 rounded-xl p-2.5 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-slate-100"
-                            >
-                              <option value="unassigned">Unassigned (Leave Open)</option>
-                              {employees.map(emp => (
-                                <option key={emp.id} value={emp.id}>{emp.fullName} ({emp.role?.name})</option>
-                              ))}
-                            </select>
+                            {isExecutive ? (
+                              <div className="bg-white border border-slate-200 rounded-xl p-3 text-xs font-bold text-slate-800 flex items-center justify-between shadow-2xs">
+                                <span>{detailedLead.assignee?.fullName || 'Unassigned'}</span>
+                                <span className="text-[10px] bg-slate-100 text-slate-500 font-bold px-2 py-0.5 rounded-md">{detailedLead.assignee?.role?.name || 'Executive'}</span>
+                              </div>
+                            ) : (
+                              <select 
+                                value={detailedLead.assignedTo || 'unassigned'}
+                                onChange={e => handleUpdateLeadAssignee(e.target.value)}
+                                className="w-full bg-white border border-slate-200 rounded-xl p-2.5 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-slate-100"
+                              >
+                                <option value="unassigned">Unassigned (Leave Open)</option>
+                                {employees.map(emp => (
+                                  <option key={emp.id} value={emp.id}>{emp.fullName} ({emp.role?.name})</option>
+                                ))}
+                              </select>
+                            )}
                           </div>
 
                           {/* Client Card details */}
                           <div className="space-y-4">
-                            <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Metadata sheet</h4>
+                            <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Metadata & Import Details</h4>
                             <div className="grid grid-cols-2 gap-4">
-                              <DetailItem label="Mo No. 1" value={detailedLead.clientPhone || 'N/A'} isCopyable />
+                              <DetailItem label="Import Sheet Name" value={detailedLead.importName || 'Manual / Direct Entry'} isCopyable />
+                              <DetailItem label="Agent Contact Status" value={detailedLead.existingAgent === 'Agent' ? 'Agent Contact (Alert Sent)' : 'Standard Direct Contact'} />
+                              <DetailItem 
+                                label="Mo No. 1" 
+                                value={detailedLead.clientPhone ? (detailedLead.existingAgent === 'Agent' ? `${detailedLead.clientPhone} [AGENT]` : detailedLead.clientPhone) : 'N/A'} 
+                                isCopyable 
+                              />
                               <DetailItem label="Mo No. 2" value={getLeadColumnValue(detailedLead, 'phone2')} isCopyable />
                               <DetailItem label="Gross Vehicle Weight (GVW)" value={detailedLead.gvw || 'N/A'} />
                               <DetailItem label="City / VIA" value={getLeadColumnValue(detailedLead, 'via')} />
@@ -1245,10 +1446,10 @@ export default function LeadsPage() {
                           </div>
 
                           {/* Edit button */}
-                          {role !== 'EXECUTIVE' && role !== 'VIEWER' && (
+                          {!isExecutive && (
                             <button
                               onClick={handleStartEdit}
-                              className="w-full py-2.5 mt-2 bg-slate-100 text-slate-700 border border-slate-200 hover:bg-slate-200 rounded-xl text-xs font-bold transition-all uppercase tracking-wider"
+                              className="w-full py-2.5 mt-2 bg-slate-100 text-slate-700 border border-slate-200 hover:bg-slate-200 rounded-xl text-xs font-bold transition-all uppercase tracking-wider cursor-pointer"
                             >
                               Edit Lead Details
                             </button>
@@ -1258,91 +1459,79 @@ export default function LeadsPage() {
                     </div>
                   )}
 
-                  {/* TAB 2: CALL LOG TIMELINE HISTORY */}
+                  {/* TAB 2: CALL ACTIVITY */}
                   {activeTab === 'call' && (
                     <div className="space-y-6">
-                      {/* Log form */}
-                      <form onSubmit={handleLogCallResponse} className="bg-slate-50 border border-slate-100 rounded-2xl p-5 space-y-4">
-                        <h5 className="text-[10px] font-black text-slate-800 uppercase tracking-widest">Log outbound calling interaction</h5>
-                        <div className="grid grid-cols-2 gap-3">
-                          <div>
-                            <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wide mb-1">Call Outcome</label>
-                            <select 
-                              value={logOutcome}
-                              onChange={e => setLogOutcome(e.target.value)}
-                              className="w-full bg-white border border-slate-200 rounded-xl p-2 text-xs font-bold text-slate-800 outline-none"
-                            >
-                              <option value="Connected">Connected</option>
-                              <option value="In Progress">Busy / Calling</option>
-                              <option value="Follow Up">Callback Requested</option>
-                              <option value="Lost">Failed / Switched Off</option>
-                            </select>
-                          </div>
-                          <div>
-                            <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wide mb-1">Followup Date (Optional)</label>
-                            <input 
-                              type="date"
-                              value={logFollowupDate}
-                              onChange={e => setLogFollowupDate(e.target.value)}
-                              className="w-full bg-white border border-slate-200 rounded-xl p-1.5 text-xs text-slate-800 outline-none"
-                            />
-                          </div>
-                        </div>
+                      <form onSubmit={handleLogCallResponse} className="space-y-4">
                         <div>
-                          <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wide mb-1">Conversation Notes / Brief</label>
+                          <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Call Outcome *</label>
+                          <select 
+                            value={logOutcome}
+                            onChange={e => setLogOutcome(e.target.value)}
+                            className="w-full bg-slate-50 border border-slate-100 rounded-xl p-3 text-xs font-bold text-slate-800 outline-none"
+                          >
+                            <option value="Connected">Connected & Spoke</option>
+                            <option value="Not Reachable">Out of Reach / Switched Off</option>
+                            <option value="Busy / Call Back">Busy / Call Back Requested</option>
+                            <option value="Wrong Number">Wrong / Invalid Number</option>
+                            <option value="Interested">Interested in Renewal</option>
+                            <option value="Not Interested">Not Interested / Closed</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Call Notes & Remarks</label>
                           <textarea 
-                            required
-                            placeholder="Add brief details about renewal conversion or client constraints..."
                             rows={3}
+                            placeholder="Add brief details about the conversation..."
                             value={logNotes}
                             onChange={e => setLogNotes(e.target.value)}
-                            className="w-full bg-white border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800 outline-none resize-none"
+                            className="w-full bg-slate-50 border border-slate-100 rounded-xl p-3 text-xs outline-none resize-none"
                           />
                         </div>
+
+                        <div>
+                          <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Follow-up Date (If required)</label>
+                          <input 
+                            type="datetime-local"
+                            value={logFollowupDate}
+                            onChange={e => setLogFollowupDate(e.target.value)}
+                            className="w-full bg-slate-50 border border-slate-100 rounded-xl p-3 text-xs outline-none"
+                          />
+                        </div>
+
                         <button 
-                          type="submit"
                           disabled={isLogging}
-                          className="w-full flex items-center justify-center gap-2 py-2.5 bg-slate-900 hover:bg-black text-white rounded-xl text-xs font-bold uppercase transition-all disabled:opacity-50"
+                          type="submit" 
+                          className="w-full py-3 bg-slate-900 hover:bg-black text-white rounded-xl text-xs font-bold uppercase transition-all shadow-md cursor-pointer"
                         >
-                          <Phone size={14} /> {isLogging ? 'Logging...' : 'Log Response'}
+                          {isLogging ? 'Logging Call...' : 'Save Call Activity'}
                         </button>
                       </form>
 
-                      {/* Log Timeline */}
-                      <div className="space-y-4">
-                        <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Chronological Call Logs History</h5>
-                        {detailedLead.calls && detailedLead.calls.length > 0 ? (
-                          <div className="space-y-4 border-l border-slate-100 pl-4 ml-2">
-                            {detailedLead.calls.map((c: any) => (
-                              <div key={c.id} className="relative space-y-1">
-                                <div className="absolute -left-6.5 top-0.5 bg-slate-900 border-4 border-white rounded-full w-4 h-4" />
-                                <div className="flex items-center justify-between text-[10px]">
-                                  <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase border ${
-                                    c.outcome === 'Connected' ? 'bg-emerald-50 border-emerald-200 text-emerald-600' :
-                                    c.outcome === 'Follow Up' ? 'bg-amber-50 border-amber-200 text-amber-600' :
-                                    'bg-rose-50 border-rose-200 text-rose-600'
-                                  }`}>
-                                    {c.outcome}
-                                  </span>
-                                  <span className="text-slate-400 font-medium">{new Date(c.createdAt).toLocaleString()}</span>
-                                </div>
-                                <p className="text-xs text-slate-700 font-medium bg-slate-50 p-2.5 rounded-xl border border-slate-100">{c.notes || 'No description notes added.'}</p>
+                      {/* Call History */}
+                      {detailedLead.calls && detailedLead.calls.length > 0 && (
+                        <div className="space-y-3 pt-4 border-t border-slate-100">
+                          <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Past Communication Logs</h5>
+                          {detailedLead.calls.map((call: any) => (
+                            <div key={call.id} className="bg-slate-50 border border-slate-100 rounded-xl p-3">
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="text-xs font-bold text-slate-800">{call.notes?.startsWith('[Response:') ? 'Lead Response' : (call.outcome || 'Call')}</span>
+                                <span className="text-[10px] text-slate-400">{new Date(call.createdAt).toLocaleString()}</span>
                               </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="text-xs text-slate-400 italic">No communication logs recorded yet.</p>
-                        )}
-                      </div>
+                              <p className="text-xs text-slate-600 font-medium">{call.notes || 'No notes'}</p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )}
 
-                  {/* TAB 3: WHATSAPP TEMPLATES REDIRECT */}
+                  {/* TAB 3: WHATSAPP */}
                   {activeTab === 'whatsapp' && (
                     <div className="space-y-6">
-                      {/* Template Selector */}
                       <div>
-                        <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Choose messaging script template</label>
+                        <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Select Message Template</label>
                         <select 
                           value={selectedTemplateId}
                           onChange={e => setSelectedTemplateId(e.target.value)}
@@ -1367,7 +1556,7 @@ export default function LeadsPage() {
                       <div className="flex gap-2.5">
                         <button 
                           onClick={() => handleCopyTemplate(getWhatsAppText())}
-                          className="flex-1 flex items-center justify-center gap-2 py-3 border border-slate-200 text-slate-600 hover:bg-slate-50 rounded-xl text-xs font-bold transition-all"
+                          className="flex-1 flex items-center justify-center gap-2 py-3 border border-slate-200 text-slate-600 hover:bg-slate-50 rounded-xl text-xs font-bold transition-all cursor-pointer"
                         >
                           <Clipboard size={14} />
                           {copiedText ? 'Copied!' : 'Copy Script'}
@@ -1389,69 +1578,86 @@ export default function LeadsPage() {
 
                   {/* TAB 4: RESPONSE */}
                   {activeTab === 'response' && (
-                    <div className="space-y-6">
+                    <div className="space-y-5">
                       <div>
-                        <h5 className="text-[10px] font-black text-slate-800 uppercase tracking-widest mb-3">Select lead response</h5>
-                        <p className="text-[10px] text-slate-400 mb-4">Choose the response given by the lead during the call or WhatsApp conversation.</p>
+                        <h5 className="text-[10px] font-black text-slate-800 uppercase tracking-widest mb-1">Log lead response</h5>
+                        <p className="text-[10px] text-slate-400">Select a predefined response or write your own custom response remarks.</p>
                       </div>
                       
-                      {predefinedResponses.length === 0 ? (
-                        <div className="bg-slate-50 border border-slate-100 rounded-2xl p-6 text-center">
-                          <p className="text-xs text-slate-400">No predefined responses available yet.</p>
-                          <p className="text-[10px] text-slate-300 mt-1">Admin can add responses from Settings → Lead Responses</p>
-                        </div>
-                      ) : (
+                      {/* Predefined responses if available */}
+                      {predefinedResponses.length > 0 && (
                         <div className="space-y-2">
-                          {predefinedResponses.map((resp: any) => (
-                            <button
-                              key={resp.id}
-                              onClick={() => setSelectedResponseId(resp.id === selectedResponseId ? null : resp.id)}
-                              className={`w-full text-left px-4 py-3 rounded-xl border text-xs font-medium transition-all ${
-                                selectedResponseId === resp.id 
-                                  ? 'bg-slate-900 text-white border-slate-900 shadow-md' 
-                                  : 'bg-white text-slate-700 border-slate-100 hover:bg-slate-50 hover:border-slate-200'
-                              }`}
-                            >
-                              <div className="flex items-center justify-between">
-                                <span>{resp.text}</span>
-                                {resp.requiresFollowUp && (
-                                  <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded ${
-                                    selectedResponseId === resp.id ? 'bg-white/20 text-white' : 'bg-amber-50 text-amber-600'
-                                  }`}>Follow-up</span>
-                                )}
-                              </div>
-                            </button>
-                          ))}
+                          <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest">Quick Predefined Options</label>
+                          <div className="space-y-1.5">
+                            {predefinedResponses.map((resp: any) => (
+                              <button
+                                key={resp.id}
+                                onClick={() => {
+                                  if (selectedResponseId === resp.id) {
+                                    setSelectedResponseId(null)
+                                  } else {
+                                    setSelectedResponseId(resp.id)
+                                    setCustomResponseText(resp.text)
+                                  }
+                                }}
+                                className={`w-full text-left px-3.5 py-2.5 rounded-xl border text-xs font-medium transition-all cursor-pointer ${
+                                  selectedResponseId === resp.id 
+                                    ? 'bg-slate-900 text-white border-slate-900 shadow-md' 
+                                    : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                                }`}
+                              >
+                                <div className="flex items-center justify-between">
+                                  <span>{resp.text}</span>
+                                  {resp.requiresFollowUp && (
+                                    <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded ${
+                                      selectedResponseId === resp.id ? 'bg-white/20 text-white' : 'bg-amber-50 text-amber-600'
+                                    }`}>Follow-up</span>
+                                  )}
+                                </div>
+                              </button>
+                            ))}
+                          </div>
                         </div>
                       )}
 
-                      {selectedResponseId && (
-                        <div className="space-y-3">
-                          <div>
-                            <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Additional Notes (Optional)</label>
-                            <textarea 
-                              placeholder="Add any extra notes about the conversation..."
-                              rows={2}
-                              value={responseNotes}
-                              onChange={e => setResponseNotes(e.target.value)}
-                              className="w-full bg-slate-50 border border-slate-100 rounded-xl p-2.5 text-xs outline-none resize-none"
-                            />
-                          </div>
-                          <button 
-                            onClick={handleSaveResponse}
-                            disabled={isSavingResponse}
-                            className="w-full flex items-center justify-center gap-2 py-3 bg-slate-900 hover:bg-black text-white rounded-xl text-xs font-bold uppercase transition-all disabled:opacity-50"
-                          >
-                            <Check size={14} /> {isSavingResponse ? 'Saving...' : 'Save Response'}
-                          </button>
-                        </div>
-                      )}
+                      {/* Custom Response Textarea (Always Available) */}
+                      <div className="space-y-1.5">
+                        <label className="block text-[9px] font-black text-slate-700 uppercase tracking-widest">
+                          {predefinedResponses.length > 0 ? 'Custom Response / Remarks' : 'Type Response / Remarks *'}
+                        </label>
+                        <textarea 
+                          placeholder="Type customer's feedback or conversation summary..."
+                          rows={3}
+                          value={customResponseText}
+                          onChange={e => setCustomResponseText(e.target.value)}
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-slate-900"
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest">Additional Notes (Optional)</label>
+                        <textarea 
+                          placeholder="Add extra internal notes if any..."
+                          rows={2}
+                          value={responseNotes}
+                          onChange={e => setResponseNotes(e.target.value)}
+                          className="w-full bg-slate-50 border border-slate-100 rounded-xl p-2.5 text-xs outline-none resize-none"
+                        />
+                      </div>
+
+                      <button 
+                        onClick={handleSaveResponse}
+                        disabled={isSavingResponse || (!customResponseText.trim() && !selectedResponseId && !responseNotes.trim())}
+                        className="w-full flex items-center justify-center gap-2 py-3 bg-slate-900 hover:bg-black text-white rounded-xl text-xs font-bold uppercase transition-all shadow-md disabled:opacity-50 cursor-pointer"
+                      >
+                        <Check size={14} /> {isSavingResponse ? 'Saving Response...' : 'Save Lead Response'}
+                      </button>
 
                       {/* Past response logs from calls */}
-                      {detailedLead.calls && detailedLead.calls.filter((c: any) => c.notes?.startsWith('[Response:')).length > 0 && (
+                      {detailedLead.calls && detailedLead.calls.filter((c: any) => c.notes?.startsWith('[Response:') || c.notes?.startsWith('[Custom Response]')).length > 0 && (
                         <div className="space-y-3 pt-4 border-t border-slate-100">
                           <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Previous Responses</h5>
-                          {detailedLead.calls.filter((c: any) => c.notes?.startsWith('[Response:')).map((c: any) => (
+                          {detailedLead.calls.filter((c: any) => c.notes?.startsWith('[Response:') || c.notes?.startsWith('[Custom Response]')).map((c: any) => (
                             <div key={c.id} className="bg-slate-50 border border-slate-100 rounded-xl p-3">
                               <p className="text-xs text-slate-700 font-medium">{c.notes}</p>
                               <p className="text-[10px] text-slate-400 mt-1">{new Date(c.createdAt).toLocaleString()}</p>
@@ -1612,6 +1818,21 @@ export default function LeadsPage() {
             </form>
           </div>
         </div>
+      )}
+
+      {/* Lead Policy Submission & 7-Document Management Modal */}
+      {policyModalLead && (
+        <LeadPolicySubmissionModal
+          leadId={policyModalLead.id}
+          lead={policyModalLead}
+          onClose={() => setPolicyModalLead(null)}
+          onUpdated={() => {
+            fetchData()
+            if (detailedLead && detailedLead.id === policyModalLead.id) {
+              fetchLeadDetails(policyModalLead.id)
+            }
+          }}
+        />
       )}
     </AdminLayout>
   )

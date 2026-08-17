@@ -17,55 +17,56 @@ export default function AdminLayout({
   const { user, isLoading } = useAuth()
   const router = useRouter()
   const pathname = usePathname()
-  const [checkingForm, setCheckingForm] = React.useState(true)
   const onboardingChecked = useRef(false)
+  const [mounted, setMounted] = React.useState(false)
 
   useEffect(() => {
-    if (!isLoading) {
+    setMounted(true)
+  }, [])
+
+  useEffect(() => {
+    if (!isLoading && mounted) {
       if (!user) {
         router.push('/login')
-      } else if (!onboardingChecked.current) {
-        onboardingChecked.current = true
-        const checkFormStatus = async () => {
-          try {
-            const { data: { session } } = await supabase.auth.getSession()
-            if (!session?.access_token) {
-              setCheckingForm(false)
-              return
-            }
-            const response = await fetch('/api/v1/onboarding/check-form-status', {
-              headers: { 'Authorization': `Bearer ${session.access_token}` }
-            })
-            
-            let requiresForm = false
-            if (response.ok) {
-              const data = await response.json()
-              requiresForm = data.requiresForm
-            }
-
-            const roleName = user.role?.name?.toUpperCase() || ''
-            const isAdmin = roleName === 'SUPER ADMIN' || roleName === 'ADMIN'
-
-            if (!isAdmin && requiresForm) {
-              window.location.href = '/onboarding/form'
-              return
-            }
-          } catch (err) {
-            console.error('Error checking onboarding status:', err)
-          }
-          setCheckingForm(false)
-        }
-        checkFormStatus()
       } else {
-        setCheckingForm(false)
+        const roleName = user.role?.name?.toUpperCase() || ''
+        const isAdmin = roleName === 'SUPER ADMIN' || roleName === 'ADMIN'
+        const isCleanActiveUser = user.isActive !== false && !(user as any).onboardingRemark
+
+        if (isAdmin || isCleanActiveUser) {
+          return
+        }
+
+        if (!onboardingChecked.current) {
+          onboardingChecked.current = true
+          const checkFormStatus = async () => {
+            try {
+              const { data: { session } } = await supabase.auth.getSession()
+              if (!session?.access_token) return
+              const response = await fetch('/api/v1/onboarding/check-form-status', {
+                headers: { 'Authorization': `Bearer ${session.access_token}` }
+              })
+              
+              if (response.ok) {
+                const data = await response.json()
+                if (data.requiresForm) {
+                  router.push('/onboarding/form')
+                }
+              }
+            } catch (err) {
+              console.error('Error checking onboarding status:', err)
+            }
+          }
+          checkFormStatus()
+        }
       }
     }
-  }, [user, isLoading, router])
+  }, [user, isLoading, mounted, router])
 
-  if (isLoading || (user && checkingForm)) {
+  if (!mounted || (isLoading && !user)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-red-600"></div>
       </div>
     )
   }

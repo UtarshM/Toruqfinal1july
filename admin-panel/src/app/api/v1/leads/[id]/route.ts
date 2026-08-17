@@ -162,7 +162,8 @@ export async function PUT(
 
     // assignedTo and status can always be updated directly if they have permission
     if (body.assignedTo !== undefined || body.assigned_to !== undefined) {
-      data.assignedTo = body.assignedTo !== undefined ? body.assignedTo : body.assigned_to
+      const newAssignee = body.assignedTo !== undefined ? body.assignedTo : body.assigned_to
+      data.assignedTo = newAssignee === 'unassigned' ? null : (newAssignee || null)
     }
     if (body.status !== undefined) {
       data.status = body.status
@@ -174,6 +175,37 @@ export async function PUT(
         where: { id },
         data
       })
+
+      // Sync status change history in Supabase DB
+      if (data.status && data.status !== currentLead.status) {
+        try {
+          await prisma.leadStatusHistory.create({
+            data: {
+              leadId: id,
+              userId: context.userId,
+              oldStatus: currentLead.status,
+              newStatus: data.status,
+              notes: body.notes || `Status updated from ${currentLead.status} to ${data.status}`
+            }
+          })
+        } catch (histErr) {
+          console.warn('Failed to record status history in Supabase:', histErr)
+        }
+      }
+
+      // Sync assignment history in Supabase DB
+      if (data.assignedTo !== undefined && data.assignedTo !== currentLead.assignedTo && data.assignedTo !== null) {
+        try {
+          await prisma.leadAssignment.create({
+            data: {
+              leadId: id,
+              userId: data.assignedTo
+            }
+          })
+        } catch (asgnErr) {
+          console.warn('Failed to record lead assignment in Supabase:', asgnErr)
+        }
+      }
     }
 
     if (pendingChanges.length > 0) {

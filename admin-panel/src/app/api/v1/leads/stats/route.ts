@@ -12,7 +12,8 @@ export async function GET(req: NextRequest) {
     const toParam = searchParams.get('endDate') || searchParams.get('to')
     
     const where: any = {
-      status: { not: 'Trashed' }
+      status: { not: 'Trashed' },
+      deletedAt: null
     }
     
     if (fromParam || toParam) {
@@ -43,42 +44,27 @@ export async function GET(req: NextRequest) {
       where.assignedTo = { in: [context!.userId, ...teamIds] }
     }
 
-    let totalLeads = 0
-    let assignedLeads = 0
-    let unassignedLeads = 0
-    let convertedLeads = 0
-    let pendingFollowups = 0
-    let notInterestedLeads = 0
+    const assignedWhere = isExecutive ? null : { ...where, assignedTo: where.assignedTo ?? { not: null } }
+    const unassignedWhere = isExecutive ? null : { ...where, assignedTo: null }
 
-    try {
-      totalLeads = await prisma.lead.count({ where })
-    } catch (err: any) {
-      if (err?.message?.includes('deletedAt')) {
-        delete where.deletedAt
-        totalLeads = await prisma.lead.count({ where })
-      } else {
-        throw err
-      }
-    }
-    
-    if (isExecutive) {
-      assignedLeads = totalLeads
-      unassignedLeads = 0
-    } else {
-      const assignedWhere = { ...where }
-      if (assignedWhere.assignedTo === undefined) {
-        assignedWhere.assignedTo = { not: null }
-      }
-      assignedLeads = await prisma.lead.count({ where: assignedWhere })
-      
-      const unassignedWhere = { ...where }
-      unassignedWhere.assignedTo = null
-      unassignedLeads = await prisma.lead.count({ where: unassignedWhere })
-    }
-    
-    convertedLeads = await prisma.lead.count({ where: { ...where, status: 'Converted' } })
-    pendingFollowups = await prisma.lead.count({ where: { ...where, status: { in: ['Follow Up', 'Follow-up'] } } })
-    notInterestedLeads = await prisma.lead.count({ where: { ...where, status: 'Not Interested' } })
+    const [
+      totalLeads,
+      assignedRes,
+      unassignedRes,
+      convertedLeads,
+      pendingFollowups,
+      notInterestedLeads
+    ] = await Promise.all([
+      prisma.lead.count({ where }),
+      assignedWhere ? prisma.lead.count({ where: assignedWhere }) : Promise.resolve(0),
+      unassignedWhere ? prisma.lead.count({ where: unassignedWhere }) : Promise.resolve(0),
+      prisma.lead.count({ where: { ...where, status: 'Converted' } }),
+      prisma.lead.count({ where: { ...where, status: { in: ['Follow Up', 'Follow-up'] } } }),
+      prisma.lead.count({ where: { ...where, status: 'Not Interested' } })
+    ])
+
+    const assignedLeads = isExecutive ? totalLeads : assignedRes
+    const unassignedLeads = isExecutive ? 0 : unassignedRes
     
     const employeeWhere: any = {
       role: {

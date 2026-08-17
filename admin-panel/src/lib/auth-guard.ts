@@ -9,16 +9,34 @@ export interface AuthContext {
   permissions: string[]
 }
 
+interface CachedAuthContext {
+  context: AuthContext
+  userProfile: any
+  timestamp: number
+}
+
+// In-memory cache for validated tokens (15-second TTL)
+const authCache = new Map<string, CachedAuthContext>()
+const AUTH_CACHE_TTL_MS = 15000
+
+export function invalidateAuthCache(token?: string) {
+  if (token) {
+    authCache.delete(token)
+  } else {
+    authCache.clear()
+  }
+}
+
 /**
  * Validates the JWT token and optionally checks for a specific permission.
  * Merges role-level permissions WITH per-user extra permissions.
- * Returns the AuthContext if valid, or a NextResponse error if invalid.
+ * Uses an in-memory cache for 15s to avoid duplicate Supabase/DB roundtrips on parallel requests.
  */
 export async function validateAuth(
   req: NextRequest, 
   requiredPermission?: string,
   allowInactive = false
-): Promise<{ context?: AuthContext; error?: NextResponse }> {
+): Promise<{ context?: AuthContext; userProfile?: any; error?: NextResponse }> {
   try {
     const authHeader = req.headers.get('Authorization')
     let token = ''
@@ -34,49 +52,72 @@ export async function validateAuth(
       return { error: NextResponse.json({ error: 'Missing authorization token' }, { status: 401 }) }
     }
 
-    const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token)
+    let context: AuthContext
+    let profile: any
 
-    if (authError || !user) {
-      console.error('[auth-guard] Supabase Auth Error:', authError?.message || 'No user found');
-      return { error: NextResponse.json({ error: 'Invalid or expired token' }, { status: 401 }) }
-    }
+    const cached = authCache.get(token)
+    const now = Date.now()
 
-    // Fetch user profile with role AND individual extra permissions
-    const profile = await prisma.user.findUnique({
-      where: { id: user.id },
-      include: {
-        role: {
-          include: { permissions: true }
-        },
-        permissions: true  // ← Individual extra permissions per user
+    if (cached && (now - cached.timestamp < AUTH_CACHE_TTL_MS)) {
+      context = cached.context
+      profile = cached.userProfile
+    } else {
+      const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token)
+
+      if (authError || !user) {
+        authCache.delete(token)
+        console.error('[auth-guard] Supabase Auth Error:', authError?.message || 'No user found');
+        return { error: NextResponse.json({ error: 'Invalid or expired token' }, { status: 401 }) }
       }
-    })
 
-    if (!profile) {
-      console.error('[auth-guard] User profile not found in Prisma for ID:', user.id);
-      return { error: NextResponse.json({ error: 'User profile not found' }, { status: 404 }) }
+      // Fetch user profile with role AND individual extra permissions
+      profile = await prisma.user.findUnique({
+        where: { id: user.id },
+        include: {
+          role: {
+            include: { permissions: true }
+          },
+          permissions: true  // ← Individual extra permissions per user
+        }
+      })
+
+      if (!profile) {
+        console.error('[auth-guard] User profile not found in Prisma for ID:', user.id);
+        return { error: NextResponse.json({ error: 'User profile not found' }, { status: 404 }) }
+      }
+
+      // Merge role permissions + individual extra permissions (deduplicated)
+      const rolePermNames = profile.role?.permissions.map((p: any) => p.name) || []
+      const extraPermNames = profile.permissions.map((p: any) => p.name) || []
+      const permissions = Array.from(new Set([...rolePermNames, ...extraPermNames]))
+
+      context = {
+        userId: profile.id,
+        email: profile.email,
+        role: profile.role?.name || 'No Role',
+        permissions
+      }
+
+      // Cache valid auth result
+      authCache.set(token, {
+        context,
+        userProfile: profile,
+        timestamp: now
+      })
+
+      // Periodic pruning if cache size grows
+      if (authCache.size > 200) {
+        for (const [k, v] of authCache.entries()) {
+          if (now - v.timestamp > AUTH_CACHE_TTL_MS) {
+            authCache.delete(k)
+          }
+        }
+      }
     }
-
-    // Allow pending/inactive users to successfully access the dashboard and APIs
-    // if (!profile.isActive && !allowInactive) {
-    //   return { error: NextResponse.json({ error: 'User account is deactivated' }, { status: 403 }) }
-    // }
-
-    // Merge role permissions + individual extra permissions (deduplicated)
-    const rolePermNames = profile.role?.permissions.map(p => p.name) || []
-    const extraPermNames = profile.permissions.map(p => p.name) || []
-    const permissions = Array.from(new Set([...rolePermNames, ...extraPermNames]))
-    
-    console.log('[auth-guard] DEBUG:', {
-      email: profile.email,
-      role: profile.role?.name || 'NO ROLE',
-      permissionsCount: permissions.length,
-      allPermissions: permissions
-    });
 
     // Check for specific permission if required
     if (requiredPermission) {
-      let hasPermission = permissions.includes(requiredPermission);
+      let hasPermission = context.permissions.includes(requiredPermission);
       
       // Self-healing fallback for singular vs plural mismatches
       if (!hasPermission) {
@@ -86,22 +127,30 @@ export async function validateAuth(
           ['roles.', 'role.'],
           ['users.', 'user.'],
           ['settings.', 'setting.'],
-          ['permissions.', 'permission.']
+          ['permissions.', 'permission.'],
+          ['policies.', 'policy.']
         ];
         for (const [plural, singular] of prefixes) {
           if (requiredPermission.startsWith(plural)) {
             const alternative = requiredPermission.replace(plural, singular);
-            if (permissions.includes(alternative)) {
+            if (context.permissions.includes(alternative)) {
               hasPermission = true;
               break;
             }
           } else if (requiredPermission.startsWith(singular)) {
             const alternative = requiredPermission.replace(singular, plural);
-            if (permissions.includes(alternative)) {
+            if (context.permissions.includes(alternative)) {
               hasPermission = true;
               break;
             }
           }
+        }
+      }
+
+      // Fallback: If user has lead.view permission, allow policy.view as well
+      if (!hasPermission && (requiredPermission === 'policy.view' || requiredPermission === 'policies.view')) {
+        if (context.permissions.includes('lead.view') || context.permissions.includes('leads.view')) {
+          hasPermission = true;
         }
       }
 
@@ -111,12 +160,8 @@ export async function validateAuth(
     }
 
     return {
-      context: {
-        userId: profile.id,
-        email: profile.email,
-        role: profile.role?.name || 'No Role',
-        permissions
-      }
+      context,
+      userProfile: profile
     }
   } catch (error: any) {
     console.error('[auth-guard] CRITICAL ERROR:', error)
@@ -128,3 +173,4 @@ export async function validateAuth(
     }
   }
 }
+

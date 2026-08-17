@@ -20,5 +20,8 @@
     "concurrently": "^10.0.3",
     "react": "19.1.0",
     "react-dom": "19.1.0"
+  },
+  "dependencies": {
+    "pdf-lib": "^1.17.1"
   }
 }

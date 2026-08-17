@@ -140,15 +140,26 @@ export default function DataApprovalPage() {
                         <p className="text-[10px] text-gray-400 mt-0.5">{new Date(req.requestedAt).toLocaleString('en-IN')}</p>
                       </td>
                       <td className="px-5 py-4">
-                        <span className="inline-block px-2 py-0.5 bg-gray-100 text-gray-700 rounded-md text-xs font-bold">
-                          {req.entityType}
+                        <span className={`inline-block px-2 py-0.5 rounded-md text-xs font-bold ${
+                          req.field === 'existingAgent' ? 'bg-amber-100 text-amber-800' : 'bg-gray-100 text-gray-700'
+                        }`}>
+                          {req.field === 'existingAgent' ? '🏷️ Agent Tag Request' : req.entityType}
                         </span>
-                        <p className="text-[10px] text-gray-400 font-mono mt-1">{req.entityId?.slice(0, 8)}…</p>
+                        {req.leadDetails ? (
+                          <div className="mt-1">
+                            <p className="text-xs font-bold text-gray-800">{req.leadDetails.clientName}</p>
+                            <p className="text-[11px] font-mono text-gray-500">{req.leadDetails.vehicleNo || req.leadDetails.clientPhone}</p>
+                          </div>
+                        ) : (
+                          <p className="text-[10px] text-gray-400 font-mono mt-1">{req.entityId?.slice(0, 8)}…</p>
+                        )}
                       </td>
-                      <td className="px-5 py-4 text-sm font-semibold text-blue-700">{req.field}</td>
+                      <td className="px-5 py-4 text-sm font-semibold text-blue-700">
+                        {req.field === 'existingAgent' ? 'Agent Status' : req.field}
+                      </td>
                       <td className="px-5 py-4 text-sm text-gray-400 line-through">{req.oldValue || '(empty)'}</td>
                       <td className="px-5 py-4 text-sm font-semibold text-green-700">{req.newValue}</td>
-                      <td className="px-5 py-4 text-sm text-gray-500 max-w-[150px] truncate" title={req.reason}>{req.reason || '—'}</td>
+                      <td className="px-5 py-4 text-sm text-gray-500 max-w-[200px]" title={req.reason}>{req.reason || '—'}</td>
                       <td className="px-5 py-4">
                         <span className={`inline-block px-2.5 py-1 rounded-lg text-xs font-bold border ${STATUS_STYLES[req.status] || 'bg-gray-50 text-gray-500 border-gray-200'}`}>
                           {req.status.toUpperCase()}

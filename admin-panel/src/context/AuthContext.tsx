@@ -33,22 +33,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true)
   const [token, setToken] = useState<string | null>(null)
 
-  const fetchProfile = async (session: any) => {
+  const fetchProfile = async (session: any, isInitial = false) => {
     if (!session) {
       setUser(null)
       setToken(null)
+      if (typeof window !== 'undefined') {
+        try { sessionStorage.removeItem('toque_user_profile') } catch {}
+      }
       setIsLoading(false)
       return
     }
 
-    setIsLoading(true)
     const accessToken = session.access_token
     setToken(accessToken)
 
     try {
-      // Small delay to ensure session is fully propagated
-      await new Promise(resolve => setTimeout(resolve, 100))
-      
       const response = await fetch('/api/v1/auth/me', {
         headers: { 'Authorization': `Bearer ${accessToken}` },
         cache: 'no-store'
@@ -58,10 +57,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const data = await response.json()
         const rolePermissions = data.role?.permissions?.map((p: any) => p.name) || []
         const userPermissions = data.permissions?.map((p: any) => p.name) || []
-        setUser({
+        const profile = {
           ...data,
           permissions: Array.from(new Set([...rolePermissions, ...userPermissions]))
-        })
+        }
+        setUser(profile)
+        if (typeof window !== 'undefined') {
+          try { sessionStorage.setItem('toque_user_profile', JSON.stringify(profile)) } catch {}
+        }
       } else {
         const errorData = await response.json().catch(() => ({}))
         
@@ -70,6 +73,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           console.error(`[auth-me] Authentication failed (${response.status}). Signing out...`, errorData)
           setUser(null)
           setToken(null)
+          if (typeof window !== 'undefined') {
+            try { sessionStorage.removeItem('toque_user_profile') } catch {}
+          }
           setIsLoading(false)
           try {
             await supabase.auth.signOut()
@@ -84,34 +90,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
         
         // FALLBACK: If API fails for other reasons, use basic session info
-        setUser({
+        const fallbackProfile = {
           id: session.user.id,
           email: session.user.email,
           fullName: session.user.user_metadata?.full_name || 'Team Member',
           permissions: []
-        })
+        }
+        setUser(fallbackProfile)
       }
     } catch (error: any) {
       console.error('Failed to fetch profile:', error?.message || error)
-      // Fallback for mobile or network interruptions
-      setUser({
-        id: session.user.id,
-        email: session.user.email,
-        fullName: session.user.user_metadata?.full_name || 'Team Member',
-        permissions: []
-      })
     } finally {
       setIsLoading(false)
     }
   }
 
   useEffect(() => {
+    // Check cached session on client mount
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = sessionStorage.getItem('toque_user_profile')
+        if (cached) {
+          setUser(JSON.parse(cached))
+          setIsLoading(false)
+        }
+      } catch {}
+    }
+
     supabase.auth.getSession().then(({ data: { session } }) => {
-      fetchProfile(session)
+      fetchProfile(session, true)
     })
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      fetchProfile(session)
+      fetchProfile(session, false)
     })
 
     return () => subscription.unsubscribe()

@@ -48,6 +48,50 @@ function parseImportedDate(dateVal: any): Date | null {
   return null
 }
 
+import path from 'path'
+import fs from 'fs'
+import * as XLSX from 'xlsx'
+
+function normalizePhone(phone: any): string {
+  if (!phone) return ''
+  const digits = String(phone).replace(/\D/g, '')
+  return digits.length >= 10 ? digits.slice(-10) : digits
+}
+
+function checkIsAgent(item: any, phone: string | null, agentPhoneSet: Set<string>): boolean {
+  if (phone) {
+    const cleanP = phone.trim()
+    const normP = normalizePhone(phone)
+    if (agentPhoneSet.has(cleanP) || (normP && agentPhoneSet.has(normP))) {
+      return true
+    }
+  }
+
+  // Check explicit existingAgent property or explicit boolean fields
+  for (const [k, v] of Object.entries(item)) {
+    if (v === null || v === undefined) continue
+    const keyLower = k.toLowerCase().trim()
+    const valStr = String(v).trim()
+    if (!valStr) continue
+
+    const valLower = valStr.toLowerCase()
+
+    // 1. If key is an explicit agent flag column and value is affirmative (yes/true/1/agent/broker)
+    if (['existingagent', 'isagent', 'is_agent', 'agent', 'agent?', 'agent_status'].includes(keyLower)) {
+      // Do not treat pure phone numbers as an agent flag
+      const digitsOnly = valStr.replace(/\D/g, '')
+      if (digitsOnly.length >= 10 && valStr === digitsOnly) {
+        continue
+      }
+      if (['yes', 'true', '1', 'y', 'agent', 'broker', 'direct agent'].includes(valLower)) {
+        return true
+      }
+    }
+  }
+
+  return false
+}
+
 export async function POST(req: NextRequest) {
   const { context, error } = await validateAuth(req, 'leads.import')
   if (error) return error
@@ -79,6 +123,23 @@ export async function POST(req: NextRequest) {
       }
     })
 
+    // Fetch all known Agent phone numbers from database (only leads flagged explicitly as Agent)
+    const knownAgentLeads = await prisma.lead.findMany({
+      where: {
+        existingAgent: 'Agent',
+        clientPhone: { not: null }
+      },
+      select: { clientPhone: true }
+    })
+    const agentPhoneSet = new Set<string>()
+    knownAgentLeads.forEach(l => {
+      if (l.clientPhone) {
+        agentPhoneSet.add(l.clientPhone.trim())
+        const norm = normalizePhone(l.clientPhone)
+        if (norm) agentPhoneSet.add(norm)
+      }
+    })
+
     // Find the last assigned lead to continue the round-robin sequence from where it left off
     const lastAssignedLead = await prisma.lead.findFirst({
       where: {
@@ -100,13 +161,42 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Save spreadsheet file for this import batch on disk
+    let batchName = 'default_batch'
+    if (leads.length > 0 && leads[0].importName) {
+      batchName = String(leads[0].importName).trim()
+    }
+    const cleanBatch = batchName.replace(/[^a-zA-Z0-9_-]/g, '_')
+    const fileName = `import_${cleanBatch}.xlsx`
+    const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'imports')
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true })
+    }
+    const fullFilePath = path.join(uploadDir, fileName)
+    const relativeFilePath = `/uploads/imports/${fileName}`
+
     // Process leads sequentially to ensure unique checks
     for (const item of leads) {
-      const clientNameStr = item.clientName ? String(item.clientName).trim() : ''
-      if (!clientNameStr) continue // Name is required in schema
-
+      const rawName = item.clientName ? String(item.clientName).trim() : ''
       const clientPhoneStr = item.clientPhone ? String(item.clientPhone).trim() : null
       const vehicleNoStr = item.vehicleNo ? String(item.vehicleNo).trim() : null
+
+      // Check if this contact number or row is an Agent
+      const isAgent = checkIsAgent(item, clientPhoneStr, agentPhoneSet)
+      const finalAgentTag = isAgent ? 'Agent' : (item.existingAgent ? String(item.existingAgent).trim() : null)
+
+      if (isAgent && clientPhoneStr) {
+        agentPhoneSet.add(clientPhoneStr)
+
+        // Ensure any existing records in the DB with this agent phone number are unassigned and tagged
+        await prisma.lead.updateMany({
+          where: { clientPhone: clientPhoneStr },
+          data: { existingAgent: 'Agent', assignedTo: null }
+        }).catch(() => {})
+      }
+
+      // Fallback name if clientName is missing in spreadsheet: use vehicle number, phone, or 'Lead Customer'
+      const clientNameStr = rawName || vehicleNoStr || clientPhoneStr || 'Lead Customer'
 
       // Check if a Lead already exists - only consider it a duplicate if BOTH vehicleNo AND clientPhone match
       let existingLead = null
@@ -147,9 +237,9 @@ export async function POST(req: NextRequest) {
       })
 
       if (existingLead) {
-        // If the existing lead doesn't have an assignee, assign it using round-robin
-        let assignedToUpdate = existingLead.assignedTo
-        if (!assignedToUpdate && salesExecutives.length > 0) {
+        // If it is an agent lead, do NOT assign to any staff (keep assignedTo null)
+        let assignedToUpdate = isAgent ? null : existingLead.assignedTo
+        if (!isAgent && !assignedToUpdate && salesExecutives.length > 0) {
           assignedToUpdate = salesExecutives[nextIndex].id
           nextIndex = (nextIndex + 1) % salesExecutives.length
         }
@@ -161,7 +251,8 @@ export async function POST(req: NextRequest) {
         }
         const mergedCustomFields = {
           ...existingCustomFields,
-          ...customFields
+          ...customFields,
+          importFilePath: relativeFilePath
         }
 
         // Update existing lead
@@ -177,19 +268,21 @@ export async function POST(req: NextRequest) {
             gvw: item.gvw ? String(item.gvw).trim() : existingLead.gvw,
             address: item.address ? String(item.address).trim() : existingLead.address,
             city: item.city ? String(item.city).trim() : existingLead.city,
-            existingAgent: item.existingAgent ? String(item.existingAgent).trim() : existingLead.existingAgent,
+            existingAgent: finalAgentTag || existingLead.existingAgent,
             messageTemplate: item.messageTemplate ? String(item.messageTemplate).trim() : existingLead.messageTemplate,
             importName: item.importName ? String(item.importName).trim() : existingLead.importName,
             customFields: mergedCustomFields,
+            status: existingLead.status === 'Trashed' ? 'New' : existingLead.status,
+            deletedAt: null,
             assignedTo: assignedToUpdate,
             updatedAt: new Date()
           }
         })
         updatedCount++
       } else {
-        // Assign new lead using round-robin
+        // Assign new lead using round-robin only if NOT an agent lead
         let assignedToNew = null
-        if (salesExecutives.length > 0) {
+        if (!isAgent && salesExecutives.length > 0) {
           assignedToNew = salesExecutives[nextIndex].id
           nextIndex = (nextIndex + 1) % salesExecutives.length
         }
@@ -206,10 +299,13 @@ export async function POST(req: NextRequest) {
             gvw: item.gvw ? String(item.gvw).trim() : null,
             address: item.address ? String(item.address).trim() : null,
             city: item.city ? String(item.city).trim() : null,
-            existingAgent: item.existingAgent ? String(item.existingAgent).trim() : null,
+            existingAgent: finalAgentTag,
             messageTemplate: item.messageTemplate ? String(item.messageTemplate).trim() : null,
             importName: item.importName ? String(item.importName).trim() : null,
-            customFields: customFields,
+            customFields: {
+              ...customFields,
+              importFilePath: relativeFilePath
+            },
             status: 'New',
             assignedTo: assignedToNew
           }

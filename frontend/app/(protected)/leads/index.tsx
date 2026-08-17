@@ -138,6 +138,10 @@ export default function LeadsScreen() {
     exportToCSV(`leads_export_${selectedImportName || 'all'}_${new Date().toISOString().split('T')[0]}.csv`, headers, rows);
   };
 
+  const { user } = useAuth();
+  const roleUpper = user?.role?.name?.toUpperCase() || (typeof user?.role === 'string' ? user?.role.toUpperCase() : '');
+  const isAdminOrManager = roleUpper === 'SUPER ADMIN' || roleUpper === 'ADMIN' || roleUpper === 'MANAGER' || roleUpper === 'HR MANAGER';
+
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
@@ -155,9 +159,11 @@ export default function LeadsScreen() {
           <Pressable style={styles.actionIconBtn} onPress={handleExport}>
             <Ionicons name="cloud-download-outline" size={22} color={Colors.primary} />
           </Pressable>
-          <Pressable style={styles.addBtn} onPress={() => router.push('/lead/new')}>
-            <Ionicons name="add" size={22} color={Colors.primary} />
-          </Pressable>
+          {isAdminOrManager && (
+            <Pressable style={styles.addBtn} onPress={() => router.push('/lead/new')}>
+              <Ionicons name="add" size={22} color={Colors.primary} />
+            </Pressable>
+          )}
         </View>
       </View>
 

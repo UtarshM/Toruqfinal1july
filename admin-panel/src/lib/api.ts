@@ -22,8 +22,8 @@ export async function fetchApi(path: string, options: RequestInit = {}, retries 
       if (!res.ok) {
         const error = await res.json().catch(() => ({ error: 'An unknown error occurred' }))
         
-        if (res.status === 401 && typeof window !== 'undefined') {
-          console.error('[api] 401 Unauthorized. Expired or invalid session. Logging out...');
+        if ((res.status === 401 || (res.status === 404 && error?.error?.includes('profile'))) && typeof window !== 'undefined') {
+          console.error('[api] Session invalid or user profile deleted. Logging out...');
           supabase.auth.signOut().then(() => {
             window.location.href = '/login'
           })

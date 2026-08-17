@@ -2,14 +2,16 @@
 import React, { useState, useEffect, use } from 'react'
 import AdminLayout from '@/components/layout/AdminLayout'
 import { fetchApi } from '@/lib/api'
-import { User, Phone, Mail, MapPin, Car, Calendar, Shield, Clock, FileText, ArrowLeft, History, MessageCircle } from 'lucide-react'
+import { User, Phone, Mail, MapPin, Car, Calendar, Shield, Clock, FileText, ArrowLeft, History, MessageCircle, AlertCircle, Eye } from 'lucide-react'
 import { useRouter } from 'next/navigation'
+import LeadPolicySubmissionModal from '@/components/leads/LeadPolicySubmissionModal'
 
 export default function LeadProfilePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
   const router = useRouter()
   const [lead, setLead] = useState<any>(null)
   const [loading, setLoading] = useState(true)
+  const [showSubmissionModal, setShowSubmissionModal] = useState(false)
 
   useEffect(() => {
     fetchLeadData()
@@ -84,6 +86,86 @@ export default function LeadProfilePage({ params }: { params: Promise<{ id: stri
 
         {/* Right Column: Detailed Modules */}
         <div className="lg:col-span-2 space-y-6">
+          
+          {/* POLICY SUBMISSION & DOCUMENT MODULE */}
+          <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white rounded-3xl p-6 sm:p-7 shadow-lg border border-slate-800 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 bg-emerald-500/20 text-emerald-400 rounded-xl flex items-center justify-center shrink-0 border border-emerald-500/20">
+                  <Shield size={22} />
+                </div>
+                <div>
+                  <h3 className="text-base font-black tracking-tight">Policy Documents & Manager Approval</h3>
+                  <p className="text-xs text-slate-400">Fill 25 policy fields, upload 7 documents, convert to Single PDF & submit to manager.</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className={`px-3 py-1 rounded-xl text-xs font-black uppercase tracking-wider ${
+                  lead.customFields?.policySubmission?.status === 'Approved' ? 'bg-emerald-500 text-white' :
+                  lead.customFields?.policySubmission?.status === 'Pending_Review' ? 'bg-amber-500 text-white animate-pulse' :
+                  lead.customFields?.policySubmission?.status === 'Reverted' ? 'bg-rose-500 text-white' : 'bg-slate-700 text-slate-300'
+                }`}>
+                  {lead.customFields?.policySubmission?.status === 'Pending_Review' ? 'Pending Review' : (lead.customFields?.policySubmission?.status || 'Draft')}
+                </span>
+              </div>
+            </div>
+
+            {/* Reverted reason notice if present */}
+            {lead.customFields?.policySubmission?.status === 'Reverted' && (
+              <div className="bg-rose-500/20 border border-rose-500/40 p-3.5 rounded-2xl text-xs space-y-1">
+                <p className="text-rose-300 font-bold flex items-center gap-1.5">
+                  <AlertCircle size={14} className="text-rose-400" />
+                  Manager Reverted: "{lead.customFields?.policySubmission?.revertReason}"
+                </p>
+                <p className="text-slate-300 text-[11px]">Please upload the updated documents, re-convert to Single PDF, and submit again.</p>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-800/60 p-3.5 rounded-2xl border border-slate-700 text-xs">
+              <div>
+                <span className="text-slate-400 text-[10px] uppercase font-bold block">Uploaded Docs</span>
+                <span className="font-black text-slate-200">
+                  {lead.customFields?.policySubmission?.documents?.length || 0} / 7 Required Docs
+                </span>
+              </div>
+              <div>
+                <span className="text-slate-400 text-[10px] uppercase font-bold block">Consolidated PDF</span>
+                <span className="font-black text-emerald-400">
+                  {lead.customFields?.policySubmission?.compiledPdfUrl ? 'Generated & Ready' : 'Not Compiled Yet'}
+                </span>
+              </div>
+              <div>
+                <span className="text-slate-400 text-[10px] uppercase font-bold block">Manager Status</span>
+                <span className="font-black text-slate-200">
+                  {lead.customFields?.policySubmission?.status === 'Approved' ? 'Approved ✓' : lead.customFields?.policySubmission?.status === 'Pending_Review' ? 'Under Review' : 'Draft'}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3 pt-1">
+              <button
+                onClick={() => setShowSubmissionModal(true)}
+                className="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-xs font-bold shadow-md transition-all flex items-center gap-2 cursor-pointer"
+              >
+                <FileText size={15} />
+                <span>Open Policy Form & Upload Docs</span>
+              </button>
+
+              {lead.customFields?.policySubmission?.compiledPdfUrl && (
+                <a
+                  href={lead.customFields.policySubmission.compiledPdfUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-4 py-2.5 bg-slate-700 hover:bg-slate-600 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Eye size={14} />
+                  <span>View Single PDF</span>
+                </a>
+              )}
+            </div>
+          </div>
+
           <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
             <div className="px-8 py-6 border-b border-gray-50 flex items-center justify-between">
               <h3 className="font-bold text-gray-900">Insurance Policies</h3>
@@ -134,6 +216,17 @@ export default function LeadProfilePage({ params }: { params: Promise<{ id: stri
           </div>
         </div>
       </div>
+
+      {showSubmissionModal && (
+        <LeadPolicySubmissionModal
+          leadId={id}
+          lead={lead}
+          onClose={() => setShowSubmissionModal(false)}
+          onUpdated={() => {
+            fetchLeadData()
+          }}
+        />
+      )}
     </AdminLayout>
   )
 }

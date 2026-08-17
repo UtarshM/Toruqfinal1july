@@ -92,6 +92,27 @@ export async function PATCH(
       }
     })
 
+    // Sync updated user metadata, role, and active status to Supabase Auth
+    try {
+      const authUpdates: any = {}
+      if (body.email) authUpdates.email = body.email
+      const metadataUpdates: any = {}
+      if (user.role?.name) metadataUpdates.role = user.role.name
+      if (user.fullName) metadataUpdates.full_name = user.fullName
+      if (Object.keys(metadataUpdates).length > 0) {
+        authUpdates.user_metadata = metadataUpdates
+      }
+      if (user.isActive === false) {
+        authUpdates.ban_duration = '876000h'
+      } else if (user.isActive === true) {
+        authUpdates.ban_duration = 'none'
+      }
+      if (Object.keys(authUpdates).length > 0) {
+        await supabaseAdmin.auth.admin.updateUserById(id, authUpdates)
+      }
+    } catch (authErr) {
+      console.warn('[users PATCH] Failed to sync user with Supabase Auth:', authErr)
+    }
 
     return NextResponse.json(user)
   } catch (error) {
