@@ -43,7 +43,7 @@ export async function POST(
       const managerUser = await prisma.user.findFirst({
         where: {
           role: { name: { contains: 'Manager', mode: 'insensitive' } },
-          status: 'Active'
+          isActive: true
         }
       })
       if (managerUser) managerId = managerUser.id
