@@ -1,36 +1,67 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { validateAuth } from '@/lib/auth-guard'
 import prisma from '@/lib/prisma'
+import { validateAuth } from '@/lib/auth-guard'
+import { updateMonthlyMasterSheet } from '../monthly-sheet/route'
 
-export function generateCopyableSummary(formData: any, lead: any): string {
-  const f = formData || {}
-  return `*Policy Type:* ${f.policyType || 'nil dep'}
-*Customer Type:* ${f.customerType || 'existing'}
-*Customer Category:* ${f.customerCategory || 'MVC'}
-*Reg No:* ${f.regNo || lead?.vehicleNo || ''}
-*Rate:* ${f.rate || ''}
-*Rate Confirmation SS:* ${f.rateConfirmationSS || 'YES'}
-*Rs From Customer:* ${f.rsFromCustomer || ''}
-*Description:* ${f.description || ''}
-*Other Works:* ${f.otherWorks || ''}
-*Payment mode*:- ${f.paymentMode || 'cash'}
-*NCB:* ${f.ncb || 'with ncb'}
-*Exp Date:* ${f.expDate || (lead?.expiryDate ? new Date(lead.expiryDate).toLocaleDateString('en-GB') : '')}
-*Mobile No. 1:* ${f.mobileNo1 || lead?.clientPhone || ''}
-*Mobile No. 2:* ${f.mobileNo2 || ''}
-*NCB Confirmation:* ${f.ncbConfirmation || 'Yes'}
-*Imp Date msg SS:* ${f.impDateMsgSS || 'Yes'}
-*HP Details*:- ${f.hpDetails || 'as per rc'}
-*Vehicle Photo:* ${f.vehiclePhoto || 'n.a.'}
-*Body Type Matched:* ${f.bodyTypeMatched || 'n.a.'}
-*Google Form Submitted:* ${f.googleFormSubmitted || 'YES'}
+function generateCopyableSummary(formData: any, lead: any): string {
+  const d = formData || {}
+  const regNo = d.regNo || lead?.vehicleNo || 'NA'
+  const mob1 = d.mobileNo1 || lead?.clientPhone || 'NA'
+  const mob2 = d.mobileNo2 || 'NA'
+  const customerName = lead?.clientName || 'NA'
+  const policyType = d.policyType || 'nil dep'
+  const customerType = d.customerType || 'existing'
+  const customerCat = d.customerCategory || 'MVC'
+  const rate = d.rate || 'NA'
+  const rateSS = d.rateConfirmationSS || 'YES'
+  const rsFromCust = d.rsFromCustomer || 'NA'
+  const paymentMode = d.paymentMode || 'cash'
+  const ncb = d.ncb || 'with ncb'
+  const expDate = d.expDate || (lead?.expiryDate ? new Date(lead.expiryDate).toLocaleDateString('en-GB') : 'NA')
+  const ncbConf = d.ncbConfirmation || 'Yes'
+  const impDateSS = d.impDateMsgSS || 'Yes'
+  const hpDetails = d.hpDetails || 'as per rc'
+  const vehPhoto = d.vehiclePhoto || 'n.a.'
+  const bodyMatch = d.bodyTypeMatched || 'n.a.'
+  const gForm = d.googleFormSubmitted || 'YES'
+  const noJackSS = d.noJackCoverConfirmationSS || 'N.A.'
+  const idvBreakup = d.idvBreakup || 'NA'
+  const desc = d.description || 'NA'
+  const otherWorks = d.otherWorks || 'NA'
+  const newName = d.newName || 'NA'
+  const inspStatus = d.inspectionStatus || 'Not Required'
+  const mparivahan = d.mparivahanRcStatus || 'NA'
+  const amtDueSS = d.amountDueDateMsgSS || 'NA'
 
-*No-Jack Cover Confirmation SS:* ${f.noJackCoverConfirmationSS || 'N.A.'}
-*IDV Break up:* ${f.idvBreakup || ''}
-*New name:* ${f.newName || ''}
-*Inspection status:* ${f.inspectionStatus || 'Not Required'}
-*Mparivahan RC / RC Status:* ${f.mparivahanRcStatus || ''}
-*Amount and Due Date confirmation msg SS:* ${f.amountDueDateMsgSS || ''}`
+  return `POLICY SUBMISSION DETAILS
+----------------------------------------
+Registration No: ${regNo}
+Customer Name: ${customerName}
+Mobile No 1: ${mob1}
+Mobile No 2: ${mob2}
+Policy Type: ${policyType}
+Customer Type: ${customerType}
+Category: ${customerCat}
+Rate: ${rate}
+Rate Confirmation SS: ${rateSS}
+Rs From Customer: ${rsFromCust}
+Payment Mode: ${paymentMode}
+NCB: ${ncb}
+Expiry Date: ${expDate}
+NCB Confirmation: ${ncbConf}
+IMP Date Msg SS: ${impDateSS}
+HP Details: ${hpDetails}
+Vehicle Photo: ${vehPhoto}
+Body Type Matched: ${bodyMatch}
+Google Form Submitted: ${gForm}
+No Jack Cover SS: ${noJackSS}
+IDV Breakup: ${idvBreakup}
+Inspection Status: ${inspStatus}
+Mparivahan RC Status: ${mparivahan}
+Amount Due Date Msg SS: ${amtDueSS}
+New Name: ${newName}
+Description: ${desc}
+Other Works: ${otherWorks}`
 }
 
 export async function GET(req: NextRequest) {
@@ -40,63 +71,64 @@ export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url)
     const statusFilter = searchParams.get('status') || 'all'
-    const search = searchParams.get('search')?.toLowerCase() || ''
+    const search = (searchParams.get('search') || '').trim().toLowerCase()
 
-    const roleUpper = context.role?.toUpperCase() || ''
+    const roleUpper = (context.role || '').toUpperCase()
     const isAdmin = roleUpper.includes('ADMIN') || roleUpper.includes('SUPER')
     const isManager = roleUpper.includes('MANAGER')
+    const isExecutive = !isAdmin && !isManager
 
-    // Find all team members if manager
-    let teamMemberIds: string[] = []
-    if (isManager && !isAdmin) {
-      const team = await prisma.user.findMany({
-        where: { managerId: context.userId },
-        select: { id: true }
-      })
-      teamMemberIds = [context.userId, ...team.map(t => t.id)]
-    }
-
-    const whereClause: any = {
+    const where: any = {
       status: { not: 'Trashed' },
       deletedAt: null
     }
 
-    if (teamMemberIds.length > 0) {
-      whereClause.assignedTo = { in: teamMemberIds }
+    if (isExecutive) {
+      where.assignedTo = context.userId
+    } else if (isManager && !isAdmin) {
+      const team = await prisma.user.findMany({
+        where: { managerId: context.userId },
+        select: { id: true }
+      })
+      const teamMemberIds = [context.userId, ...team.map(t => t.id)]
+      where.assignedTo = { in: teamMemberIds }
     }
 
     const leads = await prisma.lead.findMany({
-      where: whereClause,
+      where,
+      orderBy: { updatedAt: 'desc' },
       include: {
         assignee: {
-          select: { id: true, fullName: true, email: true, personalMobile: true }
+          select: { id: true, fullName: true, personalMobile: true }
         }
-      },
-      orderBy: { updatedAt: 'desc' }
+      }
     })
 
-    // Filter leads that have policy submissions
     const submissions: any[] = []
+
     leads.forEach(lead => {
       const cf = (lead.customFields && typeof lead.customFields === 'object') ? (lead.customFields as any) : {}
-      const sub = cf.policySubmission
-      if (sub && (sub.documents?.length > 0 || sub.compiledPdfUrl || sub.status !== 'Draft')) {
-        const subStatus = sub.status || 'Draft'
+      if (cf.policySubmission) {
+        const sub = cf.policySubmission
+        const rawStatus = sub.status || 'Draft'
+        
+        // Normalize status for filtering
+        let normalizedStatus = rawStatus
+        if (rawStatus === 'Approved') normalizedStatus = 'Documents_Approved'
 
-        // Apply status filter
-        if (statusFilter !== 'all' && subStatus.toLowerCase() !== statusFilter.toLowerCase()) {
-          return
+        if (statusFilter !== 'all') {
+          if (statusFilter === 'Pending_Review' && rawStatus !== 'Pending_Review') return
+          if (statusFilter === 'Documents_Approved' && rawStatus !== 'Documents_Approved' && rawStatus !== 'Approved') return
+          if (statusFilter === 'Policy_Issued' && rawStatus !== 'Policy_Issued') return
+          if (statusFilter === 'Reverted' && rawStatus !== 'Reverted') return
         }
 
-        // Apply search filter
         if (search) {
           const matchClient = (lead.clientName || '').toLowerCase().includes(search)
           const matchPhone = (lead.clientPhone || '').toLowerCase().includes(search)
           const matchVehicle = (lead.vehicleNo || '').toLowerCase().includes(search)
-          const matchSales = (lead.assignee?.fullName || '').toLowerCase().includes(search)
-          const matchReg = (sub.formData?.regNo || '').toLowerCase().includes(search)
-
-          if (!matchClient && !matchPhone && !matchVehicle && !matchSales && !matchReg) {
+          const matchAssignee = (lead.assignee?.fullName || '').toLowerCase().includes(search)
+          if (!matchClient && !matchPhone && !matchVehicle && !matchAssignee) {
             return
           }
         }
@@ -111,6 +143,7 @@ export async function GET(req: NextRequest) {
           assignee: lead.assignee,
           submission: {
             ...sub,
+            status: rawStatus === 'Approved' ? 'Documents_Approved' : rawStatus,
             copyableSummary: generateCopyableSummary(sub.formData, lead)
           },
           updatedAt: sub.updatedAt || lead.updatedAt
@@ -118,17 +151,20 @@ export async function GET(req: NextRequest) {
       }
     })
 
-    // Sort: Pending_Review first, then newest
+    // Sort: Pending_Review first, then Documents_Approved, then newest
     submissions.sort((a, b) => {
       if (a.submission.status === 'Pending_Review' && b.submission.status !== 'Pending_Review') return -1
       if (b.submission.status === 'Pending_Review' && a.submission.status !== 'Pending_Review') return 1
+      if (a.submission.status === 'Documents_Approved' && b.submission.status === 'Policy_Issued') return -1
+      if (b.submission.status === 'Documents_Approved' && a.submission.status === 'Policy_Issued') return 1
       return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
     })
 
     const stats = {
       total: submissions.length,
       pending: submissions.filter(s => s.submission.status === 'Pending_Review').length,
-      approved: submissions.filter(s => s.submission.status === 'Approved').length,
+      docsApproved: submissions.filter(s => s.submission.status === 'Documents_Approved' || s.submission.status === 'Approved').length,
+      policyIssued: submissions.filter(s => s.submission.status === 'Policy_Issued').length,
       reverted: submissions.filter(s => s.submission.status === 'Reverted').length
     }
 
@@ -147,12 +183,16 @@ export async function POST(req: NextRequest) {
   const isManagerOrAdmin = roleUpper.includes('MANAGER') || roleUpper.includes('ADMIN') || roleUpper.includes('SUPER')
 
   if (!isManagerOrAdmin) {
-    return NextResponse.json({ error: 'Forbidden: Only Managers and Admins can approve, revert, or modify policy approvals.' }, { status: 403 })
+    return NextResponse.json({ error: 'Forbidden: Only Managers and Admins can approve documents or upload issued policies.' }, { status: 403 })
   }
 
   try {
     const body = await req.json()
-    const { leadId, action, revertReason, notes, visibleToSalesPerson } = body
+    const { 
+      leadId, action, revertReason, notes, visibleToSalesPerson,
+      policyNumber, provider, policyType, issuedPolicyPdfUrl,
+      totalPremium, paidAmount, pendingAmount, paymentMode, startDate, endDate
+    } = body
 
     if (!leadId) {
       return NextResponse.json({ error: 'leadId is required' }, { status: 400 })
@@ -160,24 +200,258 @@ export async function POST(req: NextRequest) {
 
     const lead = await prisma.lead.findUnique({
       where: { id: leadId },
-      include: {
-        assignee: {
-          select: { id: true, fullName: true, email: true, personalMobile: true, managerId: true }
-        }
-      }
+      include: { assignee: true }
     })
 
-    if (!lead) return NextResponse.json({ error: 'Lead not found' }, { status: 404 })
+    if (!lead) {
+      return NextResponse.json({ error: 'Lead not found' }, { status: 404 })
+    }
 
     const cf = (lead.customFields && typeof lead.customFields === 'object') ? (lead.customFields as any) : {}
     const submission = cf.policySubmission || {}
-    const managerName = context.name || 'Manager'
+    const managerName = context.name || context.fullName || 'Manager'
 
-    // ACTION: TOGGLE VISIBILITY ONLY
-    if (action === 'TOGGLE_VISIBILITY') {
+    // ==========================================
+    // ACTION 1: APPROVE_DOCS (Documents Only)
+    // ==========================================
+    if (action === 'APPROVE' || action === 'APPROVE_DOCS') {
+      const isVisibleToSales = visibleToSalesPerson !== undefined ? (visibleToSalesPerson === true) : true
+      const historyEntry = {
+        action: 'DOCUMENTS_APPROVED',
+        by: managerName,
+        userId: context.userId,
+        timestamp: new Date().toISOString(),
+        notes: notes || 'All 7 verified documents approved by manager. Ready for insurance company issuance.'
+      }
+
       const updatedSubmission = {
         ...submission,
-        visibleToSalesPerson: visibleToSalesPerson !== false,
+        status: 'Documents_Approved',
+        visibleToSalesPerson: isVisibleToSales,
+        documentsApprovedAt: new Date().toISOString(),
+        reviewedAt: new Date().toISOString(),
+        reviewedBy: context.userId,
+        reviewedByName: managerName,
+        revertReason: null,
+        history: [...(submission.history || []), historyEntry],
+        updatedAt: new Date().toISOString()
+      }
+
+      await prisma.lead.update({
+        where: { id: leadId },
+        data: {
+          status: 'In Progress',
+          customFields: {
+            ...cf,
+            policySubmission: updatedSubmission
+          }
+        }
+      })
+
+      // Notify Sales Person
+      if (lead.assignedTo) {
+        try {
+          await prisma.notification.create({
+            data: {
+              userId: lead.assignedTo,
+              title: `✅ Documents Approved: ${lead.clientName}`,
+              body: `Manager ${managerName} approved the document bundle for ${lead.vehicleNo || lead.clientName}. It is now sent for external policy issuance.`,
+              type: 'policy_approved',
+              entityType: 'lead',
+              entityId: leadId,
+              data: { leadId, clientName: lead.clientName, vehicleNo: lead.vehicleNo, managerName }
+            }
+          })
+        } catch {}
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: 'Documents approved successfully. Ready for policy PDF upload once issued by insurer.'
+      })
+    }
+
+    // ==========================================
+    // ACTION 2: UPLOAD_ISSUED_POLICY
+    // ==========================================
+    if (action === 'UPLOAD_POLICY' || action === 'UPLOAD_ISSUED_POLICY') {
+      if (!issuedPolicyPdfUrl && !body.policyFileUrl) {
+        return NextResponse.json({ error: 'Issued Policy PDF file URL is required' }, { status: 400 })
+      }
+
+      const finalPdfUrl = issuedPolicyPdfUrl || body.policyFileUrl
+      const finalPolicyNo = policyNumber || submission.formData?.policyNumber || `POL-${(lead.vehicleNo || 'NA').replace(/[^a-zA-Z0-9]/g, '')}-${Date.now().toString().slice(-4)}`
+      const finalProvider = provider || submission.formData?.provider || 'Torque Insurance'
+      const finalType = policyType || submission.formData?.policyType || 'Motor'
+      const rawTotalPrem = parseFloat(totalPremium || submission.formData?.rsFromCustomer || submission.formData?.rate || '0') || 0
+      const rawPaid = parseFloat(paidAmount !== undefined ? paidAmount : (submission.formData?.paidAmount || rawTotalPrem)) || 0
+      const rawPending = Math.max(0, rawTotalPrem - rawPaid)
+      const finalPaymentMode = paymentMode || submission.formData?.paymentMode || 'Cash'
+
+      const policyStartDate = startDate ? new Date(startDate) : new Date()
+      let policyEndDate = new Date(policyStartDate.getTime() + 365 * 24 * 3600 * 1000)
+      if (endDate) {
+        const parsed = new Date(endDate)
+        if (!isNaN(parsed.getTime())) policyEndDate = parsed
+      }
+
+      // 1. Create or Update Official Policy Record
+      const existingPolicy = await prisma.policy.findFirst({
+        where: { leadId }
+      })
+
+      let policyRecord = null
+      if (existingPolicy) {
+        policyRecord = await prisma.policy.update({
+          where: { id: existingPolicy.id },
+          data: {
+            policyNumber: finalPolicyNo,
+            provider: finalProvider,
+            type: finalType,
+            premiumAmount: rawTotalPrem,
+            status: 'Active',
+            startDate: policyStartDate,
+            endDate: policyEndDate
+          }
+        })
+      } else {
+        policyRecord = await prisma.policy.create({
+          data: {
+            leadId,
+            policyNumber: finalPolicyNo,
+            provider: finalProvider,
+            type: finalType,
+            premiumAmount: rawTotalPrem,
+            status: 'Active',
+            startDate: policyStartDate,
+            endDate: policyEndDate
+          }
+        })
+      }
+
+      // 2. Record Initial Payment in Transaction Ledger
+      if (policyRecord && rawPaid > 0) {
+        const existingTxn = await prisma.transaction.findFirst({
+          where: { policyId: policyRecord.id, type: 'income' }
+        })
+        if (!existingTxn) {
+          await prisma.transaction.create({
+            data: {
+              userId: context.userId,
+              policyId: policyRecord.id,
+              leadId,
+              type: 'income',
+              category: 'Policy Premium',
+              amount: rawPaid,
+              status: 'completed',
+              paymentMethod: finalPaymentMode,
+              referenceNumber: body.referenceNumber || null,
+              description: `Initial premium for policy ${finalPolicyNo}`,
+              date: new Date()
+            }
+          })
+        }
+      }
+
+      // 3. Update Lead CustomFields to Policy_Issued
+      const historyEntry = {
+        action: 'POLICY_ISSUED_UPLOADED',
+        by: managerName,
+        userId: context.userId,
+        timestamp: new Date().toISOString(),
+        notes: `Issued policy PDF uploaded by Manager. Policy #${finalPolicyNo} is now live.`
+      }
+
+      const updatedSubmission = {
+        ...submission,
+        status: 'Policy_Issued',
+        policyId: policyRecord.id,
+        policyNumber: finalPolicyNo,
+        issuedPolicyPdfUrl: finalPdfUrl,
+        issuedAt: new Date().toISOString(),
+        formData: {
+          ...(submission.formData || {}),
+          policyNumber: finalPolicyNo,
+          provider: finalProvider,
+          policyType: finalType,
+          totalPremium: rawTotalPrem,
+          paidAmount: rawPaid,
+          pendingAmount: rawPending,
+          paymentMode: finalPaymentMode,
+          expDate: policyEndDate.toISOString().split('T')[0]
+        },
+        history: [...(submission.history || []), historyEntry],
+        updatedAt: new Date().toISOString()
+      }
+
+      await prisma.lead.update({
+        where: { id: leadId },
+        data: {
+          status: 'Won',
+          expiryDate: policyEndDate,
+          customFields: {
+            ...cf,
+            policySubmission: updatedSubmission
+          }
+        }
+      })
+
+      // 4. Automatically scrape/update Monthly Master Sheet for this month
+      const currentMonthStr = new Date().toISOString().slice(0, 7)
+      try {
+        await updateMonthlyMasterSheet(currentMonthStr)
+      } catch (sheetErr) {
+        console.error('[manager submissions] Failed to update monthly master sheet:', sheetErr)
+      }
+
+      // 5. Notify Sales Person & Admin
+      if (lead.assignedTo) {
+        try {
+          await prisma.notification.create({
+            data: {
+              userId: lead.assignedTo,
+              title: `🎉 Policy Issued: ${lead.clientName}`,
+              body: `Official policy ${finalPolicyNo} (${finalProvider}) has been uploaded and is active. 1-year renewal tracking enabled.`,
+              type: 'policy_issued',
+              entityType: 'lead',
+              entityId: leadId
+            }
+          })
+        } catch {}
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: `Policy ${finalPolicyNo} uploaded and issued successfully. Scraped to monthly master sheet.`,
+        policy: policyRecord
+      })
+    }
+
+    // ==========================================
+    // ACTION 3: REVERT
+    // ==========================================
+    if (action === 'REVERT') {
+      if (!revertReason?.trim()) {
+        return NextResponse.json({ error: 'Revert reason is required' }, { status: 400 })
+      }
+
+      const historyEntry = {
+        action: 'REVERTED',
+        by: managerName,
+        userId: context.userId,
+        timestamp: new Date().toISOString(),
+        notes: revertReason
+      }
+
+      const updatedSubmission = {
+        ...submission,
+        status: 'Reverted',
+        revertReason,
+        revertedAt: new Date().toISOString(),
+        reviewedAt: new Date().toISOString(),
+        reviewedBy: context.userId,
+        reviewedByName: managerName,
+        history: [...(submission.history || []), historyEntry],
         updatedAt: new Date().toISOString()
       }
 
@@ -191,176 +465,54 @@ export async function POST(req: NextRequest) {
         }
       })
 
+      if (lead.assignedTo) {
+        try {
+          await prisma.notification.create({
+            data: {
+              userId: lead.assignedTo,
+              title: `⚠️ Document Revert: ${lead.clientName} (${lead.vehicleNo || 'Vehicle'})`,
+              body: `Manager ${managerName} requested changes: "${revertReason}". Please re-upload docs and re-submit.`,
+              type: 'policy_reverted',
+              entityType: 'lead',
+              entityId: leadId
+            }
+          })
+        } catch {}
+      }
+
       return NextResponse.json({
         success: true,
-        message: `Policy visibility updated: visible to sales person = ${visibleToSalesPerson !== false}`,
-        visibleToSalesPerson: visibleToSalesPerson !== false
+        message: 'Submission reverted to sales executive.'
       })
     }
 
-    if (!['APPROVE', 'REVERT'].includes(action)) {
-      return NextResponse.json({ error: 'Valid action (APPROVE, REVERT, or TOGGLE_VISIBILITY) is required' }, { status: 400 })
-    }
-
-    if (action === 'REVERT' && !revertReason?.trim()) {
-      return NextResponse.json({ error: 'Revert reason is required when returning documents to sales person' }, { status: 400 })
-    }
-
-    const isApprove = action === 'APPROVE'
-    const newStatus = isApprove ? 'Approved' : 'Reverted'
-    const isVisibleToSales = visibleToSalesPerson !== undefined ? (visibleToSalesPerson === true) : true
-
-    const historyEntry = {
-      action: isApprove ? 'APPROVED' : 'REVERTED',
-      by: managerName,
-      userId: context.userId,
-      timestamp: new Date().toISOString(),
-      notes: isApprove ? (notes || 'Policy document bundle verified and approved.') : revertReason
-    }
-
-    const updatedSubmission = {
-      ...submission,
-      status: newStatus,
-      visibleToSalesPerson: isVisibleToSales,
-      reviewedAt: new Date().toISOString(),
-      reviewedBy: context.userId,
-      reviewedByName: managerName,
-      revertReason: isApprove ? null : revertReason,
-      revertedAt: isApprove ? null : new Date().toISOString(),
-      history: [...(submission.history || []), historyEntry],
-      updatedAt: new Date().toISOString()
-    }
-
-    // 1. Update Lead CustomFields & Lead Status to Won on Approval
-    await prisma.lead.update({
-      where: { id: leadId },
-      data: {
-        status: isApprove ? 'Won' : lead.status,
-        customFields: {
-          ...cf,
-          policySubmission: updatedSubmission
-        }
+    // ==========================================
+    // ACTION 4: TOGGLE_VISIBILITY
+    // ==========================================
+    if (action === 'TOGGLE_VISIBILITY') {
+      const isVisible = visibleToSalesPerson === true
+      const updatedSubmission = {
+        ...submission,
+        visibleToSalesPerson: isVisible,
+        updatedAt: new Date().toISOString()
       }
-    })
 
-    // 2. IF APPROVED: Create or Update official Policy in Policy Module
-    if (isApprove) {
-      try {
-        const formData = submission.formData || {}
-        const rawPrem = parseFloat(formData.rsFromCustomer || formData.rate || '0') || 0
-        const policyNumber = formData.policyNumber || `POL-${(formData.regNo || lead.vehicleNo || 'NA').replace(/[^a-zA-Z0-9]/g, '')}-${Date.now().toString().slice(-4)}`
-        
-        let expDate = new Date(Date.now() + 365 * 24 * 3600 * 1000)
-        if (formData.expDate) {
-          const parsed = new Date(formData.expDate)
-          if (!isNaN(parsed.getTime())) expDate = parsed
-        } else if (lead.expiryDate) {
-          const parsed = new Date(lead.expiryDate)
-          if (!isNaN(parsed.getTime())) expDate = parsed
-        }
-
-        // Check if a policy already exists for this lead
-        const existingPolicy = await prisma.policy.findFirst({
-          where: { leadId }
-        })
-
-        let policyRecord = null
-        if (existingPolicy) {
-          policyRecord = await prisma.policy.update({
-            where: { id: existingPolicy.id },
-            data: {
-              provider: formData.provider || formData.policyType || 'Torque Insurance',
-              type: formData.policyType || 'Motor',
-              premiumAmount: rawPrem,
-              status: 'Active',
-              endDate: expDate
-            }
-          })
-        } else {
-          policyRecord = await prisma.policy.create({
-            data: {
-              leadId,
-              policyNumber,
-              provider: formData.provider || formData.policyType || 'Torque Insurance',
-              type: formData.policyType || 'Motor',
-              premiumAmount: rawPrem,
-              status: 'Active',
-              startDate: new Date(),
-              endDate: expDate
-            }
-          })
-        }
-
-        // Create initial Income Transaction in Ledger
-        if (policyRecord && rawPrem > 0) {
-          const initialPaid = formData.paidAmount !== undefined && formData.paidAmount !== ''
-            ? (parseFloat(formData.paidAmount) || 0)
-            : rawPrem
-          
-          if (initialPaid > 0) {
-            const existingTxn = await prisma.transaction.findFirst({
-              where: { policyId: policyRecord.id, type: 'income' }
-            })
-            if (!existingTxn) {
-              await prisma.transaction.create({
-                data: {
-                  userId: context.userId,
-                  policyId: policyRecord.id,
-                  leadId,
-                  type: 'income',
-                  category: 'Policy Premium',
-                  amount: initialPaid,
-                  status: 'completed',
-                  paymentMethod: formData.paymentMode || 'Cash',
-                  description: `Initial premium collection for policy ${policyNumber}`,
-                  date: new Date()
-                }
-              })
-            }
+      await prisma.lead.update({
+        where: { id: leadId },
+        data: {
+          customFields: {
+            ...cf,
+            policySubmission: updatedSubmission
           }
         }
-      } catch (policyErr) {
-        console.error('[manager submissions action] Error creating policy record or transaction:', policyErr)
-      }
+      })
+
+      return NextResponse.json({ success: true, visibleToSalesPerson: isVisible })
     }
 
-    // 3. Send notification to Sales Person
-    if (lead.assignedTo) {
-      try {
-        await prisma.notification.create({
-          data: {
-            userId: lead.assignedTo,
-            title: isApprove
-              ? `✅ Policy Approved: ${lead.clientName}`
-              : `⚠️ Document Revert: ${lead.clientName} (${lead.vehicleNo || 'Vehicle'})`,
-            body: isApprove
-              ? `Manager ${managerName} approved the policy bundle for ${lead.vehicleNo || lead.clientName}. It is now live in the Policy Module.`
-              : `Manager ${managerName} requested changes: "${revertReason}". Please re-upload docs and re-submit.`,
-            type: isApprove ? 'policy_approved' : 'policy_reverted',
-            entityType: 'lead',
-            entityId: leadId,
-            data: {
-              leadId,
-              clientName: lead.clientName,
-              vehicleNo: lead.vehicleNo,
-              managerName,
-              action,
-              revertReason: isApprove ? null : revertReason
-            }
-          }
-        })
-      } catch (notifErr) {
-        console.error('[manager submissions action] Error creating sales notification:', notifErr)
-      }
-    }
-
-    return NextResponse.json({
-      success: true,
-      message: isApprove ? 'Policy submission approved and created in Policy Module successfully' : 'Policy submission reverted to sales executive',
-      submission: updatedSubmission
-    })
+    return NextResponse.json({ error: 'Invalid action provided' }, { status: 400 })
   } catch (err: any) {
-    console.error('[manager submissions POST] Error:', err)
-    return NextResponse.json({ error: 'Failed to process manager action', details: err?.message }, { status: 500 })
+    console.error('[manager submissions action] Error:', err)
+    return NextResponse.json({ error: 'Internal Server Error', details: err?.message }, { status: 500 })
   }
 }
