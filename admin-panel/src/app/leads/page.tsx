@@ -8,7 +8,7 @@ import {
   Search, Filter, Plus, Upload, CheckCircle, 
   AlertCircle, Users, Calendar, RefreshCw, Phone, MessageCircle, 
   X, Check, Clipboard, ChevronRight, Trash2, ArrowUpDown, ArrowUp, ArrowDown,
-  ChevronDown, FileSpreadsheet, FileText, Shield, Download
+  ChevronDown, FileSpreadsheet, FileText, Shield, Download, ChevronLeft, ChevronsLeft, ChevronsRight
 } from 'lucide-react'
 import LeadPolicySubmissionModal from '@/components/leads/LeadPolicySubmissionModal'
 
@@ -160,6 +160,15 @@ export default function LeadsPage() {
   const [responseNotes, setResponseNotes] = useState('')
   const [customResponseText, setCustomResponseText] = useState('')
   const [isSavingResponse, setIsSavingResponse] = useState(false)
+
+  // Pagination State (Default 100 leads per page)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize, setPageSize] = useState(100)
+
+  // Reset pagination on filter or search changes
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [search, statusFilter, columnSelectedValues, startDate, endDate, sortConfig])
 
   useEffect(() => {
     fetchData()
@@ -643,6 +652,10 @@ export default function LeadsPage() {
     return sortConfig.direction === 'asc' ? aVal - bVal : bVal - aVal
   })
 
+  // Paginated leads slice (e.g. 100 leads per page)
+  const totalPages = Math.max(1, Math.ceil(sortedLeads.length / pageSize))
+  const paginatedLeads = sortedLeads.slice((currentPage - 1) * pageSize, currentPage * pageSize)
+
   // Get selected WhatsApp template text
   const getWhatsAppText = () => {
     if (!detailedLead) return ''
@@ -1018,7 +1031,7 @@ export default function LeadsPage() {
                 <tr><td colSpan={14} className="px-6 py-20 text-center text-slate-400 font-semibold">Loading leads...</td></tr>
               ) : sortedLeads.length === 0 ? (
                 <tr><td colSpan={14} className="px-6 py-20 text-center text-slate-400 font-medium">No matching leads found.</td></tr>
-              ) : sortedLeads.map((lead) => {
+              ) : paginatedLeads.map((lead) => {
                 const phone1 = getLeadColumnValue(lead, 'phone1')
                 const phone2 = getLeadColumnValue(lead, 'phone2')
                 const regNo = getLeadColumnValue(lead, 'regNo')
@@ -1154,6 +1167,75 @@ export default function LeadsPage() {
             </tbody>
           </table>
         </div>
+
+        {/* Pagination Toolbar */}
+        {!isLoading && sortedLeads.length > 0 && (
+          <div className="p-4 bg-slate-50/70 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-xs font-bold text-slate-600">
+            {/* Left: Summary */}
+            <div className="flex items-center gap-3">
+              <span>
+                Showing <strong className="text-slate-900">{((currentPage - 1) * pageSize) + 1}</strong> to <strong className="text-slate-900">{Math.min(currentPage * pageSize, sortedLeads.length)}</strong> of <strong className="text-slate-900">{sortedLeads.length.toLocaleString()}</strong> leads
+              </span>
+              <div className="flex items-center gap-1.5 pl-2 border-l border-slate-200">
+                <span className="text-[11px] text-slate-400">Rows per page:</span>
+                <select
+                  value={pageSize}
+                  onChange={e => {
+                    setPageSize(Number(e.target.value))
+                    setCurrentPage(1)
+                  }}
+                  className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-800 outline-none cursor-pointer"
+                >
+                  <option value={50}>50</option>
+                  <option value={100}>100 (Default)</option>
+                  <option value={200}>200</option>
+                  <option value={500}>500</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Right: Page Navigation */}
+            <div className="flex items-center gap-1.5 self-end sm:self-center">
+              <button
+                disabled={currentPage === 1}
+                onClick={() => setCurrentPage(1)}
+                className="p-1.5 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-all shadow-2xs"
+                title="First Page"
+              >
+                <ChevronsLeft size={14} />
+              </button>
+              <button
+                disabled={currentPage === 1}
+                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                className="p-1.5 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-all shadow-2xs"
+                title="Previous Page"
+              >
+                <ChevronLeft size={14} />
+              </button>
+
+              <span className="px-3 py-1 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-900 shadow-2xs">
+                Page {currentPage} of {totalPages}
+              </span>
+
+              <button
+                disabled={currentPage >= totalPages}
+                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                className="p-1.5 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-all shadow-2xs"
+                title="Next Page"
+              >
+                <ChevronRight size={14} />
+              </button>
+              <button
+                disabled={currentPage >= totalPages}
+                onClick={() => setCurrentPage(totalPages)}
+                className="p-1.5 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-all shadow-2xs"
+                title="Last Page"
+              >
+                <ChevronsRight size={14} />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Slide-out Drawer Panel */}

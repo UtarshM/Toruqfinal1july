@@ -363,10 +363,24 @@ function inferHeaderFromColumnData(values: any[], colIndex: number): string {
     setLoading(true)
     setError(null)
 
+    const jobId = `job_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
+    const batchName = importName.trim() || fileName.replace(/\.[^/.]+$/, '') || 'Leads Batch'
+
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('torque_active_import_job_id', jobId)
+      localStorage.setItem('torque_active_import_name', batchName)
+    }
+
     try {
-      const res = await apiFetch('/api/v1/import', {
+      const res = await apiFetch('/api/v1/leads/import', {
         method: 'POST',
-        body: JSON.stringify({ leads: validLeads })
+        headers: {
+          'x-import-job-id': jobId
+        },
+        body: JSON.stringify({
+          leads: validLeads,
+          importName: batchName
+        })
       })
 
       const data = await res.json()
@@ -376,8 +390,8 @@ function inferHeaderFromColumnData(values: any[], colIndex: number): string {
 
       setImportResult({
         total: validLeads.length,
-        importedCount: data.importedCount,
-        updatedCount: data.updatedCount
+        importedCount: data.stats?.valid ?? data.importedCount ?? validLeads.length,
+        updatedCount: data.stats?.duplicates ?? data.updatedCount ?? 0
       })
       setStep(3)
     } catch (err: any) {

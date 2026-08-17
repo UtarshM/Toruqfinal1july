@@ -54,9 +54,10 @@ export default function Header() {
   }
 
   const fetchNotifications = async () => {
+    if (typeof window !== 'undefined' && !navigator.onLine) return
     try {
       setLoadingNotifs(true)
-      const data = await fetchApi('/api/v1/notifications?limit=20')
+      const data = await fetchApi('/api/v1/notifications?limit=20', {}, 1)
       if (data) {
         const notifs = data.notifications || []
         const currentUnread = data.unreadCount || 0
@@ -78,8 +79,11 @@ export default function Header() {
         setNotifications(notifs)
         setUnreadCount(currentUnread)
       }
-    } catch (error) {
-      console.error('Failed to fetch notifications:', error)
+    } catch (error: any) {
+      // Quietly ignore network offline errors during dev server restart or sleep
+      if (error?.name !== 'AbortError') {
+        console.warn('[notifications] Notification sync paused (server reconnecting)')
+      }
     } finally {
       setLoadingNotifs(false)
     }
