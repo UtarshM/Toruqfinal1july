@@ -99,7 +99,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(fallbackProfile)
       }
     } catch (error: any) {
-      console.error('Failed to fetch profile:', error?.message || error)
+      if (error?.name !== 'AbortError') {
+        console.warn('[auth] Could not reach auth server (server restarting or offline):', error?.message || error)
+      }
+      if (session?.user) {
+        setUser(prev => prev || {
+          id: session.user.id,
+          email: session.user.email,
+          fullName: session.user.user_metadata?.full_name || 'Team Member',
+          permissions: []
+        })
+      }
     } finally {
       setIsLoading(false)
     }

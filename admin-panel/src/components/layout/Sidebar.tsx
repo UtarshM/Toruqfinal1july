@@ -24,6 +24,7 @@ const MENU_GROUPS = [
       { name: 'Quotations', href: '/quotations' },
       { name: 'Rate Calculator', href: '/rate-calculator' },
       { name: 'Policies', href: '/policies' },
+      { name: 'Renewals', href: '/renewals' },
       { name: 'Follow-ups', href: '/follow-ups' },
       { name: 'Trashed Leads', href: '/leads/trash' },
     ]
@@ -89,7 +90,7 @@ export default function Sidebar() {
       // Role-based filtering for Managers
       if (group.label === 'OPERATIONS') return null
       if (group.label === 'SALES') {
-        items = items.filter(i => ['Leads', 'CRM', 'Quotations', 'Policies', 'Follow-ups'].includes(i.name))
+        items = items.filter(i => ['Leads', 'CRM', 'Quotations', 'Policies', 'Renewals', 'Follow-ups'].includes(i.name))
       }
       if (group.label === 'MANAGEMENT') {
         items = items.filter(i => ['Policy Approvals', 'Users', 'Settings'].includes(i.name))

@@ -264,8 +264,9 @@ export async function POST(req: NextRequest) {
           where: { leadId }
         })
 
+        let policyRecord = null
         if (existingPolicy) {
-          await prisma.policy.update({
+          policyRecord = await prisma.policy.update({
             where: { id: existingPolicy.id },
             data: {
               provider: formData.provider || formData.policyType || 'Torque Insurance',
@@ -276,7 +277,7 @@ export async function POST(req: NextRequest) {
             }
           })
         } else {
-          await prisma.policy.create({
+          policyRecord = await prisma.policy.create({
             data: {
               leadId,
               policyNumber,
@@ -289,8 +290,37 @@ export async function POST(req: NextRequest) {
             }
           })
         }
+
+        // Create initial Income Transaction in Ledger
+        if (policyRecord && rawPrem > 0) {
+          const initialPaid = formData.paidAmount !== undefined && formData.paidAmount !== ''
+            ? (parseFloat(formData.paidAmount) || 0)
+            : rawPrem
+          
+          if (initialPaid > 0) {
+            const existingTxn = await prisma.transaction.findFirst({
+              where: { policyId: policyRecord.id, type: 'income' }
+            })
+            if (!existingTxn) {
+              await prisma.transaction.create({
+                data: {
+                  userId: context.userId,
+                  policyId: policyRecord.id,
+                  leadId,
+                  type: 'income',
+                  category: 'Policy Premium',
+                  amount: initialPaid,
+                  status: 'completed',
+                  paymentMethod: formData.paymentMode || 'Cash',
+                  description: `Initial premium collection for policy ${policyNumber}`,
+                  date: new Date()
+                }
+              })
+            }
+          }
+        }
       } catch (policyErr) {
-        console.error('[manager submissions action] Error creating policy record:', policyErr)
+        console.error('[manager submissions action] Error creating policy record or transaction:', policyErr)
       }
     }
 

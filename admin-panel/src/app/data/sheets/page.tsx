@@ -59,7 +59,7 @@ const DATE_PRESETS = [
 ]
 
 export default function ImportedSheetsPage() {
-  const { user, loading: authLoading } = useAuth()
+  const { user, isLoading: authLoading } = useAuth()
   const roleName = (typeof user?.role === 'string' ? user.role : user?.role?.name || '').toUpperCase()
   const isAdmin = roleName.includes('ADMIN') || roleName.includes('SUPER')
 

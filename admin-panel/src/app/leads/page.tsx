@@ -8,7 +8,7 @@ import {
   Search, Filter, Plus, Upload, CheckCircle, 
   AlertCircle, Users, Calendar, RefreshCw, Phone, MessageCircle, 
   X, Check, Clipboard, ChevronRight, Trash2, ArrowUpDown, ArrowUp, ArrowDown,
-  ChevronDown, FileSpreadsheet, FileText, Shield
+  ChevronDown, FileSpreadsheet, FileText, Shield, Download
 } from 'lucide-react'
 import LeadPolicySubmissionModal from '@/components/leads/LeadPolicySubmissionModal'
 
@@ -1429,6 +1429,55 @@ export default function LeadsPage() {
                               </select>
                             )}
                           </div>
+
+                          {/* 1-Year Renewal & Financial Overview Card */}
+                          {detailedLead.customFields?.policySubmission && (
+                            <div className="bg-emerald-50/70 border border-emerald-200/80 rounded-2xl p-4 space-y-3">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <Shield size={16} className="text-emerald-700" />
+                                  <span className="text-xs font-black text-emerald-900 uppercase tracking-wider">Policy & Renewal Finance</span>
+                                </div>
+                                <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-emerald-100 text-emerald-800">
+                                  {detailedLead.customFields.policySubmission.status || 'Active'}
+                                </span>
+                              </div>
+
+                              <div className="grid grid-cols-3 gap-2 text-center bg-white p-2.5 rounded-xl border border-emerald-100">
+                                <div>
+                                  <span className="text-[8px] font-black text-slate-400 uppercase">Total Premium</span>
+                                  <p className="text-xs font-black text-slate-900">
+                                    ₹{Number(detailedLead.customFields.policySubmission.formData?.rsFromCustomer || detailedLead.customFields.policySubmission.formData?.rate || 0).toLocaleString()}
+                                  </p>
+                                </div>
+                                <div>
+                                  <span className="text-[8px] font-black text-emerald-600 uppercase">Paid</span>
+                                  <p className="text-xs font-black text-emerald-700">
+                                    ₹{Number(detailedLead.customFields.policySubmission.formData?.paidAmount ?? (detailedLead.customFields.policySubmission.formData?.rsFromCustomer || detailedLead.customFields.policySubmission.formData?.rate || 0)).toLocaleString()}
+                                  </p>
+                                </div>
+                                <div>
+                                  <span className="text-[8px] font-black text-rose-600 uppercase">Pending</span>
+                                  <p className="text-xs font-black text-rose-700">
+                                    ₹{Number(detailedLead.customFields.policySubmission.formData?.pendingAmount || 0).toLocaleString()}
+                                  </p>
+                                </div>
+                              </div>
+
+                              {detailedLead.customFields.policySubmission.compiledPdfUrl && (
+                                <a
+                                  href={detailedLead.customFields.policySubmission.compiledPdfUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  download={`policy_docs_${detailedLead.clientName}_${detailedLead.vehicleNo}.pdf`}
+                                  className="w-full flex items-center justify-center gap-2 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold transition-all shadow-sm"
+                                >
+                                  <Download size={13} />
+                                  <span>Download 1-Year Merged 7-Doc PDF</span>
+                                </a>
+                              )}
+                            </div>
+                          )}
 
                           {/* Client Card details */}
                           <div className="space-y-4">
