@@ -5,6 +5,8 @@ import { supabaseAdmin } from '@/lib/supabase-admin'
 export interface AuthContext {
   userId: string
   email: string
+  name?: string
+  fullName?: string
   role: string
   permissions: string[]
 }
@@ -94,6 +96,8 @@ export async function validateAuth(
       context = {
         userId: profile.id,
         email: profile.email,
+        name: profile.fullName || profile.email,
+        fullName: profile.fullName || profile.email,
         role: profile.role?.name || 'No Role',
         permissions
       }
