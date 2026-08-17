@@ -266,18 +266,42 @@ export default function ManagerDocumentsPage() {
     }
   }
 
-  // Download Monthly Master Sheet
-  const handleDownloadMonthlyMasterSheet = async () => {
+  // Master Sheet Export Modal State
+  const [showExportModal, setShowExportModal] = useState(false)
+  const [exportMode, setExportMode] = useState<'month' | 'range' | 'single' | 'all'>('month')
+  const [exportMonth, setExportMonth] = useState<string>(new Date().toISOString().slice(0, 7))
+  const [exportStartDate, setExportStartDate] = useState<string>('')
+  const [exportEndDate, setExportEndDate] = useState<string>('')
+  const [exportSingleDate, setExportSingleDate] = useState<string>('')
+  const [isExportingSheet, setIsExportingSheet] = useState(false)
+
+  // Download Master Sheet with flexible parameters
+  const handleExecuteExportSheet = async () => {
+    setIsExportingSheet(true)
     try {
-      const currentMonth = new Date().toISOString().slice(0, 7)
-      const res = await fetchApi(`/api/v1/manager/monthly-sheet?month=${currentMonth}`)
+      const params = new URLSearchParams()
+      if (exportMode === 'month') {
+        params.append('month', exportMonth || new Date().toISOString().slice(0, 7))
+      } else if (exportMode === 'range') {
+        if (exportStartDate) params.append('startDate', exportStartDate)
+        if (exportEndDate) params.append('endDate', exportEndDate)
+      } else if (exportMode === 'single') {
+        if (exportSingleDate) params.append('date', exportSingleDate)
+      } else if (exportMode === 'all') {
+        params.append('month', 'all')
+      }
+
+      const res = await fetchApi(`/api/v1/manager/monthly-sheet?${params.toString()}`)
       if (res?.sheetUrl) {
         window.open(res.sheetUrl, '_blank')
+        setShowExportModal(false)
       } else {
-        alert('No monthly sheet available for the current month yet.')
+        alert('No policy records found for the selected time range.')
       }
-    } catch (err) {
-      alert('Failed to generate monthly master sheet.')
+    } catch (err: any) {
+      alert(err.message || 'Failed to generate master sheet.')
+    } finally {
+      setIsExportingSheet(false)
     }
   }
 
@@ -338,12 +362,12 @@ export default function ManagerDocumentsPage() {
 
           <div className="flex flex-wrap items-center gap-3">
             <button
-              onClick={handleDownloadMonthlyMasterSheet}
+              onClick={() => setShowExportModal(true)}
               className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-2xl text-xs font-bold hover:bg-slate-50 transition-all shadow-sm cursor-pointer"
-              title="Download consolidated Excel sheet with all policy records and document links for this month"
+              title="Download consolidated Excel sheet with all policy records and document links for any selected date, time range, or month"
             >
               <FileSpreadsheet size={15} className="text-emerald-600" />
-              <span>Download Monthly Master Sheet</span>
+              <span>Download Master Sheet</span>
             </button>
 
             <button
@@ -996,6 +1020,203 @@ export default function ManagerDocumentsPage() {
                   {actionLoading ? 'Reverting...' : 'Confirm Revert'}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 4: DOWNLOAD MASTER POLICY SHEET (DATE, TIME & MONTH PICKER) */}
+      {showExportModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl p-6">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-emerald-50 text-emerald-700 rounded-xl border border-emerald-100">
+                  <FileSpreadsheet size={20} />
+                </div>
+                <div>
+                  <h3 className="font-black text-slate-900 text-base">Export Master Policy Sheet</h3>
+                  <p className="text-xs text-slate-500">Download Excel archive with all policy metadata & direct document links</p>
+                </div>
+              </div>
+              <button onClick={() => setShowExportModal(false)} className="p-1.5 text-slate-400 hover:text-slate-600 rounded-xl">
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Mode Tabs */}
+            <div className="grid grid-cols-4 gap-1.5 bg-slate-100 p-1.5 rounded-2xl mb-5">
+              <button
+                type="button"
+                onClick={() => setExportMode('month')}
+                className={`py-2 text-[11px] font-bold rounded-xl transition-all cursor-pointer ${
+                  exportMode === 'month' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-900'
+                }`}
+              >
+                By Month
+              </button>
+              <button
+                type="button"
+                onClick={() => setExportMode('range')}
+                className={`py-2 text-[11px] font-bold rounded-xl transition-all cursor-pointer ${
+                  exportMode === 'range' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-900'
+                }`}
+              >
+                Date & Time
+              </button>
+              <button
+                type="button"
+                onClick={() => setExportMode('single')}
+                className={`py-2 text-[11px] font-bold rounded-xl transition-all cursor-pointer ${
+                  exportMode === 'single' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-900'
+                }`}
+              >
+                Single Date
+              </button>
+              <button
+                type="button"
+                onClick={() => setExportMode('all')}
+                className={`py-2 text-[11px] font-bold rounded-xl transition-all cursor-pointer ${
+                  exportMode === 'all' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-900'
+                }`}
+              >
+                All Time
+              </button>
+            </div>
+
+            {/* Mode 1: By Month */}
+            {exportMode === 'month' && (
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1.5">
+                    Select Target Month *
+                  </label>
+                  <input
+                    type="month"
+                    required
+                    value={exportMonth}
+                    onChange={e => setExportMonth(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setExportMonth(new Date().toISOString().slice(0, 7))}
+                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold rounded-lg transition-all"
+                  >
+                    Current Month
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const d = new Date()
+                      d.setMonth(d.getMonth() - 1)
+                      setExportMonth(d.toISOString().slice(0, 7))
+                    }}
+                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold rounded-lg transition-all"
+                  >
+                    Previous Month
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Mode 2: Custom Date & Time Range */}
+            {exportMode === 'range' && (
+              <div className="space-y-3">
+                <p className="text-[11px] text-slate-500 font-medium">
+                  Specify start and end dates with exact time stamps for precise filtering:
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">
+                      From Date & Time *
+                    </label>
+                    <input
+                      type="datetime-local"
+                      required
+                      value={exportStartDate}
+                      onChange={e => setExportStartDate(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">
+                      To Date & Time *
+                    </label>
+                    <input
+                      type="datetime-local"
+                      required
+                      value={exportEndDate}
+                      onChange={e => setExportEndDate(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Mode 3: Single Specific Date */}
+            {exportMode === 'single' && (
+              <div className="space-y-3">
+                <p className="text-[11px] text-slate-500 font-medium">
+                  Download all policies issued on a single specific day (00:00 to 23:59):
+                </p>
+                <div>
+                  <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">
+                    Select Specific Date *
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={exportSingleDate}
+                    onChange={e => setExportSingleDate(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Mode 4: All Time */}
+            {exportMode === 'all' && (
+              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 text-center">
+                <Shield size={24} className="mx-auto text-blue-600 mb-2" />
+                <p className="text-xs font-bold text-slate-800">Complete Historical Archive</p>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Downloads all active policy records created in the system since launch.
+                </p>
+              </div>
+            )}
+
+            {/* Actions */}
+            <div className="flex gap-3 pt-5 border-t border-slate-100 mt-5">
+              <button
+                type="button"
+                disabled={isExportingSheet}
+                onClick={() => setShowExportModal(false)}
+                className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isExportingSheet}
+                onClick={handleExecuteExportSheet}
+                className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-emerald-600/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+              >
+                {isExportingSheet ? (
+                  <>
+                    <RefreshCw size={14} className="animate-spin" />
+                    <span>Generating Excel...</span>
+                  </>
+                ) : (
+                  <>
+                    <Download size={14} />
+                    <span>Download Excel Sheet</span>
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </div>

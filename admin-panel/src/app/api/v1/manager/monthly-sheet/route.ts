@@ -5,23 +5,74 @@ import * as XLSX from 'xlsx'
 import path from 'path'
 import fs from 'fs'
 
-// Helper function to update or generate the Monthly Master Excel Sheet on disk
-export async function updateMonthlyMasterSheet(monthStr: string) {
+interface SheetFilterOptions {
+  month?: string | null
+  startDate?: string | null
+  endDate?: string | null
+  singleDate?: string | null
+}
+
+// Master function to generate Excel sheet for any Month, Single Date, or Custom Date & Time Range
+export async function generateMasterSheet(options: SheetFilterOptions) {
   try {
-    const [year, month] = monthStr.split('-').map(Number)
-    if (!year || !month) return null
+    const { month, startDate, endDate, singleDate } = options
+    const where: any = {}
+    let fileSlug = 'custom_range'
 
-    const startOfMonth = new Date(year, month - 1, 1, 0, 0, 0, 0)
-    const endOfMonth = new Date(year, month, 0, 23, 59, 59, 999)
+    if (singleDate) {
+      const d = new Date(singleDate)
+      if (!isNaN(d.getTime())) {
+        const start = new Date(d)
+        start.setHours(0, 0, 0, 0)
+        const end = new Date(d)
+        end.setHours(23, 59, 59, 999)
+        where.createdAt = { gte: start, lte: end }
+        fileSlug = `date_${singleDate.replace(/[^a-zA-Z0-9_-]/g, '_')}`
+      }
+    } else if (startDate || endDate) {
+      where.createdAt = {}
+      let startStr = 'start'
+      let endStr = 'end'
 
-    // Fetch all policies created in this month
-    const policies = await prisma.policy.findMany({
-      where: {
-        createdAt: {
-          gte: startOfMonth,
-          lte: endOfMonth
+      if (startDate) {
+        const s = new Date(startDate)
+        if (!isNaN(s.getTime())) {
+          where.createdAt.gte = s
+          startStr = startDate.split('T')[0] || startDate
         }
-      },
+      }
+      if (endDate) {
+        const e = new Date(endDate)
+        if (!isNaN(e.getTime())) {
+          // If time is not explicitly included in string, default to end of day
+          if (!endDate.includes('T') && !endDate.includes(':')) {
+            e.setHours(23, 59, 59, 999)
+          }
+          where.createdAt.lte = e
+          endStr = endDate.split('T')[0] || endDate
+        }
+      }
+      fileSlug = `range_${startStr}_to_${endStr}`
+    } else if (month && month !== 'all') {
+      const [year, m] = month.split('-').map(Number)
+      if (year && m) {
+        const startOfMonth = new Date(year, m - 1, 1, 0, 0, 0, 0)
+        const endOfMonth = new Date(year, m, 0, 23, 59, 59, 999)
+        where.createdAt = { gte: startOfMonth, lte: endOfMonth }
+        fileSlug = `month_${month}`
+      }
+    } else {
+      // Default to current month
+      const now = new Date()
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0)
+      const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999)
+      where.createdAt = { gte: startOfMonth, lte: endOfMonth }
+      fileSlug = `month_${now.toISOString().slice(0, 7)}`
+    }
+
+    // Fetch all policies in the specified date/time range
+    const policies = await prisma.policy.findMany({
+      where,
       orderBy: { createdAt: 'desc' },
       include: {
         transactions: {
@@ -110,23 +161,28 @@ export async function updateMonthlyMasterSheet(monthStr: string) {
 
     const ws = XLSX.utils.aoa_to_sheet(rows)
     const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, `Policies_${monthStr}`)
+    XLSX.utils.book_append_sheet(wb, ws, 'Master Policies')
 
     const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'monthly-sheets')
     if (!fs.existsSync(uploadDir)) {
       fs.mkdirSync(uploadDir, { recursive: true })
     }
 
-    const fileName = `master_policies_${monthStr}.xlsx`
+    const fileName = `master_policies_${fileSlug}_${Date.now()}.xlsx`
     const fullFilePath = path.join(uploadDir, fileName)
     XLSX.writeFile(wb, fullFilePath)
 
     const relativeUrl = `/uploads/monthly-sheets/${fileName}`
     return { fileName, fullFilePath, relativeUrl, count: policies.length }
   } catch (err) {
-    console.error('[updateMonthlyMasterSheet] Error:', err)
+    console.error('[generateMasterSheet] Error:', err)
     return null
   }
+}
+
+// Backward compatibility helper
+export async function updateMonthlyMasterSheet(monthStr: string) {
+  return generateMasterSheet({ month: monthStr })
 }
 
 export async function GET(req: NextRequest) {
@@ -135,14 +191,20 @@ export async function GET(req: NextRequest) {
 
   try {
     const { searchParams } = new URL(req.url)
-    const currentMonthStr = new Date().toISOString().slice(0, 7)
-    const month = searchParams.get('month') || currentMonthStr
+    const month = searchParams.get('month')
+    const startDate = searchParams.get('startDate') || searchParams.get('from')
+    const endDate = searchParams.get('endDate') || searchParams.get('to')
+    const singleDate = searchParams.get('date') || searchParams.get('singleDate')
 
-    const sheetResult = await updateMonthlyMasterSheet(month)
+    const sheetResult = await generateMasterSheet({
+      month,
+      startDate,
+      endDate,
+      singleDate
+    })
 
     return NextResponse.json({
       success: true,
-      month,
       sheetUrl: sheetResult?.relativeUrl || null,
       fileName: sheetResult?.fileName || null,
       totalPolicies: sheetResult?.count || 0
