@@ -137,3 +137,90 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })
   }
 }
+
+export async function DELETE(req: NextRequest) {
+  const { context, error } = await validateAuth(req, 'policy.edit')
+  if (error || !context) return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const roleUpper = (context.role || '').toUpperCase()
+  const isAdmin = roleUpper.includes('ADMIN') || roleUpper.includes('SUPER')
+  const isManager = roleUpper.includes('MANAGER')
+
+  if (!isAdmin && !isManager) {
+    return NextResponse.json({ error: 'Forbidden: Only Managers and Admins can delete policies.' }, { status: 403 })
+  }
+
+  try {
+    let ids: string[] = []
+
+    try {
+      const body = await req.json()
+      if (Array.isArray(body.ids)) {
+        ids = body.ids
+      } else if (body.id) {
+        ids = [body.id]
+      }
+    } catch {
+      const { searchParams } = new URL(req.url)
+      const idParam = searchParams.get('id')
+      const idsParam = searchParams.get('ids')
+      if (idsParam) {
+        ids = idsParam.split(',').map(s => s.trim()).filter(Boolean)
+      } else if (idParam) {
+        ids = [idParam.trim()]
+      }
+    }
+
+    if (!ids || ids.length === 0) {
+      return NextResponse.json({ error: 'No policy IDs provided to delete' }, { status: 400 })
+    }
+
+    let deleteWhere: any = { id: { in: ids } }
+    if (isManager && !isAdmin) {
+      const team = await prisma.user.findMany({
+        where: { managerId: context.userId },
+        select: { id: true }
+      })
+      const teamMemberIds = [context.userId, ...team.map(t => t.id)]
+      deleteWhere = {
+        id: { in: ids },
+        lead: {
+          assignedTo: { in: teamMemberIds }
+        }
+      }
+    }
+
+    const policiesToDelete = await prisma.policy.findMany({
+      where: deleteWhere,
+      select: { id: true, policyNumber: true }
+    })
+
+    const targetIds = policiesToDelete.map(p => p.id)
+    if (targetIds.length === 0) {
+      return NextResponse.json({ error: 'No authorized policies found to delete' }, { status: 404 })
+    }
+
+    // Clean up associated transactions and claims
+    await prisma.transaction.updateMany({
+      where: { policyId: { in: targetIds } },
+      data: { policyId: null }
+    })
+
+    await prisma.claim.deleteMany({
+      where: { policyId: { in: targetIds } }
+    })
+
+    const deleteResult = await prisma.policy.deleteMany({
+      where: { id: { in: targetIds } }
+    })
+
+    return NextResponse.json({
+      success: true,
+      message: `Successfully deleted ${deleteResult.count} policy record(s)`,
+      count: deleteResult.count
+    })
+  } catch (error: any) {
+    console.error('Policy DELETE Error:', error)
+    return NextResponse.json({ error: 'Internal Server Error', details: error?.message }, { status: 500 })
+  }
+}

@@ -356,11 +356,17 @@ export async function POST(req: NextRequest) {
       }
     })
 
-    // 4. Batch Create Leads
-    const result = await prisma.lead.createMany({
-      data: leadsWithAssignment,
-      skipDuplicates: true
-    })
+    // 4. Batch Create Leads in safe chunks of 2,000 to easily handle 1 Lakh+ rows without hitting PostgreSQL query parameter limits
+    let totalCreated = 0
+    const CHUNK_SIZE = 2000
+    for (let i = 0; i < leadsWithAssignment.length; i += CHUNK_SIZE) {
+      const chunk = leadsWithAssignment.slice(i, i + CHUNK_SIZE)
+      const batchResult = await prisma.lead.createMany({
+        data: chunk,
+        skipDuplicates: true
+      })
+      totalCreated += batchResult.count
+    }
 
     // 5. Save spreadsheet file for this batch on disk
     try {

@@ -8,8 +8,14 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ filename: string }> }
 ) {
-  const { context, error } = await validateAuth(req, 'leads.view')
+  const { context, error } = await validateAuth(req)
   if (error || !context) return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const roleUpper = (context.role || '').toUpperCase()
+  const isAdmin = roleUpper.includes('ADMIN') || roleUpper.includes('SUPER')
+  if (!isAdmin) {
+    return NextResponse.json({ error: 'Forbidden: Spreadsheets are only accessible to Admins' }, { status: 403 })
+  }
 
   try {
     const { filename } = await params

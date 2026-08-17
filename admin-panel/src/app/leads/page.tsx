@@ -38,7 +38,8 @@ export default function LeadsPage() {
   const { user } = useAuth()
   const router = useRouter()
   const roleName = (typeof user?.role === 'string' ? user.role : user?.role?.name || '').toUpperCase()
-  const isAdminOrManager = roleName.includes('ADMIN') || roleName.includes('MANAGER')
+  const isAdmin = roleName.includes('ADMIN') || roleName.includes('SUPER')
+  const isAdminOrManager = roleName.includes('ADMIN') || roleName.includes('MANAGER') || roleName.includes('SUPER')
   const isExecutive = !isAdminOrManager && Boolean(roleName) && (roleName.endsWith('EXECUTIVE') || roleName.includes('SALES') || roleName === 'VIEWER')
   const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null
   const initialSearch = searchParams?.get('search') || ''
@@ -684,16 +685,19 @@ export default function LeadsPage() {
               Delete ({selectedIds.size})
             </button>
           )}
-          {/* Import Leads, View Spreadsheets & New Lead → Only visible for Admins / Managers */}
+          {/* View Spreadsheets → Only visible for Super Admin & Admin */}
+          {isAdmin && (
+            <button 
+              onClick={() => router.push('/data/sheets')}
+              className="cursor-pointer px-4 py-2.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-bold hover:bg-emerald-100 transition-all flex items-center gap-2 shadow-sm"
+            >
+              <FileSpreadsheet size={14} />
+              View Spreadsheets
+            </button>
+          )}
+          {/* Import Leads & New Lead → Visible for Admins / Managers */}
           {!isExecutive && (
             <>
-              <button 
-                onClick={() => router.push('/data/sheets')}
-                className="cursor-pointer px-4 py-2.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-bold hover:bg-emerald-100 transition-all flex items-center gap-2 shadow-sm"
-              >
-                <FileSpreadsheet size={14} />
-                View Spreadsheets
-              </button>
               <button 
                 onClick={() => router.push('/data/import')}
                 className="cursor-pointer px-4 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-50 transition-all flex items-center gap-2 shadow-sm"

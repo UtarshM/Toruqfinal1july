@@ -73,6 +73,11 @@ export default function Sidebar() {
   const filteredGroups = MENU_GROUPS.map(group => {
     let items = group.items
 
+    // Hide Imported Spreadsheets for everyone except Admin and Super Admin
+    if (!isAdmin) {
+      items = items.filter(i => i.name !== 'Imported Spreadsheets')
+    }
+
     if (isExecutive) {
       // Hide all management oversight items and policy approvals for Executives
       if (group.label === 'MANAGEMENT') return null

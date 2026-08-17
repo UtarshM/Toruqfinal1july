@@ -6,9 +6,10 @@ import {
   FileSpreadsheet, Download, Eye, Search, AlertCircle, RefreshCw, X,
   CheckCircle, FileText, ArrowRight, ChevronLeft, ChevronRight,
   Calendar, Clock, User, Filter, ArrowUpDown, ChevronDown, Sparkles,
-  Phone, Car, MapPin, Tag, Check, CalendarDays
+  Phone, Car, MapPin, Tag, Check, CalendarDays, Lock
 } from 'lucide-react'
 import { fetchApi } from '@/lib/api'
+import { useAuth } from '@/context/AuthContext'
 
 interface SpreadsheetFile {
   fileName: string
@@ -58,6 +59,10 @@ const DATE_PRESETS = [
 ]
 
 export default function ImportedSheetsPage() {
+  const { user, loading: authLoading } = useAuth()
+  const roleName = (typeof user?.role === 'string' ? user.role : user?.role?.name || '').toUpperCase()
+  const isAdmin = roleName.includes('ADMIN') || roleName.includes('SUPER')
+
   const [files, setFiles] = useState<SpreadsheetFile[]>([])
   const [loading, setLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState('')
@@ -369,6 +374,28 @@ export default function ImportedSheetsPage() {
       setPreviewSortCol(colIdx)
       setPreviewSortOrder('asc')
     }
+  }
+
+  if (!authLoading && user && !isAdmin) {
+    return (
+      <AdminLayout>
+        <div className="min-h-[60vh] flex flex-col items-center justify-center text-center p-8 bg-white rounded-3xl border border-slate-100 shadow-sm">
+          <div className="w-16 h-16 bg-rose-50 border border-rose-100 rounded-2xl flex items-center justify-center text-rose-600 mb-4 shadow-sm">
+            <Lock size={32} />
+          </div>
+          <h2 className="text-xl font-black text-slate-800 mb-2">Access Restricted</h2>
+          <p className="text-sm text-slate-500 max-w-md mb-6">
+            The Spreadsheet repository is strictly confidential and accessible only to Super Admins and Admins.
+          </p>
+          <a
+            href="/leads"
+            className="px-5 py-2.5 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-black transition-all shadow-md"
+          >
+            Back to Leads
+          </a>
+        </div>
+      </AdminLayout>
+    )
   }
 
   return (
