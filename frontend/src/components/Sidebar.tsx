@@ -18,6 +18,7 @@ export default function Sidebar({ visible, onClose }: SidebarProps) {
   const router = useRouter();
   const { user, logout } = useAuth();
   const slideAnim = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
 
   useEffect(() => {
     if (visible) {
@@ -34,8 +35,6 @@ export default function Sidebar({ visible, onClose }: SidebarProps) {
       }).start();
     }
   }, [visible]);
-
-  if (!visible) return null;
 
   const roleUpper = user?.role?.toUpperCase() || '';
   const isAdmin = roleUpper === 'SUPER ADMIN' || roleUpper === 'ADMIN';
@@ -102,8 +101,6 @@ export default function Sidebar({ visible, onClose }: SidebarProps) {
     onClose();
     router.push(route as any);
   };
-
-  const [checkingUpdate, setCheckingUpdate] = useState(false);
 
   const handleCheckUpdate = async () => {
     if (__DEV__) {
