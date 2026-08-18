@@ -117,6 +117,16 @@ export async function GET(req: NextRequest) {
         _count: { _all: true }
       })
 
+      // Count pending policy approvals from team leads
+      const allTeamLeads = await prisma.lead.findMany({
+        where: { assignedTo: { in: teamIds }, status: { not: 'Trashed' }, deletedAt: null },
+        select: { customFields: true }
+      })
+      const pendingPolicyApprovals = allTeamLeads.filter(l => {
+        const cf = (l.customFields && typeof l.customFields === 'object') ? (l.customFields as any) : {}
+        return cf.policySubmission?.status === 'Pending_Review'
+      }).length
+
       return NextResponse.json({
         view: 'manager',
         team_size: teamIds.length,
@@ -128,6 +138,7 @@ export async function GET(req: NextRequest) {
         overdue_followups: overdueFollowups,
         total_quotations: totalQuotations,
         sent_quotations: sentQuotations,
+        pending_policy_approvals: pendingPolicyApprovals,
         pipeline: pipeline.map(p => ({ status: p.status, count: p._count._all }))
       })
     }
@@ -184,6 +195,15 @@ export async function GET(req: NextRequest) {
       })
     ])
 
+    const allSysLeads = await prisma.lead.findMany({
+      where: { status: { not: 'Trashed' }, deletedAt: null },
+      select: { customFields: true }
+    })
+    const pendingPolicyApprovals = allSysLeads.filter(l => {
+      const cf = (l.customFields && typeof l.customFields === 'object') ? (l.customFields as any) : {}
+      return cf.policySubmission?.status === 'Pending_Review'
+    }).length
+
     return NextResponse.json({
       view: 'admin',
       total_leads: totalLeads,
@@ -201,6 +221,7 @@ export async function GET(req: NextRequest) {
       total_customers: totalCustomers,
       today_visits: todayVisits,
       total_employees: totalUsers,
+      pending_policy_approvals: pendingPolicyApprovals,
       revenue_trend: revenueData,
       top_agents: topAgents
     })

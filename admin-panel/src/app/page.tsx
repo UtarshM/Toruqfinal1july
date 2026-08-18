@@ -206,8 +206,9 @@ export default function DashboardPage() {
               {/* Manager View */}
               {stats.view === 'manager' && (
                 <>
-                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
+                  <div className="grid grid-cols-2 lg:grid-cols-5 gap-6">
                     <StatCard label="Team Leads" value={stats.total_leads} icon={Users2} color="text-blue-600" bg="bg-blue-50" onClick={() => router.push('/leads')} />
+                    <StatCard label="Policy Approvals" value={stats.pending_policy_approvals ?? 0} icon={ShieldCheck} color="text-indigo-600" bg="bg-indigo-50" onClick={() => router.push('/manager/documents')} />
                     <StatCard label="Conversions" value={stats.won_leads} icon={UserCheck} color="text-green-600" bg="bg-green-50" onClick={() => router.push('/leads')} />
                     <StatCard label="Open Followups" value={stats.pending_followups} icon={Clock} color="text-amber-600" bg="bg-amber-50" onClick={() => router.push('/follow-ups')} />
                     <StatCard label="Overdue Items" value={stats.overdue_followups} icon={AlertCircle} color="text-red-600" bg="bg-red-50" onClick={() => router.push('/follow-ups')} />
@@ -220,10 +221,11 @@ export default function DashboardPage() {
               {/* Admin View */}
               {stats.view === 'admin' && (
                 <>
-                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
+                  <div className="grid grid-cols-2 lg:grid-cols-5 gap-6">
                     <StatCard label="Leads Pipeline" value={stats.total_leads} icon={Target} color="text-blue-600" bg="bg-blue-50" onClick={() => router.push('/leads')} />
+                    <StatCard label="Policy Approvals" value={stats.pending_policy_approvals ?? 0} icon={ShieldCheck} color="text-indigo-600" bg="bg-indigo-50" onClick={() => router.push('/manager/documents')} />
                     <StatCard label="New Arrivals" value={stats.new_leads_today} icon={Plus} color="text-green-600" bg="bg-green-50" onClick={() => router.push('/leads')} />
-                    <StatCard label="Policies Active" value={stats.active_policies} icon={ShieldCheck} color="text-indigo-600" bg="bg-indigo-50" onClick={() => router.push('/policies')} />
+                    <StatCard label="Policies Active" value={stats.active_policies} icon={FileText} color="text-emerald-600" bg="bg-emerald-50" onClick={() => router.push('/policies')} />
                     <StatCard label="Total Staff" value={stats.total_employees} icon={Users2} color="text-violet-600" bg="bg-violet-50" onClick={() => router.push('/users')} />
                   </div>
                   <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">

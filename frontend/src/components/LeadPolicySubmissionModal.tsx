@@ -18,6 +18,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import * as WebBrowser from 'expo-web-browser';
+import * as Print from 'expo-print';
 import { decode } from 'base64-arraybuffer';
 import { Colors, Spacing, FontSize, BorderRadius } from '../utils/theme';
 import { api } from '../utils/api';
@@ -432,20 +433,165 @@ export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClo
         return;
       }
 
-      // 1. Call compile-pdf endpoint with documents and formData in payload
-      const res = await api.post(`/leads/${leadId}/policy-submission/compile-pdf`, {
-        documents: docsToCompile,
-        formData: formData || submission?.formData || {}
-      });
+      let finalPdfUrl: string | null = null;
+      let compilationErrorMsg = '';
 
-      if (res?.compiledPdfUrl) {
-        // 2. Update local state
+      // Strategy 1: Instant On-Device PDF Compilation (Inlined Base64 Images)
+      try {
+        const clientName = lead?.clientName || lead?.name || 'Customer';
+        const regNumber = formData?.regNo || lead?.vehicleNo || lead?.vehicle_number || 'N/A';
+        const phoneNum = formData?.mobileNo1 || lead?.clientPhone || lead?.phone || 'N/A';
+
+        // Prepare inlined HTML pages for all documents
+        const docPagesHtml = await Promise.all(
+          docsToCompile.map(async (doc: any, i: number) => {
+            let imgSrc = doc.filePath;
+            const isPdf = (doc.filePath && typeof doc.filePath === 'string' && doc.filePath.toLowerCase().endsWith('.pdf')) || doc.fileType === 'application/pdf';
+
+            if (isPdf) {
+              return `
+                <div class="page-break">
+                  <div class="doc-banner">
+                    <span>Document ${i + 1} of ${docsToCompile.length}: ${doc.categoryLabel || DOCUMENT_CATEGORIES[doc.category] || doc.category}</span>
+                  </div>
+                  <div class="doc-container" style="padding: 40px 20px;">
+                    <p style="font-size: 16px; font-weight: bold; color: #0f172a;">Attached PDF Document: ${doc.fileName}</p>
+                    <p style="font-size: 12px; color: #64748b; margin-top: 8px;">Direct Link: <a href="${doc.filePath}" target="_blank" style="color: #0284c7;">${doc.filePath}</a></p>
+                  </div>
+                </div>
+              `;
+            }
+
+            // If image, download to cache and convert to base64 for 100% guaranteed offline rendering
+            try {
+              if (Platform.OS !== 'web' && doc.filePath && doc.filePath.startsWith('http')) {
+                const localTmp = `${FileSystem.cacheDirectory}compile_doc_${i}_${Date.now()}.jpg`;
+                const downloadRes = await FileSystem.downloadAsync(doc.filePath, localTmp);
+                if (downloadRes?.uri) {
+                  const b64 = await FileSystem.readAsStringAsync(downloadRes.uri, {
+                    encoding: FileSystem.EncodingType.Base64,
+                  });
+                  imgSrc = `data:image/jpeg;base64,${b64}`;
+                }
+              }
+            } catch (e) {
+              console.warn('[Doc base64 inline fallback]', e);
+            }
+
+            return `
+              <div class="page-break">
+                <div class="doc-banner">
+                  <span>Document ${i + 1} of ${docsToCompile.length}: ${doc.categoryLabel || DOCUMENT_CATEGORIES[doc.category] || doc.category}</span>
+                </div>
+                <div class="doc-container">
+                  <img class="doc-img" src="${imgSrc}" />
+                </div>
+              </div>
+            `;
+          })
+        );
+
+        const htmlContent = `
+          <!DOCTYPE html>
+          <html>
+            <head>
+              <meta charset="utf-8">
+              <style>
+                * { box-sizing: border-box; margin: 0; padding: 0; }
+                body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #0f172a; padding: 24px; background: #ffffff; }
+                .brand-card { background: #0f172a; color: #ffffff; padding: 20px; border-radius: 10px; margin-bottom: 20px; }
+                .brand-title { font-size: 20px; font-weight: 800; letter-spacing: 0.5px; }
+                .brand-sub { font-size: 12px; color: #94a3b8; margin-top: 4px; }
+                .section-header { font-size: 15px; font-weight: 800; color: #0f172a; border-bottom: 2px solid #0284c7; padding-bottom: 4px; margin: 16px 0 10px 0; text-transform: uppercase; }
+                .grid { display: flex; flex-wrap: wrap; margin: -4px; }
+                .col { width: 50%; padding: 4px; }
+                .box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px 12px; }
+                .lbl { font-size: 9px; color: #64748b; font-weight: 700; text-transform: uppercase; }
+                .val { font-size: 13px; font-weight: 700; color: #0f172a; margin-top: 2px; }
+                .page-break { page-break-before: always; padding-top: 16px; }
+                .doc-banner { background: #0284c7; color: #ffffff; padding: 10px 14px; border-radius: 6px; font-size: 14px; font-weight: 800; margin-bottom: 12px; }
+                .doc-container { text-align: center; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px; background: #fafafa; }
+                .doc-img { max-width: 100%; max-height: 750px; object-fit: contain; border-radius: 6px; }
+              </style>
+            </head>
+            <body>
+              <div class="brand-card">
+                <div class="brand-title">TORQUE AUTO ADVISOR</div>
+                <div class="brand-sub">Policy Submission & Document Verification Bundle</div>
+                <div style="margin-top: 8px; font-size: 11px; color: #38bdf8;">Client: ${clientName} | Vehicle: ${regNumber} | Date: ${new Date().toLocaleDateString('en-IN')}</div>
+              </div>
+
+              <div class="section-header">1. Policy Particulars</div>
+              <div class="grid">
+                <div class="col"><div class="box"><div class="lbl">Vehicle Registration No</div><div class="val">${regNumber}</div></div></div>
+                <div class="col"><div class="box"><div class="lbl">Client Mobile Number</div><div class="val">${phoneNum}</div></div></div>
+                <div class="col"><div class="box"><div class="lbl">Insurance Company</div><div class="val">${formData?.insCompany || 'N/A'}</div></div></div>
+                <div class="col"><div class="box"><div class="lbl">Payment Mode</div><div class="val">${formData?.paymentMode || 'N/A'}</div></div></div>
+                <div class="col"><div class="box"><div class="lbl">GVW / Cubic Capacity</div><div class="val">${formData?.gvwCc || 'N/A'}</div></div></div>
+                <div class="col"><div class="box"><div class="lbl">No Claim Bonus (NCB %)</div><div class="val">${formData?.ncbPercent || '0'}%</div></div></div>
+                <div class="col"><div class="box"><div class="lbl">Net Premium</div><div class="val">₹${formData?.netPremium || '0'}</div></div></div>
+                <div class="col"><div class="box"><div class="lbl">Final Gross Premium</div><div class="val">₹${formData?.finalGrossPremium || '0'}</div></div></div>
+                <div class="col"><div class="box"><div class="lbl">Policy Expiry Date</div><div class="val">${formData?.expDate || 'N/A'}</div></div></div>
+                <div class="col"><div class="box"><div class="lbl">Hypothecation Bank</div><div class="val">${formData?.hypothecation || 'None'}</div></div></div>
+              </div>
+
+              ${docPagesHtml.join('')}
+            </body>
+          </html>
+        `;
+
+        if (Platform.OS !== 'web') {
+          const { uri: generatedPdfUri } = await Print.printToFileAsync({ html: htmlContent });
+          const pdfBase64 = await FileSystem.readAsStringAsync(generatedPdfUri, {
+            encoding: FileSystem.EncodingType.Base64
+          });
+          const pdfBytes = decode(pdfBase64);
+          const pdfStoragePath = `lead-documents/${leadId}/compiled_single_policy_${Date.now()}.pdf`;
+
+          const { data: uploadData, error: uploadErr } = await supabase.storage
+            .from('documents')
+            .upload(pdfStoragePath, pdfBytes, {
+              contentType: 'application/pdf',
+              upsert: true
+            });
+
+          if (!uploadErr && uploadData) {
+            const { data: { publicUrl } } = supabase.storage
+              .from('documents')
+              .getPublicUrl(pdfStoragePath);
+            finalPdfUrl = publicUrl;
+          } else if (uploadErr) {
+            compilationErrorMsg = uploadErr.message;
+          }
+        }
+      } catch (localCompileErr: any) {
+        console.warn('[Local compile failed, trying backend]', localCompileErr);
+        compilationErrorMsg = localCompileErr?.message || 'Local print error';
+      }
+
+      // Strategy 2: Backend Compile-PDF endpoint fallback
+      if (!finalPdfUrl) {
+        try {
+          const res = await api.post(`/leads/${leadId}/policy-submission/compile-pdf`, {
+            documents: docsToCompile,
+            formData: formData || submission?.formData || {}
+          });
+          if (res?.compiledPdfUrl) {
+            finalPdfUrl = res.compiledPdfUrl;
+          }
+        } catch (apiErr: any) {
+          if (!compilationErrorMsg) compilationErrorMsg = apiErr?.message;
+        }
+      }
+
+      if (finalPdfUrl) {
+        // Update local state immediately
         setSubmission((prev: any) => ({
           ...prev,
-          compiledPdfUrl: res.compiledPdfUrl
+          compiledPdfUrl: finalPdfUrl
         }));
 
-        // 3. Persist directly to Supabase DB 'leads' table (INSTANT & PERMANENT)
+        // Persist directly to Supabase DB 'leads' table
         try {
           const { data: dbLead } = await supabase
             .from('leads')
@@ -464,7 +610,7 @@ export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClo
                 policySubmission: {
                   ...prevSub,
                   documents: docsToCompile,
-                  compiledPdfUrl: res.compiledPdfUrl,
+                  compiledPdfUrl: finalPdfUrl,
                   updatedAt: new Date().toISOString()
                 }
               }
@@ -474,9 +620,9 @@ export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClo
           console.warn('[Direct compile-pdf save err]', dbErr);
         }
 
-        Alert.alert('Single PDF Compiled! ✓', 'All 7 documents and policy details have been consolidated into a single master PDF.');
+        Alert.alert('Single PDF Compiled! ✓', 'All documents and policy details have been consolidated into a single master PDF.');
       } else {
-        throw new Error(res?.error || 'Could not generate PDF URL');
+        throw new Error(compilationErrorMsg || 'Could not generate PDF');
       }
 
       if (onUpdated) onUpdated();
@@ -489,6 +635,12 @@ export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClo
   };
 
   const handleSubmitToManager = async () => {
+    const docs = submission?.documents || [];
+    if (docs.length === 0) {
+      Alert.alert('Documents Required', 'A sales person cannot submit to manager without uploading the required documents. Please upload the documents first.');
+      return;
+    }
+
     if (!submission?.compiledPdfUrl) {
       Alert.alert('Single PDF Required', 'Please tap "Convert to Single PDF" first before submitting to manager.');
       return;
@@ -504,7 +656,23 @@ export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClo
           onPress: async () => {
             setSubmitting(true);
             try {
-              // 1. Persist Pending_Review status directly to Supabase DB
+              const pdfUrl = submission?.compiledPdfUrl;
+
+              // 1. Resolve manager name
+              let managerName = lead?.assignee?.manager?.fullName || 'Operations Manager';
+              try {
+                if (!lead?.assignee?.manager?.fullName) {
+                  const { data: mUsers } = await supabase
+                    .from('users')
+                    .select('fullName, role:roles(name)')
+                    .eq('isActive', true)
+                    .limit(10);
+                  const m = mUsers?.find((u: any) => u.role?.name?.toLowerCase().includes('manager'));
+                  if (m?.fullName) managerName = m.fullName;
+                }
+              } catch {}
+
+              // 2. Persist Pending_Review status directly to Supabase DB
               try {
                 const { data: dbLead } = await supabase
                   .from('leads')
@@ -515,32 +683,58 @@ export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClo
                 const cf = (dbLead?.customFields && typeof dbLead.customFields === 'object') ? (dbLead.customFields as any) : {};
                 const prevSub = cf.policySubmission || {};
 
+                const updatedSubmission = {
+                  ...prevSub,
+                  documents: docs.length > 0 ? docs : (prevSub.documents || []),
+                  formData: formData && Object.keys(formData).length > 0 ? formData : (prevSub.formData || {}),
+                  compiledPdfUrl: pdfUrl || prevSub.compiledPdfUrl,
+                  status: 'Pending_Review',
+                  managerName,
+                  salesPersonName: user?.fullName || 'Sales Executive',
+                  submittedAt: new Date().toISOString(),
+                  updatedAt: new Date().toISOString(),
+                  history: [
+                    ...(prevSub.history || []),
+                    {
+                      action: 'SUBMITTED',
+                      by: user?.fullName || 'Sales Executive',
+                      userId: user?.id,
+                      timestamp: new Date().toISOString(),
+                      notes: `Submitted policy document bundle to manager (${managerName}) for review`
+                    }
+                  ]
+                };
+
                 await supabase
                   .from('leads')
                   .update({
                     customFields: {
                       ...cf,
-                      policySubmission: {
-                        ...prevSub,
-                        status: 'Pending_Review',
-                        submittedAt: new Date().toISOString(),
-                        updatedAt: new Date().toISOString()
-                      }
+                      policySubmission: updatedSubmission
                     }
                   })
                   .eq('id', leadId);
-              } catch {}
+              } catch (dbErr) {
+                console.warn('[Direct DB submit err]', dbErr);
+              }
 
-              // 2. Call backend endpoint
-              await api.post(`/leads/${leadId}/policy-submission/submit`, {});
+              // 3. Call backend endpoint with compiledPdfUrl in payload
+              try {
+                await api.post(`/leads/${leadId}/policy-submission/submit`, {
+                  compiledPdfUrl: pdfUrl
+                });
+              } catch (apiErr) {
+                console.warn('[Submit API sync error]', apiErr);
+              }
 
               setSubmission((prev: any) => ({
                 ...prev,
                 status: 'Pending_Review',
+                managerName,
                 submittedAt: new Date().toISOString()
               }));
 
-              Alert.alert('Submitted Successfully! ✓', 'Policy documents and details have been submitted to Manager for verification.');
+              Alert.alert('Submitted Successfully! ✓', `Policy documents and details have been submitted to ${managerName} for verification.`);
               if (onUpdated) onUpdated();
             } catch (err: any) {
               Alert.alert('Submission Error', err.message || 'Could not submit');
@@ -563,13 +757,61 @@ export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClo
           text: 'Approve',
           onPress: async () => {
             try {
-              await api.post('/manager/submissions', {
-                leadId,
-                action: 'APPROVE',
-                notes: 'Approved by Manager on mobile app'
-              });
+              // 1. Direct Supabase DB update
+              try {
+                const { data: dbLead } = await supabase
+                  .from('leads')
+                  .select('customFields')
+                  .eq('id', leadId)
+                  .single();
+
+                const cf = (dbLead?.customFields && typeof dbLead.customFields === 'object') ? (dbLead.customFields as any) : {};
+                const prevSub = cf.policySubmission || {};
+
+                await supabase
+                  .from('leads')
+                  .update({
+                    customFields: {
+                      ...cf,
+                      policySubmission: {
+                        ...prevSub,
+                        status: 'Approved',
+                        reviewedAt: new Date().toISOString(),
+                        reviewedBy: user?.fullName || 'Manager',
+                        updatedAt: new Date().toISOString(),
+                        history: [
+                          ...(prevSub.history || []),
+                          {
+                            action: 'APPROVED',
+                            by: user?.fullName || 'Manager',
+                            userId: user?.id,
+                            timestamp: new Date().toISOString(),
+                            notes: 'Approved by Manager on mobile app'
+                          }
+                        ]
+                      }
+                    }
+                  })
+                  .eq('id', leadId);
+              } catch {}
+
+              // 2. Call backend endpoint
+              try {
+                await api.post('/manager/submissions', {
+                  leadId,
+                  action: 'APPROVE',
+                  notes: 'Approved by Manager on mobile app'
+                });
+              } catch {}
+
+              setSubmission((prev: any) => ({
+                ...prev,
+                status: 'Approved',
+                reviewedAt: new Date().toISOString(),
+                reviewedBy: user?.fullName || 'Manager'
+              }));
+
               Alert.alert('Approved ✓', 'Policy documents approved.');
-              loadSubmission();
               if (onUpdated) onUpdated();
             } catch (err: any) {
               Alert.alert('Error', err.message || 'Approval failed');
@@ -587,15 +829,66 @@ export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClo
     }
 
     try {
-      await api.post('/manager/submissions', {
-        leadId,
-        action: 'REVERT',
-        notes: revertReason.trim()
-      });
+      const reason = revertReason.trim();
+
+      // 1. Direct Supabase DB update
+      try {
+        const { data: dbLead } = await supabase
+          .from('leads')
+          .select('customFields')
+          .eq('id', leadId)
+          .single();
+
+        const cf = (dbLead?.customFields && typeof dbLead.customFields === 'object') ? (dbLead.customFields as any) : {};
+        const prevSub = cf.policySubmission || {};
+
+        await supabase
+          .from('leads')
+          .update({
+            customFields: {
+              ...cf,
+              policySubmission: {
+                ...prevSub,
+                status: 'Reverted',
+                revertReason: reason,
+                reviewedAt: new Date().toISOString(),
+                reviewedBy: user?.fullName || 'Manager',
+                updatedAt: new Date().toISOString(),
+                history: [
+                  ...(prevSub.history || []),
+                  {
+                    action: 'REVERTED',
+                    by: user?.fullName || 'Manager',
+                    userId: user?.id,
+                    timestamp: new Date().toISOString(),
+                    notes: reason
+                  }
+                ]
+              }
+            }
+          })
+          .eq('id', leadId);
+      } catch {}
+
+      // 2. Call backend endpoint
+      try {
+        await api.post('/manager/submissions', {
+          leadId,
+          action: 'REVERT',
+          notes: reason
+        });
+      } catch {}
+
       setShowRevertModal(false);
       setRevertReason('');
-      Alert.alert('Reverted', 'Submission has been reverted to Sales Person.');
-      loadSubmission();
+      setSubmission((prev: any) => ({
+        ...prev,
+        status: 'Reverted',
+        revertReason: reason,
+        reviewedAt: new Date().toISOString()
+      }));
+
+      Alert.alert('Reverted', 'Submission has been reverted to Sales Person with notes.');
       if (onUpdated) onUpdated();
     } catch (err: any) {
       Alert.alert('Error', err.message || 'Revert failed');
@@ -610,20 +903,75 @@ export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClo
 
     try {
       setIssuingPolicy(true);
-      await api.post('/manager/submissions', {
-        leadId,
-        action: 'ISSUE_POLICY',
-        policyData: {
-          policyNumber: policyNoInput.trim(),
-          provider: providerInput.trim() || 'Go Digit',
-          premiumAmount: parseFloat(premiumInput) || 0,
-          type: formData.policyType || 'Comprehensive'
-        }
-      });
+      const policyNumber = policyNoInput.trim();
+      const provider = providerInput.trim() || 'Go Digit';
+      const premium = parseFloat(premiumInput) || 0;
+
+      // 1. Direct Supabase DB update (mark policySubmission as Issued and lead as Won)
+      try {
+        const { data: dbLead } = await supabase
+          .from('leads')
+          .select('customFields')
+          .eq('id', leadId)
+          .single();
+
+        const cf = (dbLead?.customFields && typeof dbLead.customFields === 'object') ? (dbLead.customFields as any) : {};
+        const prevSub = cf.policySubmission || {};
+
+        await supabase
+          .from('leads')
+          .update({
+            status: 'Won',
+            customFields: {
+              ...cf,
+              policySubmission: {
+                ...prevSub,
+                status: 'Issued',
+                issuedPolicyNumber: policyNumber,
+                issuedProvider: provider,
+                issuedPremium: premium,
+                issuedAt: new Date().toISOString(),
+                issuedBy: user?.fullName || 'Manager',
+                updatedAt: new Date().toISOString(),
+                history: [
+                  ...(prevSub.history || []),
+                  {
+                    action: 'POLICY_ISSUED',
+                    by: user?.fullName || 'Manager',
+                    userId: user?.id,
+                    timestamp: new Date().toISOString(),
+                    notes: `Policy #${policyNumber} issued (${provider}, ₹${premium})`
+                  }
+                ]
+              }
+            }
+          })
+          .eq('id', leadId);
+      } catch {}
+
+      // 2. Call backend endpoint
+      try {
+        await api.post('/manager/submissions', {
+          leadId,
+          action: 'ISSUE_POLICY',
+          policyData: {
+            policyNumber,
+            provider,
+            premiumAmount: premium,
+            type: formData.policyType || 'Comprehensive'
+          }
+        });
+      } catch {}
+
+      setSubmission((prev: any) => ({
+        ...prev,
+        status: 'Issued',
+        issuedPolicyNumber: policyNumber
+      }));
+
       Alert.alert('Policy Issued Successfully! 🎉', 'Active policy created and synced with master monthly sheet.');
       setPolicyNoInput('');
       setPremiumInput('');
-      loadSubmission();
       if (onUpdated) onUpdated();
     } catch (err: any) {
       Alert.alert('Error', err.message || 'Could not issue policy');
@@ -703,6 +1051,30 @@ export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClo
             <Text style={styles.statusTagText}>{status === 'Pending_Review' ? 'Pending Review' : status}</Text>
           </View>
         </View>
+
+        {/* Under Review Banner */}
+        {status === 'Pending_Review' && (
+          <View style={{
+            backgroundColor: '#FFFBEB',
+            borderBottomWidth: 1,
+            borderBottomColor: '#FDE68A',
+            paddingHorizontal: 16,
+            paddingVertical: 10,
+            flexDirection: 'row',
+            alignItems: 'center'
+          }}>
+            <Ionicons name="time" size={18} color="#D97706" style={{ marginRight: 8 }} />
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 13, fontWeight: '800', color: '#B45309' }}>
+                UNDER MANAGER REVIEW
+              </Text>
+              <Text style={{ fontSize: 11, color: '#78350F', marginTop: 1 }}>
+                Submitted to: <Text style={{ fontWeight: '700' }}>{submission?.managerName || lead?.assignee?.manager?.fullName || 'Assigned Manager'}</Text>
+                {submission?.submittedAt ? ` • ${new Date(submission.submittedAt).toLocaleDateString()}` : ''}
+              </Text>
+            </View>
+          </View>
+        )}
 
         {/* Revert Banner if Reverted */}
         {status === 'Reverted' && submission?.revertReason && (

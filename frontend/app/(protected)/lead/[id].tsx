@@ -457,63 +457,120 @@ export default function LeadDetailScreen() {
           const subStatus = submission.status || 'Draft';
           const docsCount = submission.documents?.length || 0;
           const hasSinglePdf = !!submission.compiledPdfUrl;
+          const assignedManagerName = submission.managerName || lead.assignee?.manager?.fullName || 'Assigned Manager';
 
           return (
-            <View style={styles.policyFlowCard}>
-              <View style={styles.policyFlowHeader}>
-                <View style={styles.shieldIconWrap}>
-                  <Ionicons name="shield-checkmark" size={22} color="#10B981" />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.policyFlowTitle}>Policy Documents & Manager Flow</Text>
-                  <Text style={styles.policyFlowSub}>25 fields, 7 documents & Single PDF</Text>
-                </View>
-                <View style={[
-                  styles.subStatusBadge,
-                  subStatus === 'Approved' ? { backgroundColor: '#10B981' } :
-                  subStatus === 'Pending_Review' ? { backgroundColor: '#F59E0B' } :
-                  subStatus === 'Reverted' ? { backgroundColor: '#E11D48' } : { backgroundColor: '#475569' }
-                ]}>
-                  <Text style={styles.subStatusText}>
-                    {subStatus === 'Pending_Review' ? 'Under Review' : subStatus}
+            <View>
+              {/* Prominent Under Manager Review Banner */}
+              {subStatus === 'Pending_Review' && (
+                <View style={{
+                  backgroundColor: '#FFFBEB',
+                  borderWidth: 1.5,
+                  borderColor: '#F59E0B',
+                  borderRadius: 12,
+                  padding: 14,
+                  marginHorizontal: Spacing.md,
+                  marginBottom: Spacing.sm,
+                }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
+                    <Ionicons name="time" size={20} color="#D97706" style={{ marginRight: 6 }} />
+                    <Text style={{ fontSize: 15, fontWeight: '800', color: '#B45309', letterSpacing: 0.3 }}>
+                      UNDER MANAGER REVIEW
+                    </Text>
+                  </View>
+                  <Text style={{ fontSize: 13, color: '#78350F', fontWeight: '600' }}>
+                    Submitted to: <Text style={{ fontWeight: '800', color: '#92400E' }}>{assignedManagerName}</Text>
                   </Text>
-                </View>
-              </View>
-
-              {subStatus === 'Reverted' && submission.revertReason && (
-                <View style={styles.revertNoticeBox}>
-                  <Ionicons name="alert-circle" size={16} color="#E11D48" />
-                  <Text style={styles.revertNoticeText}>
-                    Reverted: "{submission.revertReason}"
-                  </Text>
+                  {submission.submittedAt && (
+                    <Text style={{ fontSize: 11, color: '#A16207', marginTop: 2 }}>
+                      Submitted on: {new Date(submission.submittedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                    </Text>
+                  )}
                 </View>
               )}
 
-              <View style={styles.policyFlowStatsRow}>
-                <View style={styles.policyFlowStatItem}>
-                  <Text style={styles.flowStatLabel}>UPLOADED DOCS</Text>
-                  <Text style={styles.flowStatVal}>{docsCount} / 7 Docs</Text>
+              {subStatus === 'Approved' && (
+                <View style={{
+                  backgroundColor: '#ECFDF5',
+                  borderWidth: 1.5,
+                  borderColor: '#10B981',
+                  borderRadius: 12,
+                  padding: 12,
+                  marginHorizontal: Spacing.md,
+                  marginBottom: Spacing.sm,
+                  flexDirection: 'row',
+                  alignItems: 'center'
+                }}>
+                  <Ionicons name="checkmark-circle" size={20} color="#059669" style={{ marginRight: 8 }} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 14, fontWeight: '800', color: '#065F46' }}>Policy Approved ✓</Text>
+                    <Text style={{ fontSize: 12, color: '#047857' }}>
+                      Approved by {submission.reviewedBy || 'Manager'} • Ready for Policy Issuance
+                    </Text>
+                  </View>
                 </View>
-                <View style={styles.policyFlowStatItem}>
-                  <Text style={styles.flowStatLabel}>SINGLE PDF</Text>
-                  <Text style={[styles.flowStatVal, { color: hasSinglePdf ? '#10B981' : '#F59E0B' }]}>
-                    {hasSinglePdf ? 'Ready ✓' : 'Not Compiled'}
-                  </Text>
-                </View>
-                <View style={styles.policyFlowStatItem}>
-                  <Text style={styles.flowStatLabel}>MANAGER</Text>
-                  <Text style={styles.flowStatVal}>{subStatus === 'Approved' ? 'Approved' : subStatus === 'Pending_Review' ? 'Reviewing' : 'Draft'}</Text>
-                </View>
-              </View>
+              )}
 
-              <Pressable
-                style={styles.openPolicyFlowBtn}
-                onPress={() => setShowPolicySubmissionModal(true)}
-              >
-                <Ionicons name="document-text" size={18} color="#FFFFFF" />
-                <Text style={styles.openPolicyFlowBtnText}>Open Policy Form & Upload Docs</Text>
-                <Ionicons name="chevron-forward" size={16} color="#FFFFFF" />
-              </Pressable>
+              <View style={styles.policyFlowCard}>
+                <View style={styles.policyFlowHeader}>
+                  <View style={styles.shieldIconWrap}>
+                    <Ionicons name="shield-checkmark" size={22} color="#10B981" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.policyFlowTitle}>Policy Documents & Manager Flow</Text>
+                    <Text style={styles.policyFlowSub}>
+                      {subStatus === 'Pending_Review' ? `Reviewer: ${assignedManagerName}` : '25 fields, 7 documents & Single PDF'}
+                    </Text>
+                  </View>
+                  <View style={[
+                    styles.subStatusBadge,
+                    subStatus === 'Approved' ? { backgroundColor: '#10B981' } :
+                    subStatus === 'Pending_Review' ? { backgroundColor: '#F59E0B' } :
+                    subStatus === 'Reverted' ? { backgroundColor: '#E11D48' } : { backgroundColor: '#475569' }
+                  ]}>
+                    <Text style={styles.subStatusText}>
+                      {subStatus === 'Pending_Review' ? 'Under Review' : subStatus}
+                    </Text>
+                  </View>
+                </View>
+
+                {subStatus === 'Reverted' && submission.revertReason && (
+                  <View style={styles.revertNoticeBox}>
+                    <Ionicons name="alert-circle" size={16} color="#E11D48" />
+                    <Text style={styles.revertNoticeText}>
+                      Reverted: "{submission.revertReason}"
+                    </Text>
+                  </View>
+                )}
+
+                <View style={styles.policyFlowStatsRow}>
+                  <View style={styles.policyFlowStatItem}>
+                    <Text style={styles.flowStatLabel}>UPLOADED DOCS</Text>
+                    <Text style={styles.flowStatVal}>{docsCount} / 7 Docs</Text>
+                  </View>
+                  <View style={styles.policyFlowStatItem}>
+                    <Text style={styles.flowStatLabel}>SINGLE PDF</Text>
+                    <Text style={[styles.flowStatVal, { color: hasSinglePdf ? '#10B981' : '#F59E0B' }]}>
+                      {hasSinglePdf ? 'Ready ✓' : 'Not Compiled'}
+                    </Text>
+                  </View>
+                  <View style={styles.policyFlowStatItem}>
+                    <Text style={styles.flowStatLabel}>REVIEWER</Text>
+                    <Text style={styles.flowStatVal} numberOfLines={1}>
+                      {subStatus === 'Pending_Review' ? assignedManagerName : subStatus === 'Approved' ? 'Approved' : 'Draft'}
+                    </Text>
+                  </View>
+                </View>
+
+                <Pressable
+                  style={styles.openPolicyFlowBtn}
+                  onPress={() => setShowPolicySubmissionModal(true)}
+                >
+                  <Ionicons name="document-text" size={18} color="#FFFFFF" />
+                  <Text style={styles.openPolicyFlowBtnText}>Open Policy Form & Upload Docs</Text>
+                  <Ionicons name="chevron-forward" size={16} color="#FFFFFF" />
+                </Pressable>
+              </View>
             </View>
           );
         })()}

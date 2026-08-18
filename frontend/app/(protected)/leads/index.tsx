@@ -324,8 +324,51 @@ export default function LeadsScreen() {
                   <Text style={styles.cardName}>{item.clientName}</Text>
                   <Text style={styles.cardMeta}>{item.clientPhone || 'No phone'}</Text>
                 </View>
-                <View style={[styles.badge, { backgroundColor: sc.bg }]}>
-                  <Text style={[styles.badgeText, { color: sc.text }]}>{item.status}</Text>
+                <View style={{ alignItems: 'flex-end', gap: 4 }}>
+                  <View style={[styles.badge, { backgroundColor: sc.bg }]}>
+                    <Text style={[styles.badgeText, { color: sc.text }]}>{item.status}</Text>
+                  </View>
+                  {(() => {
+                    const cf = (item.customFields && typeof item.customFields === 'object') ? item.customFields : {};
+                    const sub = cf.policySubmission || {};
+                    if (sub.status === 'Pending_Review') {
+                      return (
+                        <View style={{
+                          backgroundColor: '#FFFBEB',
+                          borderColor: '#F59E0B',
+                          borderWidth: 1,
+                          borderRadius: 6,
+                          paddingHorizontal: 6,
+                          paddingVertical: 2,
+                          flexDirection: 'row',
+                          alignItems: 'center'
+                        }}>
+                          <Ionicons name="time" size={10} color="#D97706" style={{ marginRight: 3 }} />
+                          <Text style={{ fontSize: 10, fontWeight: '700', color: '#B45309' }}>
+                            {sub.managerName ? `In Review: ${sub.managerName}` : 'In Review'}
+                          </Text>
+                        </View>
+                      );
+                    }
+                    if (sub.status === 'Approved') {
+                      return (
+                        <View style={{
+                          backgroundColor: '#ECFDF5',
+                          borderColor: '#10B981',
+                          borderWidth: 1,
+                          borderRadius: 6,
+                          paddingHorizontal: 6,
+                          paddingVertical: 2,
+                          flexDirection: 'row',
+                          alignItems: 'center'
+                        }}>
+                          <Ionicons name="checkmark-circle" size={10} color="#059669" style={{ marginRight: 3 }} />
+                          <Text style={{ fontSize: 10, fontWeight: '700', color: '#047857' }}>Approved ✓</Text>
+                        </View>
+                      );
+                    }
+                    return null;
+                  })()}
                 </View>
               </View>
 

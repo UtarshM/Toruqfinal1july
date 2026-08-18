@@ -77,6 +77,7 @@ export default function Sidebar({ visible, onClose }: SidebarProps) {
     {
       label: 'MANAGEMENT',
       items: [
+        { name: 'Policy Approvals', icon: 'shield-checkmark-outline', route: '/(protected)/policy-approvals', visible: isAdmin || isManager },
         { name: 'Quotation Rates', icon: 'options-outline', route: '/(protected)/rates-management', visible: isAdmin },
         { name: 'Users', icon: 'person-outline', route: '/(protected)/users', visible: isAdmin || isHrManager },
         { name: 'Onboarding Approvals', icon: 'checkmark-circle-outline', route: '/(protected)/onboarding-approvals', visible: isAdmin || isHrManager },

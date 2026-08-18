@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, FlatList, Pressable, RefreshControl, TextInput,
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { api } from '../../src/utils/api';
+import { supabase } from '../../src/lib/supabase';
 import { Colors, Spacing, FontSize, BorderRadius } from '../../src/utils/theme';
 import { Ionicons } from '@expo/vector-icons';
 import Sidebar from '../../src/components/Sidebar';
@@ -29,8 +30,61 @@ export default function RenewalsScreen() {
       if (urgency !== 'all') params.set('urgency', urgency);
       if (search.trim()) params.set('search', search.trim());
       const query = params.toString() ? `?${params.toString()}` : '';
-      const res = await api.get<any>(`/renewals${query}`);
-      setItems(res.items || []);
+      
+      let fetchedItems: any[] = [];
+      try {
+        const res = await api.get<any>(`/renewals${query}`);
+        if (res?.items) fetchedItems = res.items;
+      } catch (apiErr) {
+        console.warn('[Renewals API err, falling back to Supabase DB]', apiErr);
+      }
+
+      if (fetchedItems.length === 0) {
+        const now = new Date();
+        const { data: dbLeads } = await supabase
+          .from('leads')
+          .select('id, clientName, clientPhone, clientEmail, vehicleNo, expiryDate, status, assignee:assignedTo(fullName)')
+          .not('expiryDate', 'is', null)
+          .is('deletedAt', null)
+          .order('expiryDate', { ascending: true })
+          .limit(100);
+
+        if (dbLeads) {
+          fetchedItems = dbLeads.map((l: any) => {
+            const exp = new Date(l.expiryDate);
+            const daysLeft = Math.ceil((exp.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+            let itemUrgency = '60days';
+            if (daysLeft < 0) itemUrgency = 'overdue';
+            else if (daysLeft <= 30) itemUrgency = '30days';
+
+            return {
+              id: l.id,
+              leadId: l.id,
+              clientName: l.clientName || 'Customer',
+              clientPhone: l.clientPhone || '',
+              clientEmail: l.clientEmail || '',
+              vehicleNo: l.vehicleNo || 'N/A',
+              expiryDate: l.expiryDate,
+              daysLeft,
+              urgency: itemUrgency,
+              assigneeName: l.assignee?.fullName || 'Unassigned'
+            };
+          }).filter((item: any) => {
+            if (urgency !== 'all' && item.urgency !== urgency) return false;
+            if (search.trim()) {
+              const q = search.toLowerCase();
+              return (
+                item.clientName?.toLowerCase().includes(q) ||
+                item.vehicleNo?.toLowerCase().includes(q) ||
+                item.clientPhone?.includes(q)
+              );
+            }
+            return true;
+          });
+        }
+      }
+
+      setItems(fetchedItems);
     } catch (e) {
       console.warn('[Renewals] Failed to load:', e);
     } finally {

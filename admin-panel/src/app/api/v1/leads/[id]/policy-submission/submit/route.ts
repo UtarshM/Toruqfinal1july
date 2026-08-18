@@ -11,6 +11,9 @@ export async function POST(
 
   try {
     const { id } = await params
+    const body = await req.json().catch(() => ({}))
+    const bodyCompiledPdfUrl = body?.compiledPdfUrl
+
     const lead = await prisma.lead.findUnique({
       where: { id },
       include: {
@@ -23,30 +26,24 @@ export async function POST(
     if (!lead) return NextResponse.json({ error: 'Lead not found' }, { status: 404 })
 
     const cf = (lead.customFields && typeof lead.customFields === 'object') ? (lead.customFields as any) : {}
-    const submission = cf.policySubmission || null
+    const submission = cf.policySubmission || { status: 'Draft', formData: {}, documents: [] }
 
-    if (!submission) {
-      return NextResponse.json({ error: 'No policy submission draft found' }, { status: 400 })
-    }
+    const compiledPdfUrl = bodyCompiledPdfUrl || submission.compiledPdfUrl
 
-    if (!submission.compiledPdfUrl) {
+    if (!compiledPdfUrl) {
       return NextResponse.json({ error: 'Please convert documents into Single PDF before submitting to Manager' }, { status: 400 })
     }
 
     const salesPersonName = lead.assignee?.fullName || context.name || 'Sales Executive'
     const salesPersonId = lead.assignee?.id || context.userId
 
-    // Find Manager ID
-    let managerId = lead.assignee?.managerId
-    if (!managerId) {
-      // Find a manager user in the database
-      const managerUser = await prisma.user.findFirst({
-        where: {
-          role: { name: { contains: 'Manager', mode: 'insensitive' } },
-          isActive: true
-        }
+    let managerName = 'Operations Manager'
+    if (managerId) {
+      const mUser = await prisma.user.findUnique({
+        where: { id: managerId },
+        select: { fullName: true }
       })
-      if (managerUser) managerId = managerUser.id
+      if (mUser?.fullName) managerName = mUser.fullName
     }
 
     const historyEntry = {
@@ -54,17 +51,19 @@ export async function POST(
       by: context.name || 'Sales Person',
       userId: context.userId,
       timestamp: new Date().toISOString(),
-      notes: 'Submitted policy document bundle to manager for review'
+      notes: `Submitted policy document bundle to manager (${managerName}) for review`
     }
 
     const updatedSubmission = {
       ...submission,
+      compiledPdfUrl,
       status: 'Pending_Review',
       salesPersonId,
       salesPersonName,
       managerId,
+      managerName,
       submittedAt: new Date().toISOString(),
-      revertReason: null, // Clear past revert reason on new submission
+      revertReason: null,
       history: [...(submission.history || []), historyEntry],
       updatedAt: new Date().toISOString()
     }
