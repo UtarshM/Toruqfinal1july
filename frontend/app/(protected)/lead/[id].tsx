@@ -7,6 +7,7 @@ import { Colors, Spacing, FontSize, BorderRadius, StatusColors } from '../../../
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../../src/context/AuthContext';
 import { usersService } from '../../../src/services/users';
+import LeadPolicySubmissionModal from '../../../src/components/LeadPolicySubmissionModal';
 
 interface DropdownProps {
   label: string;
@@ -130,6 +131,7 @@ export default function LeadDetailScreen() {
   const [correctionField, setCorrectionField] = useState<'clientPhone' | 'vehicleNo'>('clientPhone');
   const [correctionValue, setCorrectionValue] = useState('');
   const [submittingCorrection, setSubmittingCorrection] = useState(false);
+  const [showPolicySubmissionModal, setShowPolicySubmissionModal] = useState(false);
 
   // Edit Modal States
   const [editModalVisible, setEditModalVisible] = useState(false);
@@ -448,6 +450,74 @@ export default function LeadDetailScreen() {
           )}
         </View>
 
+        {/* POLICY DOCUMENTS & MANAGER APPROVAL FLOW CARD */}
+        {(() => {
+          const cf = (lead.customFields && typeof lead.customFields === 'object') ? lead.customFields : {};
+          const submission = cf.policySubmission || {};
+          const subStatus = submission.status || 'Draft';
+          const docsCount = submission.documents?.length || 0;
+          const hasSinglePdf = !!submission.compiledPdfUrl;
+
+          return (
+            <View style={styles.policyFlowCard}>
+              <View style={styles.policyFlowHeader}>
+                <View style={styles.shieldIconWrap}>
+                  <Ionicons name="shield-checkmark" size={22} color="#10B981" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.policyFlowTitle}>Policy Documents & Manager Flow</Text>
+                  <Text style={styles.policyFlowSub}>25 fields, 7 documents & Single PDF</Text>
+                </View>
+                <View style={[
+                  styles.subStatusBadge,
+                  subStatus === 'Approved' ? { backgroundColor: '#10B981' } :
+                  subStatus === 'Pending_Review' ? { backgroundColor: '#F59E0B' } :
+                  subStatus === 'Reverted' ? { backgroundColor: '#E11D48' } : { backgroundColor: '#475569' }
+                ]}>
+                  <Text style={styles.subStatusText}>
+                    {subStatus === 'Pending_Review' ? 'Under Review' : subStatus}
+                  </Text>
+                </View>
+              </View>
+
+              {subStatus === 'Reverted' && submission.revertReason && (
+                <View style={styles.revertNoticeBox}>
+                  <Ionicons name="alert-circle" size={16} color="#E11D48" />
+                  <Text style={styles.revertNoticeText}>
+                    Reverted: "{submission.revertReason}"
+                  </Text>
+                </View>
+              )}
+
+              <View style={styles.policyFlowStatsRow}>
+                <View style={styles.policyFlowStatItem}>
+                  <Text style={styles.flowStatLabel}>UPLOADED DOCS</Text>
+                  <Text style={styles.flowStatVal}>{docsCount} / 7 Docs</Text>
+                </View>
+                <View style={styles.policyFlowStatItem}>
+                  <Text style={styles.flowStatLabel}>SINGLE PDF</Text>
+                  <Text style={[styles.flowStatVal, { color: hasSinglePdf ? '#10B981' : '#F59E0B' }]}>
+                    {hasSinglePdf ? 'Ready ✓' : 'Not Compiled'}
+                  </Text>
+                </View>
+                <View style={styles.policyFlowStatItem}>
+                  <Text style={styles.flowStatLabel}>MANAGER</Text>
+                  <Text style={styles.flowStatVal}>{subStatus === 'Approved' ? 'Approved' : subStatus === 'Pending_Review' ? 'Reviewing' : 'Draft'}</Text>
+                </View>
+              </View>
+
+              <Pressable
+                style={styles.openPolicyFlowBtn}
+                onPress={() => setShowPolicySubmissionModal(true)}
+              >
+                <Ionicons name="document-text" size={18} color="#FFFFFF" />
+                <Text style={styles.openPolicyFlowBtnText}>Open Policy Form & Upload Docs</Text>
+                <Ionicons name="chevron-forward" size={16} color="#FFFFFF" />
+              </Pressable>
+            </View>
+          );
+        })()}
+
         <View style={styles.infoCard}>
           <Text style={styles.sectionLabel}>VEHICLE & INSURANCE</Text>
           <InfoRow label="Assigned To" value={lead.assignee?.fullName || 'Unassigned'} />
@@ -611,7 +681,7 @@ export default function LeadDetailScreen() {
         <View style={styles.bottomModalOverlay}>
           <View style={styles.bottomModalContent}>
             <View style={styles.modalHeaderRow}>
-              <Text style={styles.modalTitle}>{lead.name ? 'Edit Lead' : 'Lead Details'}</Text>
+              <Text style={styles.modalTitle}>{lead?.name ? 'Edit Lead' : 'Lead Details'}</Text>
               <Pressable onPress={() => setEditModalVisible(false)} style={styles.closeBtn}>
                 <Ionicons name="close" size={24} color={Colors.text} />
               </Pressable>
@@ -677,8 +747,6 @@ export default function LeadDetailScreen() {
                 />
               </View>
 
-
-
               <View style={styles.field}>
                 <Text style={styles.label}>CITY</Text>
                 <TextInput
@@ -738,6 +806,15 @@ export default function LeadDetailScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Policy Submission & Documents Flow Modal */}
+      <LeadPolicySubmissionModal
+        visible={showPolicySubmissionModal}
+        leadId={id as string}
+        lead={lead}
+        onClose={() => setShowPolicySubmissionModal(false)}
+        onUpdated={loadData}
+      />
     </SafeAreaView>
   );
 }
@@ -768,7 +845,10 @@ const styles = StyleSheet.create({
   leadPhone: { fontSize: FontSize.md, color: Colors.textMuted },
   leadEmail: { fontSize: FontSize.sm, color: Colors.textLight },
   statusBadgeLg: { alignSelf: 'flex-start', paddingHorizontal: Spacing.md, paddingVertical: Spacing.xs, borderRadius: BorderRadius.sm },
-  statusTextLg: { fontSize: FontSize.sm, fontWeight: '700' },
+  statusTextLg: {
+    fontSize: FontSize.xs,
+    fontWeight: '700',
+  },
   actionsRow: { 
     flexDirection: 'row', 
     padding: Spacing.lg, 
@@ -790,6 +870,111 @@ const styles = StyleSheet.create({
   actionLabel: { 
     fontSize: FontSize.xs, 
     fontWeight: '700',
+  },
+  // Policy Flow Card Styles
+  policyFlowCard: {
+    backgroundColor: '#0F172A',
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.md,
+    marginHorizontal: Spacing.md,
+    marginBottom: Spacing.md,
+    gap: Spacing.sm,
+    borderWidth: 1,
+    borderColor: '#1E293B',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  policyFlowHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  shieldIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  policyFlowTitle: {
+    color: '#FFFFFF',
+    fontSize: FontSize.sm,
+    fontWeight: '800',
+  },
+  policyFlowSub: {
+    color: '#94A3B8',
+    fontSize: FontSize.xs - 1,
+    marginTop: 1,
+  },
+  subStatusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: BorderRadius.full,
+  },
+  subStatusText: {
+    color: '#FFFFFF',
+    fontSize: 9,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+  },
+  revertNoticeBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(225, 29, 72, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(225, 29, 72, 0.3)',
+    padding: Spacing.sm,
+    borderRadius: BorderRadius.sm,
+  },
+  revertNoticeText: {
+    color: '#FDA4AF',
+    fontSize: FontSize.xs - 1,
+    fontWeight: '700',
+    flex: 1,
+  },
+  policyFlowStatsRow: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(30, 41, 59, 0.6)',
+    borderRadius: BorderRadius.md,
+    padding: Spacing.sm,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  policyFlowStatItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  flowStatLabel: {
+    color: '#94A3B8',
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  flowStatVal: {
+    color: '#F8FAFC',
+    fontSize: FontSize.xs,
+    fontWeight: '800',
+    marginTop: 2,
+  },
+  openPolicyFlowBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#059669',
+    paddingVertical: 12,
+    borderRadius: BorderRadius.md,
+    marginTop: 2,
+  },
+  openPolicyFlowBtnText: {
+    color: '#FFFFFF',
+    fontSize: FontSize.xs + 1,
+    fontWeight: '800',
   },
   infoCard: { padding: Spacing.lg, borderBottomWidth: 1, borderBottomColor: Colors.border },
   sectionLabel: { fontSize: FontSize.xs, fontWeight: '700', color: Colors.textMuted, letterSpacing: 1.5, marginBottom: Spacing.md },
