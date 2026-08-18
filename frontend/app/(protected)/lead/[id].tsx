@@ -120,6 +120,7 @@ export default function LeadDetailScreen() {
   const { user } = useAuth();
   const roleUpper = user?.role?.toUpperCase() || '';
   const isAdmin = roleUpper === 'SUPER ADMIN' || roleUpper === 'ADMIN';
+  const isManagerOrAdmin = isAdmin || roleUpper.includes('MANAGER');
 
   const [lead, setLead] = useState<any>(null);
   const [calls, setCalls] = useState<any[]>([]);
@@ -513,26 +514,61 @@ export default function LeadDetailScreen() {
 
               <View style={styles.policyFlowCard}>
                 <View style={styles.policyFlowHeader}>
-                  <View style={styles.shieldIconWrap}>
-                    <Ionicons name="shield-checkmark" size={22} color="#10B981" />
+                  <View style={[styles.shieldIconWrap, (subStatus === 'Approved' || subStatus === 'Policy_Issued') && { backgroundColor: '#ECFDF5' }]}>
+                    <Ionicons
+                      name={subStatus === 'Approved' || subStatus === 'Policy_Issued' ? 'checkmark-done-circle' : 'shield-checkmark'}
+                      size={22}
+                      color={subStatus === 'Approved' || subStatus === 'Policy_Issued' ? '#059669' : '#10B981'}
+                    />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.policyFlowTitle}>Policy Documents & Manager Flow</Text>
+                    <Text style={styles.policyFlowTitle}>
+                      {subStatus === 'Policy_Issued' ? 'Policy Issued & Active' :
+                       subStatus === 'Approved' ? 'Policy Documents Approved' :
+                       'Policy Documents & Verification Flow'}
+                    </Text>
                     <Text style={styles.policyFlowSub}>
-                      {subStatus === 'Pending_Review' ? `Reviewer: ${assignedManagerName}` : '25 fields, 7 documents & Single PDF'}
+                      {subStatus === 'Policy_Issued' ? `#${submission?.issuedPolicyNumber || submission?.formData?.policyNumber || 'Active'} • ${submission?.issuedProvider || submission?.formData?.provider || 'Torque'}` :
+                       subStatus === 'Approved' ? 'Verified by manager • Ready for policy issuance' :
+                       subStatus === 'Pending_Review' ? `Under Review by: ${assignedManagerName}` :
+                       '25 fields, 7 KYC documents & Single PDF'}
                     </Text>
                   </View>
                   <View style={[
                     styles.subStatusBadge,
-                    subStatus === 'Approved' ? { backgroundColor: '#10B981' } :
+                    (subStatus === 'Approved' || subStatus === 'Policy_Issued') ? { backgroundColor: '#10B981' } :
                     subStatus === 'Pending_Review' ? { backgroundColor: '#F59E0B' } :
                     subStatus === 'Reverted' ? { backgroundColor: '#E11D48' } : { backgroundColor: '#475569' }
                   ]}>
                     <Text style={styles.subStatusText}>
-                      {subStatus === 'Pending_Review' ? 'Under Review' : subStatus}
+                      {subStatus === 'Policy_Issued' ? 'Issued ✓' :
+                       subStatus === 'Approved' ? 'Approved ✓' :
+                       subStatus === 'Pending_Review' ? 'Under Review' : subStatus}
                     </Text>
                   </View>
                 </View>
+
+                {/* Manager / Admin Revert Helper Banner if already Approved/Issued */}
+                {(subStatus === 'Approved' || subStatus === 'Policy_Issued') && (
+                  <View style={{
+                    backgroundColor: '#F0FDF4',
+                    borderWidth: 1,
+                    borderColor: '#BBF7D0',
+                    borderRadius: 8,
+                    padding: 10,
+                    marginBottom: 10,
+                    gap: 6
+                  }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 6 }}>
+                      <Ionicons name="information-circle" size={16} color="#16A34A" style={{ marginTop: 1 }} />
+                      <Text style={{ flex: 1, fontSize: 11, color: '#166534', lineHeight: 16 }}>
+                        {isManagerOrAdmin
+                          ? `This lead has all policy data & documents verified. If you wish to re-upload any document or request corrections, you may revert this lead back to ${lead.assignee?.fullName || 'the sales agent'}.`
+                          : 'This policy is verified and approved. If any document requires re-uploading, please request your manager to revert this lead back to you.'}
+                      </Text>
+                    </View>
+                  </View>
+                )}
 
                 {subStatus === 'Reverted' && submission.revertReason && (
                   <View style={styles.revertNoticeBox}>
@@ -545,7 +581,7 @@ export default function LeadDetailScreen() {
 
                 <View style={styles.policyFlowStatsRow}>
                   <View style={styles.policyFlowStatItem}>
-                    <Text style={styles.flowStatLabel}>UPLOADED DOCS</Text>
+                    <Text style={styles.flowStatLabel}>VERIFIED DOCS</Text>
                     <Text style={styles.flowStatVal}>{docsCount} / 7 Docs</Text>
                   </View>
                   <View style={styles.policyFlowStatItem}>
@@ -557,19 +593,44 @@ export default function LeadDetailScreen() {
                   <View style={styles.policyFlowStatItem}>
                     <Text style={styles.flowStatLabel}>REVIEWER</Text>
                     <Text style={styles.flowStatVal} numberOfLines={1}>
-                      {subStatus === 'Pending_Review' ? assignedManagerName : subStatus === 'Approved' ? 'Approved' : 'Draft'}
+                      {subStatus === 'Pending_Review' ? assignedManagerName : (subStatus === 'Approved' || subStatus === 'Policy_Issued') ? 'Verified ✓' : 'Draft'}
                     </Text>
                   </View>
                 </View>
 
-                <Pressable
-                  style={styles.openPolicyFlowBtn}
-                  onPress={() => setShowPolicySubmissionModal(true)}
-                >
-                  <Ionicons name="document-text" size={18} color="#FFFFFF" />
-                  <Text style={styles.openPolicyFlowBtnText}>Open Policy Form & Upload Docs</Text>
-                  <Ionicons name="chevron-forward" size={16} color="#FFFFFF" />
-                </Pressable>
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <Pressable
+                    style={[styles.openPolicyFlowBtn, { flex: 1 }]}
+                    onPress={() => setShowPolicySubmissionModal(true)}
+                  >
+                    <Ionicons name="document-text" size={16} color="#FFFFFF" />
+                    <Text style={styles.openPolicyFlowBtnText}>
+                      {(subStatus === 'Approved' || subStatus === 'Policy_Issued') ? 'View Documents & 25 Fields' : 'Open Policy Form & Upload Docs'}
+                    </Text>
+                    <Ionicons name="chevron-forward" size={14} color="#FFFFFF" />
+                  </Pressable>
+
+                  {/* Manager Revert Action Button */}
+                  {isManagerOrAdmin && (subStatus === 'Approved' || subStatus === 'Policy_Issued' || subStatus === 'Pending_Review') && (
+                    <Pressable
+                      style={{
+                        backgroundColor: '#FEE2E2',
+                        borderWidth: 1,
+                        borderColor: '#FECACA',
+                        paddingHorizontal: 12,
+                        paddingVertical: 10,
+                        borderRadius: 8,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 4
+                      }}
+                      onPress={() => setShowPolicySubmissionModal(true)}
+                    >
+                      <Ionicons name="arrow-undo" size={14} color="#DC2626" />
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: '#DC2626' }}>Revert</Text>
+                    </Pressable>
+                  )}
+                </View>
               </View>
             </View>
           );

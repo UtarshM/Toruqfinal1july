@@ -1180,6 +1180,61 @@ export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClo
                 />
               </View>
             )}
+
+            {/* Manager Revert to Sales Agent Banner */}
+            {isManagerOrAdmin ? (
+              <View style={{
+                backgroundColor: '#EFF6FF',
+                borderWidth: 1,
+                borderColor: '#BFDBFE',
+                borderRadius: 6,
+                padding: 8,
+                marginTop: 4,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 8
+              }}>
+                <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Ionicons name="information-circle" size={16} color="#1D4ED8" />
+                  <Text style={{ fontSize: 11, color: '#1E40AF', flex: 1 }}>
+                    Need any document re-uploaded or modified? You may revert this lead back to the assigned sales agent.
+                  </Text>
+                </View>
+                <Pressable
+                  style={{
+                    backgroundColor: '#DC2626',
+                    paddingHorizontal: 10,
+                    paddingVertical: 5,
+                    borderRadius: 6,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 4
+                  }}
+                  onPress={() => setShowRevertModal(true)}
+                >
+                  <Ionicons name="arrow-undo" size={13} color="#FFFFFF" />
+                  <Text style={{ fontSize: 11, fontWeight: '800', color: '#FFFFFF' }}>Revert</Text>
+                </Pressable>
+              </View>
+            ) : (
+              <View style={{
+                backgroundColor: '#F8FAFC',
+                borderWidth: 1,
+                borderColor: '#E2E8F0',
+                borderRadius: 6,
+                padding: 8,
+                marginTop: 4,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 6
+              }}>
+                <Ionicons name="lock-closed" size={14} color="#64748B" />
+                <Text style={{ fontSize: 11, color: '#475569', flex: 1 }}>
+                  Policy data and documents are verified & approved. If any re-upload is required, please ask your manager to revert this lead back to you.
+                </Text>
+              </View>
+            )}
           </View>
         )}
 

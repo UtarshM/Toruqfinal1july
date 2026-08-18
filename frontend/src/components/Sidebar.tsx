@@ -1,6 +1,7 @@
-import React, { useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, Pressable, Modal, Animated, Dimensions, ScrollView, Image, Platform } from 'react-native';
+import React, { useRef, useEffect, useState } from 'react';
+import { View, Text, StyleSheet, Pressable, Modal, Animated, Dimensions, ScrollView, Image, Platform, ActivityIndicator, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
+import * as Updates from 'expo-updates';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, FontSize, BorderRadius } from '../utils/theme';
 import { useAuth } from '../context/AuthContext';
@@ -102,6 +103,32 @@ export default function Sidebar({ visible, onClose }: SidebarProps) {
     router.push(route as any);
   };
 
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+
+  const handleCheckUpdate = async () => {
+    if (__DEV__) {
+      Alert.alert('Development Mode', 'OTA updates are disabled in development mode.');
+      return;
+    }
+    setCheckingUpdate(true);
+    try {
+      const update = await Updates.checkForUpdateAsync();
+      if (update.isAvailable) {
+        Alert.alert('Update Found', 'Downloading the latest version...');
+        await Updates.fetchUpdateAsync();
+        Alert.alert('Update Ready', 'Restarting app with latest version...', [
+          { text: 'Restart Now', onPress: async () => await Updates.reloadAsync() }
+        ]);
+      } else {
+        Alert.alert('Up to Date ✓', 'You are already running the latest version of Torque Auto Advisor.');
+      }
+    } catch (e: any) {
+      Alert.alert('Update Check', e?.message || 'Could not check for updates.');
+    } finally {
+      setCheckingUpdate(false);
+    }
+  };
+
   const handleLogout = async () => {
     onClose();
     await logout();
@@ -153,10 +180,28 @@ export default function Sidebar({ visible, onClose }: SidebarProps) {
             <Text style={styles.userLabel}>Logged in as</Text>
             <Text style={styles.userName} numberOfLines={1}>{user?.full_name || user?.name || 'User'}</Text>
             <Text style={styles.userRole}>{user?.role || 'Executive'}</Text>
-            <Pressable style={styles.logoutBtn} onPress={handleLogout}>
-              <Ionicons name="log-out-outline" size={18} color={Colors.error} />
-              <Text style={styles.logoutText}>Logout</Text>
-            </Pressable>
+
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
+              <Pressable
+                style={[styles.logoutBtn, { flex: 1, backgroundColor: '#F0FDF4', borderColor: '#BBF7D0', borderWidth: 1 }]}
+                onPress={handleCheckUpdate}
+                disabled={checkingUpdate}
+              >
+                {checkingUpdate ? (
+                  <ActivityIndicator size="small" color="#16A34A" />
+                ) : (
+                  <>
+                    <Ionicons name="sync-outline" size={16} color="#16A34A" />
+                    <Text style={[styles.logoutText, { color: '#16A34A' }]}>Sync App</Text>
+                  </>
+                )}
+              </Pressable>
+
+              <Pressable style={[styles.logoutBtn, { flex: 1 }]} onPress={handleLogout}>
+                <Ionicons name="log-out-outline" size={16} color={Colors.error} />
+                <Text style={styles.logoutText}>Logout</Text>
+              </Pressable>
+            </View>
           </View>
         </Animated.View>
       </View>

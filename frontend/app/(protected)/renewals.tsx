@@ -389,8 +389,8 @@ export default function RenewalsScreen() {
                 <ActivityIndicator size="small" color={Colors.primary} />
               ) : (
                 <>
-                  <Ionicons name="cloud-download-outline" size={15} color={Colors.primary} />
-                  <Text style={styles.excelBtnText}>Master</Text>
+                  <Ionicons name="download-outline" size={15} color={Colors.primary} />
+                  <Text style={styles.excelBtnText}>Excel</Text>
                 </>
               )}
             </Pressable>
