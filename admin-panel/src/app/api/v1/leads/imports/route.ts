@@ -9,6 +9,8 @@ export async function GET(req: NextRequest) {
   try {
     const imports = await prisma.lead.findMany({
       where: {
+        deletedAt: null,
+        status: { not: 'Trashed' },
         AND: [
           { importName: { not: null } },
           { importName: { not: '' } }

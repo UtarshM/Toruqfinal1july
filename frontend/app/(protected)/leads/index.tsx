@@ -9,6 +9,7 @@ import { useCacheStore } from '../../../src/store/cacheStore';
 import AppFooter from '../../../src/components/AppFooter';
 import Sidebar from '../../../src/components/Sidebar';
 import { exportToCSV } from '../../../src/utils/exportHelper';
+import { useAuth } from '../../../src/context/AuthContext';
 
 export default function LeadsScreen() {
   const router = useRouter();
@@ -21,6 +22,11 @@ export default function LeadsScreen() {
   
   const [importNames, setImportNames] = useState<string[]>([]);
   const [selectedImportName, setSelectedImportName] = useState('');
+
+  // Bulk selection state
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [deleting, setDeleting] = useState(false);
 
   const fetchImports = async () => {
     try {
@@ -142,6 +148,60 @@ export default function LeadsScreen() {
   const roleUpper = user?.role?.name?.toUpperCase() || (typeof user?.role === 'string' ? user?.role.toUpperCase() : '');
   const isAdminOrManager = roleUpper === 'SUPER ADMIN' || roleUpper === 'ADMIN' || roleUpper === 'MANAGER' || roleUpper === 'HR MANAGER';
 
+  // Bulk selection handlers
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      if (next.size === 0) setSelectionMode(false);
+      return next;
+    });
+  };
+
+  const handleLongPress = (id: string) => {
+    if (!isAdminOrManager) return;
+    setSelectionMode(true);
+    setSelectedIds(new Set([id]));
+  };
+
+  const selectAll = () => {
+    setSelectedIds(new Set(filteredItems.map(i => i.id)));
+  };
+
+  const cancelSelection = () => {
+    setSelectionMode(false);
+    setSelectedIds(new Set());
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return;
+    Alert.alert(
+      'Delete Leads',
+      `Are you sure you want to delete ${selectedIds.size} lead(s)? This action can be undone by admin.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            setDeleting(true);
+            try {
+              await api.delete('/leads', { ids: Array.from(selectedIds) } as any);
+              setItems(prev => prev.filter(i => !selectedIds.has(i.id)));
+              cancelSelection();
+              Alert.alert('Done', `${selectedIds.size} lead(s) deleted successfully.`);
+            } catch (e: any) {
+              Alert.alert('Error', e.message || 'Failed to delete leads');
+            } finally {
+              setDeleting(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
@@ -230,17 +290,36 @@ export default function LeadsScreen() {
         }
         renderItem={({ item }) => {
           const sc = StatusColors[(item.status || 'New').toLowerCase()] || StatusColors.new;
+          const isSelected = selectedIds.has(item.id);
           return (
             <Pressable
-              style={({ pressed }) => [styles.card, pressed && { opacity: 0.85 }]}
-              onPress={() => router.push(`/lead/${item.id}`)}
+              style={({ pressed }) => [
+                styles.card,
+                pressed && { opacity: 0.85 },
+                isSelected && styles.cardSelected,
+              ]}
+              onPress={() => {
+                if (selectionMode) {
+                  toggleSelect(item.id);
+                } else {
+                  router.push(`/lead/${item.id}`);
+                }
+              }}
+              onLongPress={() => handleLongPress(item.id)}
+              delayLongPress={400}
             >
               <View style={styles.cardTop}>
-                <View style={[styles.avatar, { backgroundColor: sc.bg }]}>
-                  <Text style={[styles.avatarText, { color: sc.text }]}>
-                    {item.clientName?.charAt(0)?.toUpperCase() || '?'}
-                  </Text>
-                </View>
+                {selectionMode ? (
+                  <View style={[styles.checkbox, isSelected && styles.checkboxChecked]}>
+                    {isSelected && <Ionicons name="checkmark" size={16} color="#FFFFFF" />}
+                  </View>
+                ) : (
+                  <View style={[styles.avatar, { backgroundColor: sc.bg }]}>
+                    <Text style={[styles.avatarText, { color: sc.text }]}>
+                      {item.clientName?.charAt(0)?.toUpperCase() || '?'}
+                    </Text>
+                  </View>
+                )}
                 <View style={{ flex: 1 }}>
                   <Text style={styles.cardName}>{item.clientName}</Text>
                   <Text style={styles.cardMeta}>{item.clientPhone || 'No phone'}</Text>
@@ -269,36 +348,64 @@ export default function LeadsScreen() {
                 </View>
               </View>
 
-              <View style={styles.cardActions}>
-                <Pressable
-                  style={[styles.btn, { backgroundColor: Colors.success + '15' }]}
-                  onPress={() => handleCall(item.clientPhone)}
-                >
-                  <Ionicons name="call" size={16} color={Colors.success} />
-                  <Text style={[styles.btnText, { color: Colors.success }]}>Call</Text>
-                </Pressable>
-                <Pressable
-                  style={[styles.btn, { backgroundColor: '#25D36615' }]}
-                  onPress={() => handleWhatsApp(item.id, item.clientPhone, item.clientName, item.vehicleNo, item.expiryDate ? new Date(item.expiryDate).toLocaleDateString() : '')}
-                >
-                  <Ionicons name="logo-whatsapp" size={16} color="#25D366" />
-                  <Text style={[styles.btnText, { color: '#25D366' }]}>WhatsApp</Text>
-                </Pressable>
-                <Pressable
-                  style={[styles.btn, { backgroundColor: Colors.primaryLight }]}
-                  onPress={() => router.push({ pathname: '/call-log', params: { leadId: item.id, leadName: item.clientName } })}
-                >
-                  <Ionicons name="create" size={16} color={Colors.primary} />
-                  <Text style={[styles.btnText, { color: Colors.primary }]}>Log</Text>
-                </Pressable>
-              </View>
+              {!selectionMode && (
+                <View style={styles.cardActions}>
+                  <Pressable
+                    style={[styles.btn, { backgroundColor: Colors.success + '15' }]}
+                    onPress={() => handleCall(item.clientPhone)}
+                  >
+                    <Ionicons name="call" size={16} color={Colors.success} />
+                    <Text style={[styles.btnText, { color: Colors.success }]}>Call</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.btn, { backgroundColor: '#25D36615' }]}
+                    onPress={() => handleWhatsApp(item.id, item.clientPhone, item.clientName, item.vehicleNo, item.expiryDate ? new Date(item.expiryDate).toLocaleDateString() : '')}
+                  >
+                    <Ionicons name="logo-whatsapp" size={16} color="#25D366" />
+                    <Text style={[styles.btnText, { color: '#25D366' }]}>WhatsApp</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.btn, { backgroundColor: Colors.primaryLight }]}
+                    onPress={() => router.push({ pathname: '/call-log', params: { leadId: item.id, leadName: item.clientName } })}
+                  >
+                    <Ionicons name="create" size={16} color={Colors.primary} />
+                    <Text style={[styles.btnText, { color: Colors.primary }]}>Log</Text>
+                  </Pressable>
+                </View>
+              )}
             </Pressable>
           );
         }}
       />
 
+      {/* Bulk Selection Bar */}
+      {selectionMode && (
+        <View style={styles.selectionBar}>
+          <View style={styles.selectionInfo}>
+            <Text style={styles.selectionCount}>{selectedIds.size} selected</Text>
+            <Pressable onPress={selectAll}>
+              <Text style={styles.selectAllText}>Select All</Text>
+            </Pressable>
+          </View>
+          <View style={styles.selectionActions}>
+            <Pressable style={styles.cancelBtn} onPress={cancelSelection}>
+              <Ionicons name="close" size={18} color={Colors.textMuted} />
+              <Text style={styles.cancelBtnText}>Cancel</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.deleteBtn, deleting && { opacity: 0.5 }]}
+              onPress={handleBulkDelete}
+              disabled={deleting}
+            >
+              <Ionicons name="trash-outline" size={18} color="#FFFFFF" />
+              <Text style={styles.deleteBtnText}>{deleting ? 'Deleting...' : 'Delete'}</Text>
+            </Pressable>
+          </View>
+        </View>
+      )}
+
       {/* Sticky Footer */}
-      <AppFooter active="leads" />
+      {!selectionMode && <AppFooter active="leads" />}
     </SafeAreaView>
   );
 }
@@ -375,5 +482,89 @@ const styles = StyleSheet.create({
   filterChipTextActive: {
     color: '#FFFFFF',
     fontWeight: '700',
+  },
+  // Bulk selection styles
+  cardSelected: {
+    borderColor: Colors.primary,
+    borderWidth: 2,
+    backgroundColor: Colors.primaryLight,
+  },
+  checkbox: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 2,
+    borderColor: Colors.border,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+  },
+  checkboxChecked: {
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
+  },
+  selectionBar: {
+    backgroundColor: '#FFFFFF',
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -3 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    elevation: 12,
+  },
+  selectionInfo: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.sm,
+  },
+  selectionCount: {
+    fontSize: FontSize.md,
+    fontWeight: '800',
+    color: Colors.text,
+  },
+  selectAllText: {
+    fontSize: FontSize.sm,
+    fontWeight: '700',
+    color: Colors.primary,
+  },
+  selectionActions: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+  },
+  cancelBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 12,
+    borderRadius: BorderRadius.lg,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  cancelBtnText: {
+    fontSize: FontSize.md,
+    fontWeight: '700',
+    color: Colors.textMuted,
+  },
+  deleteBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 12,
+    borderRadius: BorderRadius.lg,
+    backgroundColor: Colors.error,
+  },
+  deleteBtnText: {
+    fontSize: FontSize.md,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
 });

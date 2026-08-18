@@ -42,8 +42,8 @@ export default function AppFooter({ active }: Props) {
     <View
       style={[
         styles.footer,
-        // On Android, insets.bottom is 0 — use a fixed baseline padding
-        { paddingBottom: Platform.OS === 'ios' ? insets.bottom : 8 },
+        // Proper bottom safe area: iOS uses insets, Android uses at least 10px
+        { paddingBottom: Platform.OS === 'ios' ? Math.max(insets.bottom, 8) : Math.max(insets.bottom, 10) },
       ]}
     >
       {TABS.map((tab) => {

@@ -9,6 +9,10 @@ export async function GET(req: NextRequest) {
 
   try {
     const leads = await prisma.lead.findMany({
+      where: {
+        deletedAt: null,
+        status: { not: 'Trashed' }
+      },
       orderBy: { createdAt: 'desc' },
       include: {
         assignee: { select: { fullName: true } }

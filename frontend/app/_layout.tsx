@@ -1,6 +1,6 @@
 import { Slot, useRouter, useSegments, useRootNavigationState } from 'expo-router';
 import React, { useEffect } from 'react';
-import { View, Text, ScrollView } from 'react-native';
+import { View, Text, ScrollView, StatusBar, Platform } from 'react-native';
 import * as SplashScreen from 'expo-splash-screen';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider, useAuth } from '../src/context/AuthContext';
@@ -95,6 +95,11 @@ export default function RootLayout() {
   return (
     <ErrorBoundary>
       <SafeAreaProvider>
+        <StatusBar
+          barStyle="dark-content"
+          backgroundColor="#FFFFFF"
+          translucent={Platform.OS === 'android'}
+        />
         <AuthProvider>
           <RootLayoutNav />
         </AuthProvider>

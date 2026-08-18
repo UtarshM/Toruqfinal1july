@@ -197,8 +197,12 @@ export async function POST(req: NextRequest) {
     const errorRows: any[] = []
     const vehicleNumbers = new Set<string>()
 
-    // Fetch existing vehicle numbers and known agent phone numbers using lightweight select
+    // Fetch active existing vehicle numbers and known agent phone numbers using lightweight select (ignoring deleted/trashed leads)
     const existingLeads = await prisma.lead.findMany({
+      where: {
+        deletedAt: null,
+        status: { not: 'Trashed' }
+      },
       select: { vehicleNo: true, clientPhone: true, existingAgent: true }
     })
     const existingVehicles = new Set(existingLeads.map(l => l.vehicleNo).filter(Boolean))
@@ -364,9 +368,13 @@ export async function POST(req: NextRequest) {
       select: { id: true }
     })
 
-    // Find the last assigned lead to continue the round-robin sequence
+    // Find the last assigned lead to continue the round-robin sequence from where it left off
     const lastAssignedLead = await prisma.lead.findFirst({
-      where: { assignedTo: { not: null } },
+      where: {
+        assignedTo: { not: null },
+        deletedAt: null,
+        status: { not: 'Trashed' }
+      },
       orderBy: { createdAt: 'desc' },
       select: { assignedTo: true }
     })
