@@ -11,7 +11,8 @@ import {
   Alert,
   Platform,
   Linking,
-  StatusBar
+  StatusBar,
+  Switch
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
@@ -1077,14 +1078,108 @@ export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClo
           </View>
         )}
 
-        {/* Revert Banner if Reverted */}
-        {status === 'Reverted' && submission?.revertReason && (
-          <View style={styles.revertBanner}>
-            <Ionicons name="alert-circle" size={20} color="#E11D48" />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.revertBannerTitle}>Manager Reverted Submission:</Text>
-              <Text style={styles.revertBannerText}>"{submission.revertReason}"</Text>
+        {/* Policy Issued Banner */}
+        {(status === 'Policy_Issued' || status === 'Issued') && (
+          <View style={{
+            backgroundColor: '#ECFDF5',
+            borderBottomWidth: 1,
+            borderBottomColor: '#A7F3D0',
+            paddingHorizontal: 16,
+            paddingVertical: 10,
+            gap: 6
+          }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
+                <Ionicons name="checkmark-circle" size={20} color="#059669" />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 13, fontWeight: '800', color: '#065F46' }}>
+                    POLICY ISSUED & ACTIVE
+                  </Text>
+                  <Text style={{ fontSize: 11, color: '#047857', marginTop: 1 }}>
+                    #{submission?.issuedPolicyNumber || submission?.formData?.policyNumber || 'Active'} • {submission?.issuedProvider || submission?.formData?.provider || 'Torque'}
+                  </Text>
+                </View>
+              </View>
+
+              {/* View Issued PDF Button */}
+              {submission?.issuedPolicyPdfUrl && (isManagerOrAdmin || submission?.visibleToSalesPerson !== false) && (
+                <Pressable
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 4,
+                    backgroundColor: '#059669',
+                    paddingHorizontal: 10,
+                    paddingVertical: 6,
+                    borderRadius: 6
+                  }}
+                  onPress={() => previewPdf(submission.issuedPolicyPdfUrl)}
+                >
+                  <Ionicons name="document-text" size={14} color="#FFFFFF" />
+                  <Text style={{ fontSize: 11, fontWeight: '800', color: '#FFFFFF' }}>View Policy PDF</Text>
+                </Pressable>
+              )}
             </View>
+
+            {/* Sales Person Access Notice if restricted */}
+            {!isManagerOrAdmin && submission?.visibleToSalesPerson === false && (
+              <View style={{ backgroundColor: '#FEF2F2', padding: 6, borderRadius: 6, marginTop: 2 }}>
+                <Text style={{ fontSize: 10, fontWeight: '700', color: '#B91C1C' }}>
+                  🔒 Official document viewing restricted by manager. Contact your manager if access is required.
+                </Text>
+              </View>
+            )}
+
+            {/* Manager Visibility Toggle */}
+            {isManagerOrAdmin && (
+              <View style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                backgroundColor: '#FFFFFF',
+                paddingHorizontal: 10,
+                paddingVertical: 6,
+                borderRadius: 6,
+                borderWidth: 1,
+                borderColor: '#D1FAE5',
+                marginTop: 2
+              }}>
+                <Text style={{ fontSize: 11, fontWeight: '700', color: '#065F46' }}>
+                  Allow Sales Person to view policy PDF:
+                </Text>
+                <Switch
+                  value={submission?.visibleToSalesPerson !== false}
+                  onValueChange={async (val) => {
+                    setSubmission((prev: any) => ({ ...prev, visibleToSalesPerson: val }));
+                    try {
+                      await api.post('/manager/submissions', {
+                        leadId,
+                        action: 'TOGGLE_VISIBILITY',
+                        visibleToSalesPerson: val
+                      });
+                      const { data: dbLead } = await supabase
+                        .from('leads')
+                        .select('customFields')
+                        .eq('id', leadId)
+                        .single();
+                      const cf = (dbLead?.customFields && typeof dbLead.customFields === 'object') ? (dbLead.customFields as any) : {};
+                      const sub = cf.policySubmission || {};
+                      await supabase
+                        .from('leads')
+                        .update({
+                          customFields: {
+                            ...cf,
+                            policySubmission: { ...sub, visibleToSalesPerson: val, updatedAt: new Date().toISOString() }
+                          }
+                        })
+                        .eq('id', leadId);
+                    } catch {}
+                  }}
+                  trackColor={{ false: '#CBD5E1', true: '#10B981' }}
+                  thumbColor="#FFFFFF"
+                />
+              </View>
+            )}
           </View>
         )}
 

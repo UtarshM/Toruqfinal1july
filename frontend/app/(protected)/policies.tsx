@@ -1,6 +1,9 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { View, Text, StyleSheet, FlatList, Pressable, RefreshControl, Modal, TextInput, ScrollView, ActivityIndicator, Alert, Linking, Platform } from 'react-native';
+import {
+  View, Text, StyleSheet, FlatList, Pressable, RefreshControl,
+  Modal, TextInput, ScrollView, ActivityIndicator, Alert, Linking, Platform, Switch
+} from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -14,123 +17,64 @@ import { useAuth } from '../../src/context/AuthContext';
 import Sidebar from '../../src/components/Sidebar';
 import DatePickerSelector from '../../src/components/DatePickerSelector';
 
-interface DropdownProps {
-  label: string;
-  placeholder: string;
-  options: { label: string; value: string }[];
-  selectedValue: string;
-  onSelect: (value: string) => void;
-  searchable?: boolean;
-  onOpen?: () => void;
-  loading?: boolean;
-}
+export const MASTER_COMPANIES = [
+  'ALL',
+  'CHOLA',
+  'SHRIRAM',
+  'SBI',
+  'DIGIT',
+  'TATA AIG',
+  'RELIANCE',
+  'ICICI LOMBARD',
+  'ZUNO',
+  'IFFCO TOKIO',
+  'MAGMA',
+  'ZURICH KOTAK',
+  'FUTURE GENERALI',
+  'ROYAL SUNDARAM',
+  'HDFC ERGO',
+  'BAJAJ ALLIANZ',
+  'UNITED INDIA',
+  'NEW INDIA ASSURANCE',
+  'NATIONAL INSURANCE',
+  'ORIENTAL INSURANCE',
+  'OTHER'
+];
 
-function DropdownSelector({ label, placeholder, options, selectedValue, onSelect, searchable = false, onOpen, loading = false }: DropdownProps) {
-  const [modalVisible, setModalVisible] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  
-  const selectedOption = options.find(o => o.value === selectedValue);
-  const filteredOptions = options.filter(o => 
-    o.label.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-  
-  return (
-    <View style={styles.dropdownField}>
-      <Text style={styles.label}>{label.toUpperCase()}</Text>
-      <Pressable 
-        style={styles.dropdownTrigger} 
-        onPress={() => {
-          setSearchQuery('');
-          setModalVisible(true);
-          if (onOpen) onOpen();
-        }}
-      >
-        <Text style={[styles.dropdownTriggerText, !selectedOption && styles.placeholderText]}>
-          {selectedOption ? selectedOption.label : placeholder}
-        </Text>
-        {loading ? (
-          <ActivityIndicator size="small" color={Colors.primary} />
-        ) : (
-          <Ionicons name="chevron-down" size={20} color={Colors.textMuted} />
-        )}
-      </Pressable>
-      
-      <Modal
-        visible={modalVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setModalVisible(false)}
-      >
-        <View style={styles.modalBackdrop}>
-          <View style={styles.dropdownModalContent}>
-            <View style={styles.dropdownModalHeader}>
-              <Text style={styles.dropdownModalTitle}>{label}</Text>
-              <Pressable onPress={() => setModalVisible(false)} style={styles.modalCloseBtn}>
-                <Ionicons name="close" size={24} color={Colors.text} />
-              </Pressable>
-            </View>
-            
-            {searchable && (
-              <View style={styles.searchContainer}>
-                <Ionicons name="search" size={20} color={Colors.textLight} style={styles.searchIcon} />
-                <TextInput
-                  style={styles.searchInput}
-                  placeholder={`Search ${label.toLowerCase()}...`}
-                  placeholderTextColor={Colors.textLight}
-                  value={searchQuery}
-                  onChangeText={setSearchQuery}
-                />
-                {searchQuery.length > 0 && (
-                  <Pressable onPress={() => setSearchQuery('')} style={styles.searchClearBtn}>
-                    <Ionicons name="close-circle" size={16} color={Colors.textLight} />
-                  </Pressable>
-                )}
-              </View>
-            )}
-            
-            <ScrollView style={styles.optionsList} keyboardShouldPersistTaps="handled">
-              {filteredOptions.length === 0 ? (
-                <Text style={styles.noOptionsText}>No options found</Text>
-              ) : (
-                filteredOptions.map((opt) => {
-                  const isSelected = opt.value === selectedValue;
-                  return (
-                    <Pressable
-                      key={opt.value}
-                      style={[styles.optionItem, isSelected && styles.optionItemActive]}
-                      onPress={() => {
-                        onSelect(opt.value);
-                        setModalVisible(false);
-                      }}
-                    >
-                      <Text style={[styles.optionText, isSelected && styles.optionTextActive]}>{opt.label}</Text>
-                      {isSelected && <Ionicons name="checkmark" size={18} color={Colors.primary} />}
-                    </Pressable>
-                  );
-                })
-              )}
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
-    </View>
-  );
-}
+export const MASTER_CATEGORIES = [
+  'ALL',
+  'HGV',
+  '3WPCV',
+  '3W GCV',
+  'LMV',
+  'LCV',
+  'TAXI',
+  '2W',
+  'BUS',
+  'OTHER'
+];
 
 export default function PoliciesScreen() {
   const router = useRouter();
   const { user } = useAuth();
-  const roleUpper = user?.role?.toUpperCase() || '';
+  const roleUpper = (typeof (user?.role as any) === 'object' ? (user?.role as any)?.name : user?.role)?.toUpperCase() || '';
   const isManagerOrAdmin = roleUpper.includes('MANAGER') || roleUpper.includes('ADMIN') || roleUpper.includes('SUPER');
+  const isSalesPerson = !isManagerOrAdmin;
 
   const { cache, setCache, loadCache } = useCacheStore();
   const [items, setItems] = useState<any[]>([]);
   const [filter, setFilter] = useState('all');
+  const [companyFilter, setCompanyFilter] = useState('ALL');
+  const [catFilter, setCatFilter] = useState('ALL');
   const [search, setSearch] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [total, setTotal] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [downloadingSheet, setDownloadingSheet] = useState(false);
+
+  // Detail Modal State
+  const [selectedPolicy, setSelectedPolicy] = useState<any | null>(null);
+  const [togglingVisibility, setTogglingVisibility] = useState(false);
 
   // Add Policy Form State
   const [addModalVisible, setAddModalVisible] = useState(false);
@@ -139,7 +83,7 @@ export default function PoliciesScreen() {
   const [loadingLeads, setLoadingLeads] = useState(false);
   const [newPolicy, setNewPolicy] = useState({
     policy_number: '',
-    provider: '',
+    provider: 'DIGIT',
     type: 'Comprehensive',
     premium_amount: '',
     status: 'Active',
@@ -190,13 +134,13 @@ export default function PoliciesScreen() {
         console.warn('[Policies API error, falling back to Supabase DB]', apiErr);
       }
 
-      // Supabase direct fallback
+      // Supabase direct fallback with full lead details & customFields
       if (policiesArr.length === 0) {
         let query = supabase
           .from('policies')
-          .select('id, policyNumber, provider, type, premiumAmount, status, startDate, endDate, createdAt, lead:leads(id, clientName, clientPhone, vehicleNo, customFields, assignee:assignedTo(fullName))')
+          .select('id, policyNumber, provider, type, premiumAmount, status, startDate, endDate, createdAt, lead:leads(id, clientName, clientPhone, clientEmail, vehicleNo, customFields, assignee:assignedTo(fullName))')
           .order('createdAt', { ascending: false })
-          .limit(100);
+          .limit(200);
 
         if (filter !== 'all') {
           query = query.eq('status', filter);
@@ -207,15 +151,63 @@ export default function PoliciesScreen() {
           policiesArr = dbPolicies.map((p: any) => {
             const cf = (p.lead?.customFields && typeof p.lead.customFields === 'object') ? (p.lead.customFields as any) : {};
             const sub = cf.policySubmission || {};
+            const formData = sub.formData || {};
+            const isVisibleToSales = sub.visibleToSalesPerson !== undefined ? sub.visibleToSalesPerson : true;
+
             return {
               ...p,
+              leadId: p.lead?.id,
+              clientName: p.lead?.clientName || 'Direct Policy',
+              clientPhone: p.lead?.clientPhone || formData.mobileNo1 || '',
+              clientEmail: p.lead?.clientEmail || '',
+              vehicleNo: p.lead?.vehicleNo || formData.regNo || 'N/A',
+              category: formData.customerCategory || formData.cat || 'N/A',
+              model: formData.model || 'N/A',
+              gvw: formData.gvw || 'N/A',
               salesPersonName: p.lead?.assignee?.fullName || 'Direct',
-              clientPhone: p.lead?.clientPhone,
               compiledPdfUrl: sub.compiledPdfUrl || null,
               issuedPolicyPdfUrl: sub.issuedPolicyPdfUrl || null,
+              documents: sub.documents || [],
+              formData,
+              visibleToSalesPerson: isVisibleToSales,
+              paidAmount: parseFloat(formData.paidAmount || formData.rsFromCustomer || '0') || 0,
+              pendingAmount: parseFloat(formData.pendingAmount || '0') || 0,
+              paymentMode: formData.paymentMode || 'Cash',
+              hpDetails: formData.hpDetails || 'N/A',
+              ncb: formData.ncb || 'N/A',
             };
           });
         }
+      } else {
+        // Hydrate API items with customFields if available
+        policiesArr = policiesArr.map((p: any) => {
+          const cf = (p.lead?.customFields && typeof p.lead.customFields === 'object') ? (p.lead.customFields as any) : {};
+          const sub = cf.policySubmission || {};
+          const formData = sub.formData || {};
+          const isVisibleToSales = sub.visibleToSalesPerson !== undefined ? sub.visibleToSalesPerson : true;
+
+          return {
+            ...p,
+            leadId: p.lead?.id || p.leadId,
+            clientName: p.lead?.clientName || p.clientName || 'Direct Policy',
+            clientPhone: p.lead?.clientPhone || formData.mobileNo1 || '',
+            vehicleNo: p.lead?.vehicleNo || formData.regNo || 'N/A',
+            category: formData.customerCategory || formData.cat || 'N/A',
+            model: formData.model || 'N/A',
+            gvw: formData.gvw || 'N/A',
+            salesPersonName: p.lead?.assignee?.fullName || p.salesPersonName || 'Direct',
+            compiledPdfUrl: sub.compiledPdfUrl || p.compiledPdfUrl || null,
+            issuedPolicyPdfUrl: sub.issuedPolicyPdfUrl || p.issuedPolicyPdfUrl || null,
+            documents: sub.documents || [],
+            formData,
+            visibleToSalesPerson: isVisibleToSales,
+            paidAmount: parseFloat(formData.paidAmount || formData.rsFromCustomer || '0') || 0,
+            pendingAmount: parseFloat(formData.pendingAmount || '0') || 0,
+            paymentMode: formData.paymentMode || 'Cash',
+            hpDetails: formData.hpDetails || 'N/A',
+            ncb: formData.ncb || 'N/A',
+          };
+        });
       }
 
       setItems(policiesArr);
@@ -230,7 +222,10 @@ export default function PoliciesScreen() {
   const onRefresh = async () => { setRefreshing(true); await load(); setRefreshing(false); };
 
   const previewPdf = async (url: string) => {
-    if (!url) return;
+    if (!url) {
+      Alert.alert('No Document', 'Document file is not attached yet.');
+      return;
+    }
     try {
       if (Platform.OS === 'web') {
         Linking.openURL(url);
@@ -239,6 +234,61 @@ export default function PoliciesScreen() {
       }
     } catch {
       Linking.openURL(url);
+    }
+  };
+
+  const handleToggleSalesVisibility = async (policy: any) => {
+    if (!policy?.leadId) return;
+    const nextVal = !policy.visibleToSalesPerson;
+    setTogglingVisibility(true);
+    try {
+      // 1. Call Backend
+      try {
+        await api.post('/manager/submissions', {
+          leadId: policy.leadId,
+          action: 'TOGGLE_VISIBILITY',
+          visibleToSalesPerson: nextVal
+        });
+      } catch {}
+
+      // 2. Direct Supabase DB update
+      const { data: dbLead } = await supabase
+        .from('leads')
+        .select('customFields')
+        .eq('id', policy.leadId)
+        .single();
+
+      const cf = (dbLead?.customFields && typeof dbLead.customFields === 'object') ? (dbLead.customFields as any) : {};
+      const sub = cf.policySubmission || {};
+
+      await supabase
+        .from('leads')
+        .update({
+          customFields: {
+            ...cf,
+            policySubmission: {
+              ...sub,
+              visibleToSalesPerson: nextVal,
+              updatedAt: new Date().toISOString()
+            }
+          }
+        })
+        .eq('id', policy.leadId);
+
+      // 3. Update local state
+      setItems(prev => prev.map(item => item.id === policy.id ? { ...item, visibleToSalesPerson: nextVal } : item));
+      if (selectedPolicy && selectedPolicy.id === policy.id) {
+        setSelectedPolicy((prev: any) => ({ ...prev, visibleToSalesPerson: nextVal }));
+      }
+
+      Alert.alert(
+        'Visibility Updated',
+        nextVal ? 'Sales person can now see the issued policy & documents.' : 'Issued policy is now hidden from the sales person.'
+      );
+    } catch (err: any) {
+      Alert.alert('Error', err?.message || 'Could not update visibility setting.');
+    } finally {
+      setTogglingVisibility(false);
     }
   };
 
@@ -271,6 +321,61 @@ export default function PoliciesScreen() {
     }
   };
 
+  const handleExportCSV = async () => {
+    if (filteredItems.length === 0) {
+      Alert.alert('No Data', 'No policies matching your filter to export.');
+      return;
+    }
+
+    try {
+      const headers = [
+        'SR NO', 'POLICY NO', 'COMPANY', 'CATEGORY', 'REG NO', 'MODEL',
+        'CLIENT NAME', 'MOBILE 1', 'MOBILE 2', 'GVW', 'POLICY TYPE',
+        'START DATE', 'EXPIRY DATE', 'NET PREMIUM', 'TOTAL PREMIUM',
+        'PAID AMOUNT', 'PENDING DUE', 'PAYMENT MODE', 'SALES PERSON',
+        'ISSUED POLICY PDF', 'MERGED DOC PDF'
+      ];
+
+      const rows = filteredItems.map((p, idx) => [
+        idx + 1,
+        `"${p.policyNumber || ''}"`,
+        `"${p.provider || ''}"`,
+        `"${p.category || ''}"`,
+        `"${p.vehicleNo || ''}"`,
+        `"${p.model || ''}"`,
+        `"${p.clientName || ''}"`,
+        `"${p.clientPhone || ''}"`,
+        `"${p.formData?.mobileNo2 || ''}"`,
+        `"${p.gvw || ''}"`,
+        `"${p.type || ''}"`,
+        `"${p.startDate ? new Date(p.startDate).toISOString().split('T')[0] : ''}"`,
+        `"${p.endDate ? new Date(p.endDate).toISOString().split('T')[0] : ''}"`,
+        p.formData?.netPremium || p.premiumAmount || 0,
+        p.premiumAmount || 0,
+        p.paidAmount || 0,
+        p.pendingAmount || 0,
+        `"${p.paymentMode || ''}"`,
+        `"${p.salesPersonName || ''}"`,
+        `"${p.issuedPolicyPdfUrl || ''}"`,
+        `"${p.compiledPdfUrl || ''}"`
+      ]);
+
+      const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+      const filename = `Policies_Export_${new Date().toISOString().split('T')[0]}.csv`;
+      const fileUri = FileSystem.documentDirectory + filename;
+
+      await FileSystem.writeAsStringAsync(fileUri, csvContent, { encoding: FileSystem.EncodingType.UTF8 });
+
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(fileUri, { mimeType: 'text/csv', dialogTitle: 'Export Policies CSV' });
+      } else {
+        Alert.alert('Exported', `File saved to ${fileUri}`);
+      }
+    } catch (err: any) {
+      Alert.alert('Export Failed', err?.message || 'Could not export CSV');
+    }
+  };
+
   const handleAddPolicy = async () => {
     if (!newPolicy.policy_number.trim() || !newPolicy.provider.trim() || !newPolicy.type.trim() || !newPolicy.premium_amount || !newPolicy.start_date || !newPolicy.end_date || !newPolicy.lead_id) {
       Alert.alert('Error', 'All fields marked with * are required.');
@@ -289,7 +394,7 @@ export default function PoliciesScreen() {
         lead_id: newPolicy.lead_id || null
       });
       setAddModalVisible(false);
-      setNewPolicy({ policy_number: '', provider: '', type: 'Comprehensive', premium_amount: '', status: 'Active', start_date: new Date().toISOString().split('T')[0], end_date: new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString().split('T')[0], lead_id: '' });
+      setNewPolicy({ policy_number: '', provider: 'DIGIT', type: 'Comprehensive', premium_amount: '', status: 'Active', start_date: new Date().toISOString().split('T')[0], end_date: new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString().split('T')[0], lead_id: '' });
       Alert.alert('Success', 'Policy registered successfully!');
       load();
     } catch (e: any) {
@@ -300,12 +405,24 @@ export default function PoliciesScreen() {
   };
 
   const filteredItems = items.filter(item => {
+    // If sales person, check visibility flag
+    if (isSalesPerson && item.visibleToSalesPerson === false) {
+      return false;
+    }
+
+    if (companyFilter !== 'ALL' && !item.provider?.toUpperCase().includes(companyFilter)) {
+      return false;
+    }
+    if (catFilter !== 'ALL' && !item.category?.toUpperCase().includes(catFilter)) {
+      return false;
+    }
     if (!search.trim()) return true;
     const q = search.toLowerCase();
     return (
       item.policyNumber?.toLowerCase().includes(q) ||
-      item.lead?.clientName?.toLowerCase().includes(q) ||
-      item.lead?.vehicleNo?.toLowerCase().includes(q) ||
+      item.clientName?.toLowerCase().includes(q) ||
+      item.vehicleNo?.toLowerCase().includes(q) ||
+      item.clientPhone?.includes(q) ||
       item.provider?.toLowerCase().includes(q)
     );
   });
@@ -314,15 +431,20 @@ export default function PoliciesScreen() {
     <SafeAreaView style={styles.safe} edges={['top']}>
       <Sidebar visible={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
+      {/* Header */}
       <View style={styles.header}>
         <Pressable onPress={() => setSidebarOpen(true)} style={styles.menuBtn}>
           <Ionicons name="menu-outline" size={26} color={Colors.text} />
         </Pressable>
         <View style={{ flex: 1 }}>
           <Text style={styles.title}>Policies</Text>
-          <Text style={styles.subTitle}>{total} {total === 1 ? 'policy' : 'policies'}</Text>
+          <Text style={styles.subTitle}>{filteredItems.length} {filteredItems.length === 1 ? 'policy' : 'policies'} recorded</Text>
         </View>
         <View style={styles.headerRight}>
+          <Pressable onPress={handleExportCSV} style={styles.csvBtn}>
+            <Ionicons name="document-text-outline" size={15} color="#0284C7" />
+            <Text style={styles.csvBtnText}>CSV</Text>
+          </Pressable>
           {isManagerOrAdmin && (
             <Pressable
               onPress={handleDownloadMonthlySheet}
@@ -333,8 +455,8 @@ export default function PoliciesScreen() {
                 <ActivityIndicator size="small" color={Colors.primary} />
               ) : (
                 <>
-                  <Ionicons name="download-outline" size={15} color={Colors.primary} />
-                  <Text style={styles.downloadSheetText}>Excel</Text>
+                  <Ionicons name="cloud-download-outline" size={15} color={Colors.primary} />
+                  <Text style={styles.downloadSheetText}>Master</Text>
                 </>
               )}
             </Pressable>
@@ -347,11 +469,12 @@ export default function PoliciesScreen() {
         </View>
       </View>
 
+      {/* Search Bar */}
       <View style={styles.searchBar}>
         <Ionicons name="search-outline" size={18} color={Colors.textMuted} />
         <TextInput
           style={styles.searchInputField}
-          placeholder="Search by policy no, vehicle, client..."
+          placeholder="Search by policy no, vehicle, client, phone..."
           placeholderTextColor={Colors.textLight}
           value={search}
           onChangeText={setSearch}
@@ -363,14 +486,28 @@ export default function PoliciesScreen() {
         ) : null}
       </View>
 
-      <View style={styles.filterRow}>
+      {/* Filter Row: Company Dropdown & Status Chips */}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll} contentContainerStyle={styles.filterRow}>
         {['all', 'Active', 'Expired', 'Lapsed'].map(s => (
           <Pressable key={s} style={[styles.chip, filter === s && styles.chipActive]} onPress={() => setFilter(s)}>
             <Text style={[styles.chipText, filter === s && styles.chipTextActive]}>{s}</Text>
           </Pressable>
         ))}
-      </View>
 
+        <View style={styles.filterDivider} />
+
+        {MASTER_COMPANIES.slice(0, 8).map(co => (
+          <Pressable
+            key={co}
+            style={[styles.chip, companyFilter === co && styles.chipActiveCo]}
+            onPress={() => setCompanyFilter(co)}
+          >
+            <Text style={[styles.chipText, companyFilter === co && styles.chipTextActive]}>{co}</Text>
+          </Pressable>
+        ))}
+      </ScrollView>
+
+      {/* Policies List */}
       <FlatList 
         data={filteredItems} 
         keyExtractor={i => i.id} 
@@ -379,7 +516,8 @@ export default function PoliciesScreen() {
         ListEmptyComponent={
           <View style={styles.empty}>
             <Ionicons name="shield-checkmark-outline" size={48} color={Colors.textLight} />
-            <Text style={styles.emptyText}>No policies found</Text>
+            <Text style={styles.emptyTitle}>No policies found</Text>
+            <Text style={styles.emptySubtitle}>When managers upload issued policies, they appear here in complete detail.</Text>
           </View>
         }
         renderItem={({ item }) => {
@@ -388,55 +526,249 @@ export default function PoliciesScreen() {
           const expDateFormatted = item.endDate ? new Date(item.endDate).toLocaleDateString('en-IN') : 'N/A';
 
           return (
-            <View style={styles.card}>
+            <Pressable
+              style={({ pressed }) => [styles.card, pressed && { opacity: 0.9 }]}
+              onPress={() => setSelectedPolicy(item)}
+            >
+              {/* Card Top */}
               <View style={styles.cardTop}>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.cardName}>{item.lead?.clientName || 'Direct Policy'}</Text>
-                  {item.lead?.vehicleNo && (
+                  <Text style={styles.cardName}>{item.clientName}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 3 }}>
                     <View style={styles.vehPill}>
-                      <Text style={styles.vehPillText}>{item.lead.vehicleNo}</Text>
+                      <Text style={styles.vehPillText}>{item.vehicleNo}</Text>
+                    </View>
+                    {item.category !== 'N/A' && (
+                      <View style={styles.catPill}>
+                        <Text style={styles.catPillText}>{item.category}</Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text style={styles.cardMeta}>
+                    #{item.policyNumber} · {item.provider} · {item.type}
+                  </Text>
+                </View>
+
+                <View style={{ alignItems: 'flex-end', gap: 4 }}>
+                  <View style={[styles.badge, { backgroundColor: sc.bg }]}>
+                    <Text style={[styles.badgeText, { color: sc.text }]}>{item.status}</Text>
+                  </View>
+                  {isManagerOrAdmin && (
+                    <View style={[styles.visibilityBadge, item.visibleToSalesPerson ? styles.visOn : styles.visOff]}>
+                      <Ionicons name={item.visibleToSalesPerson ? "eye" : "eye-off"} size={10} color={item.visibleToSalesPerson ? "#047857" : "#B91C1C"} />
+                      <Text style={[styles.visibilityBadgeText, item.visibleToSalesPerson ? styles.visOnText : styles.visOffText]}>
+                        {item.visibleToSalesPerson ? 'Sales: Visible' : 'Sales: Hidden'}
+                      </Text>
                     </View>
                   )}
-                  <Text style={styles.cardMeta}>#{item.policyNumber} · {item.provider} · {item.type}</Text>
-                </View>
-                <View style={[styles.badge, { backgroundColor: sc.bg }]}>
-                  <Text style={[styles.badgeText, { color: sc.text }]}>{item.status}</Text>
                 </View>
               </View>
 
+              {/* Commercials Summary */}
               <View style={styles.cardBottom}>
                 <View>
                   <Text style={styles.policyLabel}>Premium</Text>
                   <Text style={styles.policyValue}>₹{Number(item.premiumAmount || 0).toLocaleString('en-IN')}</Text>
                 </View>
                 <View>
+                  <Text style={styles.policyLabel}>Paid / Due</Text>
+                  <Text style={[styles.policyValue, { color: item.pendingAmount > 0 ? '#E11D48' : '#059669' }]}>
+                    ₹{Number(item.paidAmount || 0).toLocaleString('en-IN')} {item.pendingAmount > 0 ? `(₹${item.pendingAmount} due)` : '✓'}
+                  </Text>
+                </View>
+                <View>
                   <Text style={styles.policyLabel}>Expiry Date</Text>
                   <Text style={styles.policyValue}>{expDateFormatted}</Text>
                 </View>
-                {item.salesPersonName && (
-                  <View>
-                    <Text style={styles.policyLabel}>Sales Person</Text>
-                    <Text style={styles.policyValue}>{item.salesPersonName}</Text>
-                  </View>
-                )}
               </View>
 
-              {pdfUrl && (
-                <View style={styles.cardPdfRow}>
+              {/* Action Buttons Row */}
+              <View style={styles.cardActionRow}>
+                {pdfUrl ? (
                   <Pressable
                     style={styles.cardPdfBtn}
-                    onPress={() => previewPdf(pdfUrl)}
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      previewPdf(pdfUrl);
+                    }}
                   >
-                    <Ionicons name="document-text-outline" size={15} color={Colors.primary} />
-                    <Text style={styles.cardPdfBtnText}>View Issued Policy PDF</Text>
+                    <Ionicons name="document-text" size={14} color="#FFFFFF" />
+                    <Text style={styles.cardPdfBtnText}>Company Policy PDF</Text>
                   </Pressable>
-                </View>
-              )}
-            </View>
+                ) : (
+                  <View style={styles.cardNoPdf}>
+                    <Text style={styles.cardNoPdfText}>No PDF Attached</Text>
+                  </View>
+                )}
+
+                {item.compiledPdfUrl && (
+                  <Pressable
+                    style={styles.cardDocBtn}
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      previewPdf(item.compiledPdfUrl);
+                    }}
+                  >
+                    <Ionicons name="attach" size={14} color={Colors.primary} />
+                    <Text style={styles.cardDocBtnText}>7-Doc Bundle</Text>
+                  </Pressable>
+                )}
+
+                <Pressable
+                  style={styles.detailsBtn}
+                  onPress={() => setSelectedPolicy(item)}
+                >
+                  <Text style={styles.detailsBtnText}>All 25 Fields</Text>
+                  <Ionicons name="chevron-forward" size={14} color={Colors.primary} />
+                </Pressable>
+              </View>
+            </Pressable>
           );
         }}
       />
 
+      {/* ========================================================================= */}
+      {/* ── POLICY DETAIL & SALES VISIBILITY MODAL ── */}
+      {/* ========================================================================= */}
+      {selectedPolicy && (
+        <Modal
+          visible={!!selectedPolicy}
+          animationType="slide"
+          onRequestClose={() => setSelectedPolicy(null)}
+        >
+          <SafeAreaView style={styles.modalSafe} edges={['top']}>
+            <View style={styles.modalHeaderDark}>
+              <Pressable onPress={() => setSelectedPolicy(null)} style={styles.closeBtnDark}>
+                <Ionicons name="close" size={24} color="#FFFFFF" />
+              </Pressable>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.modalTitleDark}>Policy Particulars</Text>
+                <Text style={styles.modalSubDark} numberOfLines={1}>
+                  {selectedPolicy.clientName} • #{selectedPolicy.policyNumber}
+                </Text>
+              </View>
+              <View style={[styles.badge, { backgroundColor: '#10B981' }]}>
+                <Text style={[styles.badgeText, { color: '#FFFFFF' }]}>{selectedPolicy.status}</Text>
+              </View>
+            </View>
+
+            <ScrollView style={styles.modalScroll} contentContainerStyle={{ padding: Spacing.md, paddingBottom: 80, gap: Spacing.md }}>
+              
+              {/* MANAGER CONTROL: SALES PERSON VISIBILITY TOGGLE */}
+              {isManagerOrAdmin && (
+                <View style={styles.managerControlCard}>
+                  <View style={{ flex: 1, paddingRight: 8 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Ionicons name="shield-checkmark" size={18} color={Colors.primary} />
+                      <Text style={styles.managerControlTitle}>Sales Person Access</Text>
+                    </View>
+                    <Text style={styles.managerControlDesc}>
+                      {selectedPolicy.visibleToSalesPerson
+                        ? 'Sales Person CAN see this issued policy and download attached documents.'
+                        : 'RESTRICTED: Sales Person CANNOT see or download this policy.'}
+                    </Text>
+                  </View>
+                  <Switch
+                    value={selectedPolicy.visibleToSalesPerson !== false}
+                    onValueChange={() => handleToggleSalesVisibility(selectedPolicy)}
+                    disabled={togglingVisibility}
+                    trackColor={{ false: '#CBD5E1', true: Colors.primary }}
+                    thumbColor="#FFFFFF"
+                  />
+                </View>
+              )}
+
+              {/* 1. VEHICLE & CUSTOMER DETAILS */}
+              <View style={styles.sectionBox}>
+                <Text style={styles.sectionBoxTitle}>Vehicle & Registration</Text>
+                <View style={styles.detailGrid}>
+                  <DetailItem label="Registration No" value={selectedPolicy.vehicleNo} highlight />
+                  <DetailItem label="Category" value={selectedPolicy.category} />
+                  <DetailItem label="Model" value={selectedPolicy.model} />
+                  <DetailItem label="GVW / Weight" value={selectedPolicy.gvw} />
+                  <DetailItem label="Hypothecation (HP)" value={selectedPolicy.hpDetails} />
+                  <DetailItem label="Body Type" value={selectedPolicy.formData?.bodyTypeMatched || 'Matched'} />
+                </View>
+              </View>
+
+              {/* 2. POLICY & COMMERCIAL PARTICULARS */}
+              <View style={styles.sectionBox}>
+                <Text style={styles.sectionBoxTitle}>Policy & Financial Details</Text>
+                <View style={styles.detailGrid}>
+                  <DetailItem label="Policy Number" value={selectedPolicy.policyNumber} highlight />
+                  <DetailItem label="Insurance Company" value={selectedPolicy.provider} highlight />
+                  <DetailItem label="Policy Type" value={selectedPolicy.type} />
+                  <DetailItem label="NCB" value={selectedPolicy.ncb} />
+                  <DetailItem label="Total Premium" value={`₹${Number(selectedPolicy.premiumAmount || 0).toLocaleString('en-IN')}`} highlight />
+                  <DetailItem label="Rs Paid by Client" value={`₹${Number(selectedPolicy.paidAmount || 0).toLocaleString('en-IN')}`} />
+                  <DetailItem label="Pending Due" value={selectedPolicy.pendingAmount > 0 ? `₹${selectedPolicy.pendingAmount}` : 'Nil (Paid)'} />
+                  <DetailItem label="Payment Mode" value={selectedPolicy.paymentMode} />
+                  <DetailItem label="Start Date" value={selectedPolicy.startDate ? new Date(selectedPolicy.startDate).toLocaleDateString('en-IN') : 'N/A'} />
+                  <DetailItem label="Expiry Date" value={selectedPolicy.endDate ? new Date(selectedPolicy.endDate).toLocaleDateString('en-IN') : 'N/A'} highlight />
+                </View>
+              </View>
+
+              {/* 3. CONTACT & SALES EXECUTIVE */}
+              <View style={styles.sectionBox}>
+                <Text style={styles.sectionBoxTitle}>Customer & Team</Text>
+                <View style={styles.detailGrid}>
+                  <DetailItem label="Client Name" value={selectedPolicy.clientName} />
+                  <DetailItem label="Primary Mobile" value={selectedPolicy.clientPhone} />
+                  <DetailItem label="Secondary Mobile" value={selectedPolicy.formData?.mobileNo2 || 'N/A'} />
+                  <DetailItem label="Sales Executive" value={selectedPolicy.salesPersonName} />
+                </View>
+              </View>
+
+              {/* 4. ATTACHED PDF DOCUMENTS */}
+              <View style={styles.sectionBox}>
+                <Text style={styles.sectionBoxTitle}>Attached Policy Documents</Text>
+
+                {selectedPolicy.issuedPolicyPdfUrl ? (
+                  <Pressable
+                    style={styles.bigDocBtn}
+                    onPress={() => previewPdf(selectedPolicy.issuedPolicyPdfUrl)}
+                  >
+                    <Ionicons name="document-text" size={20} color="#FFFFFF" />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.bigDocBtnTitle}>Company Issued Policy PDF</Text>
+                      <Text style={styles.bigDocBtnSub}>Official policy document issued by {selectedPolicy.provider}</Text>
+                    </View>
+                    <Ionicons name="open-outline" size={18} color="#FFFFFF" />
+                  </Pressable>
+                ) : (
+                  <View style={styles.noDocNotice}>
+                    <Text style={styles.noDocNoticeText}>No company issued policy PDF attached.</Text>
+                  </View>
+                )}
+
+                {selectedPolicy.compiledPdfUrl && (
+                  <Pressable
+                    style={[styles.bigDocBtn, { backgroundColor: '#0284C7', marginTop: 8 }]}
+                    onPress={() => previewPdf(selectedPolicy.compiledPdfUrl)}
+                  >
+                    <Ionicons name="copy-outline" size={20} color="#FFFFFF" />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.bigDocBtnTitle}>Consolidated 7-Doc Bundle PDF</Text>
+                      <Text style={styles.bigDocBtnSub}>Single merged PDF containing all client KYC & verification docs</Text>
+                    </View>
+                    <Ionicons name="open-outline" size={18} color="#FFFFFF" />
+                  </Pressable>
+                )}
+              </View>
+
+              {/* Special Remarks if any */}
+              {selectedPolicy.formData?.description && (
+                <View style={styles.sectionBox}>
+                  <Text style={styles.sectionBoxTitle}>Special Remarks</Text>
+                  <Text style={styles.remarksText}>{selectedPolicy.formData.description}</Text>
+                </View>
+              )}
+            </ScrollView>
+          </SafeAreaView>
+        </Modal>
+      )}
+
+      {/* ── Add Policy Modal ── */}
       <Modal
         visible={addModalVisible}
         animationType="slide"
@@ -453,20 +785,6 @@ export default function PoliciesScreen() {
             </View>
 
             <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
-              <DropdownSelector
-                label="Link to Lead *"
-                placeholder="Choose a lead to link"
-                options={leads.map(l => ({
-                  label: `${l.clientName} (${l.vehicleNo || 'No vehicle'})`,
-                  value: l.id
-                }))}
-                selectedValue={newPolicy.lead_id}
-                onSelect={(val) => setNewPolicy(prev => ({ ...prev, lead_id: val }))}
-                searchable
-                onOpen={fetchLeads}
-                loading={loadingLeads}
-              />
-
               <View style={styles.field}>
                 <Text style={styles.label}>POLICY NUMBER *</Text>
                 <TextInput
@@ -479,28 +797,26 @@ export default function PoliciesScreen() {
               </View>
 
               <View style={styles.field}>
-                <Text style={styles.label}>PROVIDER *</Text>
+                <Text style={styles.label}>INSURANCE COMPANY / PROVIDER *</Text>
                 <TextInput
                   style={styles.input}
-                  placeholder="e.g. HDFC Ergo, ICICI Lombard"
+                  placeholder="e.g. DIGIT, CHOLA, SBI, SHRIRAM"
                   placeholderTextColor={Colors.textLight}
                   value={newPolicy.provider}
                   onChangeText={(val) => setNewPolicy({ ...newPolicy, provider: val })}
                 />
               </View>
 
-              <DropdownSelector
-                label="Policy Type *"
-                placeholder="Select Type"
-                options={[
-                  { label: "Comprehensive", value: "Comprehensive" },
-                  { label: "Third Party", value: "Third Party" },
-                  { label: "Zero Depreciation", value: "Zero Depreciation" },
-                  { label: "Own Damage Only", value: "Own Damage Only" }
-                ]}
-                selectedValue={newPolicy.type}
-                onSelect={(val) => setNewPolicy(prev => ({ ...prev, type: val }))}
-              />
+              <View style={styles.field}>
+                <Text style={styles.label}>POLICY TYPE *</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="e.g. FULL, TP, Comprehensive"
+                  placeholderTextColor={Colors.textLight}
+                  value={newPolicy.type}
+                  onChangeText={(val) => setNewPolicy({ ...newPolicy, type: val })}
+                />
+              </View>
 
               <View style={styles.field}>
                 <Text style={styles.label}>PREMIUM AMOUNT *</Text>
@@ -543,42 +859,64 @@ export default function PoliciesScreen() {
   );
 }
 
+function DetailItem({ label, value, highlight }: { label: string; value?: string; highlight?: boolean }) {
+  return (
+    <View style={styles.detailItem}>
+      <Text style={styles.detailLabel}>{label}</Text>
+      <Text style={[styles.detailValue, highlight && styles.detailHighlight]}>{value || 'N/A'}</Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: Colors.background },
-  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: Spacing.lg, paddingTop: Spacing.md, paddingBottom: Spacing.md, borderBottomWidth: 1, borderBottomColor: Colors.border, gap: Spacing.md, backgroundColor: '#FFFFFF' },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.md,
+    paddingBottom: Spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+    gap: Spacing.md,
+    backgroundColor: '#FFFFFF'
+  },
   menuBtn: { padding: Spacing.xs },
-  title: { flex: 1, fontSize: FontSize.xxl, fontWeight: '900', color: Colors.text },
-  headerRight: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
-  countBadge: { backgroundColor: Colors.primaryLight, paddingHorizontal: Spacing.sm, paddingVertical: 4, borderRadius: BorderRadius.md, minWidth: 32, alignItems: 'center' },
-  countText: { fontSize: FontSize.xs, fontWeight: '800', color: Colors.primary },
-  addBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: Colors.primaryLight, justifyContent: 'center', alignItems: 'center' },
-  filterRow: { flexDirection: 'row', paddingHorizontal: Spacing.md, gap: Spacing.sm, paddingVertical: Spacing.sm, backgroundColor: '#FFFFFF' },
-  chip: { paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm, borderRadius: BorderRadius.sm, borderWidth: 1, borderColor: Colors.border },
-  chipActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
-  chipText: { fontSize: FontSize.xs, fontWeight: '600', color: Colors.textMuted },
-  chipTextActive: { color: Colors.white },
-  card: { backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.border, borderRadius: BorderRadius.sm, padding: Spacing.lg, marginHorizontal: Spacing.md, marginBottom: Spacing.sm },
-  cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  cardName: { fontSize: FontSize.lg - 2, fontWeight: '800', color: Colors.text },
-  cardMeta: { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: 2, textTransform: 'capitalize' },
-  badge: { paddingHorizontal: Spacing.sm, paddingVertical: 2, borderRadius: BorderRadius.sm },
-  badgeText: { fontSize: FontSize.xs, fontWeight: '700', textTransform: 'capitalize' },
-  cardBottom: { flexDirection: 'row', justifyContent: 'space-between', marginTop: Spacing.lg, paddingTop: Spacing.md, borderTopWidth: 1, borderTopColor: Colors.border },
-  policyLabel: { fontSize: FontSize.xs, color: Colors.textMuted, fontWeight: '500' },
-  policyValue: { fontSize: FontSize.md, fontWeight: '900', color: Colors.text, marginTop: 2 },
+  title: { fontSize: FontSize.xl, fontWeight: '900', color: Colors.text },
   subTitle: { fontSize: FontSize.xs, color: Colors.textMuted, fontWeight: '500', marginTop: 1 },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  csvBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 9,
+    paddingVertical: 6,
+    backgroundColor: '#E0F2FE',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#BAE6FD',
+  },
+  csvBtnText: { fontSize: 11, fontWeight: '800', color: '#0284C7' },
   downloadSheetBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
+    gap: 3,
+    paddingHorizontal: 9,
+    paddingVertical: 6,
     backgroundColor: Colors.primary + '12',
     borderRadius: 8,
     borderWidth: 1,
     borderColor: Colors.primary + '30',
   },
   downloadSheetText: { fontSize: 11, fontWeight: '800', color: Colors.primary },
+  addBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: Colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -593,32 +931,188 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   searchInputField: { flex: 1, fontSize: FontSize.sm, color: Colors.text, paddingVertical: 0 },
+  filterScroll: { maxHeight: 46, backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: Colors.border },
+  filterRow: { flexDirection: 'row', paddingHorizontal: Spacing.md, gap: Spacing.xs, alignItems: 'center', paddingVertical: 8 },
+  filterDivider: { width: 1, height: 20, backgroundColor: Colors.border, marginHorizontal: 4 },
+  chip: { paddingHorizontal: 12, paddingVertical: 5, borderRadius: BorderRadius.full, borderWidth: 1, borderColor: Colors.border, backgroundColor: '#F8FAFC' },
+  chipActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
+  chipActiveCo: { backgroundColor: '#0284C7', borderColor: '#0284C7' },
+  chipText: { fontSize: 11, fontWeight: '700', color: Colors.textMuted },
+  chipTextActive: { color: Colors.white },
+
+  // List Cards
+  card: {
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: BorderRadius.md,
+    padding: Spacing.md,
+    marginHorizontal: Spacing.md,
+    gap: Spacing.sm,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  cardName: { fontSize: FontSize.md, fontWeight: '800', color: Colors.text },
   vehPill: {
     alignSelf: 'flex-start',
+    backgroundColor: '#EFF6FF',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
+  vehPillText: { fontSize: 11, fontWeight: '800', color: Colors.primary },
+  catPill: {
     backgroundColor: '#F1F5F9',
     paddingHorizontal: 6,
-    paddingVertical: 1,
+    paddingVertical: 2,
     borderRadius: 4,
-    marginTop: 2,
   },
-  vehPillText: { fontSize: 10, fontWeight: '700', color: Colors.primary },
-  cardPdfRow: { marginTop: Spacing.sm, paddingTop: Spacing.sm, borderTopWidth: 1, borderTopColor: Colors.border },
+  catPillText: { fontSize: 10, fontWeight: '700', color: '#475569' },
+  cardMeta: { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: 4 },
+  badge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: BorderRadius.full },
+  badgeText: { fontSize: 10, fontWeight: '800', textTransform: 'capitalize' },
+  visibilityBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  visOn: { backgroundColor: '#DCFCE7' },
+  visOff: { backgroundColor: '#FEE2E2' },
+  visibilityBadgeText: { fontSize: 9, fontWeight: '800' },
+  visOnText: { color: '#047857' },
+  visOffText: { color: '#B91C1C' },
+
+  cardBottom: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingTop: Spacing.xs,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9'
+  },
+  policyLabel: { fontSize: 10, color: Colors.textMuted, fontWeight: '600' },
+  policyValue: { fontSize: FontSize.sm, fontWeight: '800', color: Colors.text, marginTop: 1 },
+
+  cardActionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingTop: Spacing.xs,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+  },
   cardPdfBtn: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 5,
+    gap: 4,
     paddingVertical: 7,
     borderRadius: BorderRadius.sm,
-    backgroundColor: Colors.primary + '12',
-    borderWidth: 1,
-    borderColor: Colors.primary + '25',
+    backgroundColor: '#10B981',
   },
-  cardPdfBtnText: { fontSize: 11, fontWeight: '800', color: Colors.primary },
-  empty: { alignItems: 'center', paddingTop: 60, gap: Spacing.md },
-  emptyText: { fontSize: FontSize.md, color: Colors.textMuted },
+  cardPdfBtnText: { fontSize: 11, fontWeight: '800', color: '#FFFFFF' },
+  cardDocBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 7,
+    borderRadius: BorderRadius.sm,
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
+  cardDocBtnText: { fontSize: 11, fontWeight: '700', color: Colors.primary },
+  detailsBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    paddingHorizontal: 6,
+    paddingVertical: 7,
+  },
+  detailsBtnText: { fontSize: 11, fontWeight: '700', color: Colors.primary },
+  cardNoPdf: {
+    flex: 1,
+    paddingVertical: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F8FAFC',
+    borderRadius: BorderRadius.sm,
+  },
+  cardNoPdfText: { fontSize: 10, color: Colors.textMuted, fontWeight: '600' },
 
-  // Modal styles
+  empty: { alignItems: 'center', paddingTop: 60, gap: Spacing.xs, paddingHorizontal: 30 },
+  emptyTitle: { fontSize: FontSize.lg, fontWeight: '800', color: Colors.text },
+  emptySubtitle: { fontSize: FontSize.sm, color: Colors.textMuted, textAlign: 'center' },
+
+  // Detail Modal
+  modalSafe: { flex: 1, backgroundColor: '#F8FAFC' },
+  modalHeaderDark: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#0F172A',
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Platform.OS === 'ios' ? 10 : 16,
+    paddingBottom: Spacing.md,
+    gap: 12,
+  },
+  closeBtnDark: { padding: Spacing.xs },
+  modalTitleDark: { color: '#FFFFFF', fontSize: FontSize.lg, fontWeight: '800' },
+  modalSubDark: { color: '#94A3B8', fontSize: FontSize.xs, marginTop: 1 },
+  modalScroll: { flex: 1 },
+
+  managerControlCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    borderRadius: BorderRadius.md,
+    padding: Spacing.md,
+  },
+  managerControlTitle: { fontSize: FontSize.sm, fontWeight: '800', color: Colors.primary },
+  managerControlDesc: { fontSize: 11, color: '#1E40AF', marginTop: 2, lineHeight: 15 },
+
+  sectionBox: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: BorderRadius.md,
+    padding: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    gap: Spacing.sm,
+  },
+  sectionBoxTitle: { fontSize: FontSize.sm, fontWeight: '800', color: Colors.text, textTransform: 'uppercase', letterSpacing: 0.5 },
+  detailGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+  detailItem: { width: '47%' },
+  detailLabel: { fontSize: 10, fontWeight: '700', color: Colors.textMuted, textTransform: 'uppercase' },
+  detailValue: { fontSize: FontSize.sm, fontWeight: '600', color: Colors.text, marginTop: 1 },
+  detailHighlight: { fontWeight: '800', color: Colors.primary },
+
+  bigDocBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#10B981',
+    padding: Spacing.md,
+    borderRadius: BorderRadius.md,
+  },
+  bigDocBtnTitle: { color: '#FFFFFF', fontSize: FontSize.sm, fontWeight: '800' },
+  bigDocBtnSub: { color: '#DCFCE7', fontSize: 10, marginTop: 1 },
+  noDocNotice: { padding: Spacing.sm, backgroundColor: '#F8FAFC', borderRadius: BorderRadius.sm, alignItems: 'center' },
+  noDocNoticeText: { fontSize: 11, color: Colors.textMuted },
+  remarksText: { fontSize: FontSize.xs, color: Colors.text, lineHeight: 16 },
+
+  // Add Policy Modal
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   modalContent: { backgroundColor: Colors.background, borderTopLeftRadius: BorderRadius.xl, borderTopRightRadius: BorderRadius.xl, height: '80%', padding: Spacing.lg },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingBottom: Spacing.md, borderBottomWidth: 1, borderBottomColor: Colors.border },
@@ -628,110 +1122,6 @@ const styles = StyleSheet.create({
   field: { marginBottom: Spacing.md },
   label: { fontSize: FontSize.xs, fontWeight: '700', color: Colors.textMuted, letterSpacing: 1.5, marginBottom: Spacing.xs },
   input: { backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.border, borderRadius: BorderRadius.md, height: 50, paddingHorizontal: Spacing.md, fontSize: FontSize.md, color: Colors.text },
-  hint: { fontSize: 10, color: Colors.textLight, marginTop: 4 },
   submitBtn: { backgroundColor: Colors.primary, height: 52, borderRadius: BorderRadius.sm, justifyContent: 'center', alignItems: 'center', marginTop: Spacing.xl },
   submitBtnText: { color: Colors.white, fontSize: FontSize.lg, fontWeight: '700' },
-  dropdownField: {
-    marginBottom: Spacing.md,
-  },
-  dropdownTrigger: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: Colors.surface,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: BorderRadius.md,
-    height: 50,
-    paddingHorizontal: Spacing.md,
-    marginTop: 4,
-  },
-  dropdownTriggerText: {
-    fontSize: FontSize.md,
-    color: Colors.text,
-    fontWeight: '500',
-  },
-  placeholderText: {
-    color: Colors.textLight,
-  },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-end',
-  },
-  dropdownModalContent: {
-    backgroundColor: Colors.white,
-    borderTopLeftRadius: BorderRadius.xl,
-    borderTopRightRadius: BorderRadius.xl,
-    maxHeight: '85%',
-    paddingBottom: 20,
-  },
-  dropdownModalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: Spacing.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-  },
-  dropdownModalTitle: {
-    fontSize: FontSize.lg,
-    fontWeight: '700',
-    color: Colors.text,
-  },
-  modalCloseBtn: {
-    padding: Spacing.xs,
-  },
-  searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.surfaceMuted,
-    borderRadius: BorderRadius.md,
-    marginHorizontal: Spacing.lg,
-    marginVertical: Spacing.sm,
-    paddingHorizontal: Spacing.sm,
-    height: 44,
-  },
-  searchIcon: {
-    marginRight: Spacing.xs,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: FontSize.sm,
-    color: Colors.text,
-    height: '100%',
-  },
-  searchClearBtn: {
-    padding: Spacing.xs,
-  },
-  optionsList: {
-    paddingHorizontal: Spacing.lg,
-  },
-  optionItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: Spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.surfaceMuted,
-  },
-  optionItemActive: {
-    backgroundColor: Colors.primaryLight,
-    paddingHorizontal: Spacing.sm,
-    borderRadius: BorderRadius.sm,
-  },
-  optionText: {
-    fontSize: FontSize.md,
-    color: Colors.text,
-  },
-  optionTextActive: {
-    color: Colors.primary,
-    fontWeight: '600',
-  },
-  noOptionsText: {
-    textAlign: 'center',
-    color: Colors.textLight,
-    paddingVertical: Spacing.xl,
-    fontSize: FontSize.sm,
-  },
 });

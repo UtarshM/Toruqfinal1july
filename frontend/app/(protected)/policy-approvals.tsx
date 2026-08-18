@@ -14,7 +14,8 @@ import {
   Linking,
   ScrollView,
   StatusBar,
-  Image
+  Image,
+  Switch
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
@@ -100,9 +101,11 @@ export default function PolicyApprovalsScreen() {
   // Issue Policy Modal State
   const [issueItem, setIssueItem] = useState<any>(null);
   const [policyNo, setPolicyNo] = useState('');
-  const [provider, setProvider] = useState('Go Digit');
+  const [provider, setProvider] = useState('DIGIT');
+  const [policyType, setPolicyType] = useState('FULL');
   const [premium, setPremium] = useState('');
   const [paidAmount, setPaidAmount] = useState('');
+  const [visibleToSales, setVisibleToSales] = useState(true);
   const [pickedPolicyFile, setPickedPolicyFile] = useState<{ uri: string; name: string; type: string } | null>(null);
   const [issuing, setIssuing] = useState(false);
 
@@ -607,12 +610,13 @@ export default function PolicyApprovalsScreen() {
           action: 'UPLOAD_ISSUED_POLICY',
           policyNumber: pNo,
           provider: prov,
-          policyType: formData.policyType || 'Comprehensive',
+          policyType: policyType || formData.policyType || 'Comprehensive',
           totalPremium: prem,
           paidAmount: paid,
           pendingAmount: Math.max(0, prem - paid),
           paymentMode: formData.paymentMode || 'Cash',
           issuedPolicyPdfUrl: issuedPdfUrl,
+          visibleToSalesPerson: visibleToSales,
           startDate,
           endDate
         });
@@ -623,6 +627,7 @@ export default function PolicyApprovalsScreen() {
           setPolicyNo('');
           setPremium('');
           setPaidAmount('');
+          setVisibleToSales(true);
           setPickedPolicyFile(null);
           loadSubmissions();
           return;
@@ -654,6 +659,7 @@ export default function PolicyApprovalsScreen() {
               issuedProvider: prov,
               issuedPremium: prem,
               issuedPolicyPdfUrl: issuedPdfUrl || prevSub.issuedPolicyPdfUrl,
+              visibleToSalesPerson: visibleToSales,
               issuedAt: new Date().toISOString(),
               issuedBy: user?.full_name || (user as any)?.fullName || 'Manager',
               updatedAt: new Date().toISOString(),
@@ -661,6 +667,7 @@ export default function PolicyApprovalsScreen() {
                 ...prevSub.formData,
                 policyNumber: pNo,
                 provider: prov,
+                policyType: policyType || prevSub.formData?.policyType || 'Comprehensive',
                 totalPremium: prem,
                 paidAmount: paid,
                 pendingAmount: Math.max(0, prem - paid),
@@ -685,10 +692,11 @@ export default function PolicyApprovalsScreen() {
       setPolicyNo('');
       setPremium('');
       setPaidAmount('');
+      setVisibleToSales(true);
       setPickedPolicyFile(null);
       loadSubmissions();
-    } catch (e: any) {
-      Alert.alert('Policy Issuance Error', e.message || 'Could not issue policy');
+    } catch (err: any) {
+      Alert.alert('Error', err.message || 'Could not issue policy');
     } finally {
       setIssuing(false);
     }
@@ -1102,14 +1110,46 @@ export default function PolicyApprovalsScreen() {
               </View>
 
               <View style={styles.formGroup}>
-                <Text style={styles.formLabel}>Insurance Provider</Text>
+                <Text style={styles.formLabel}>Insurance Provider / Company *</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+                  {['DIGIT', 'CHOLA', 'SHRIRAM', 'SBI', 'TATA AIG', 'RELIANCE', 'ICICI LOMBARD', 'ZUNO', 'IFFCO TOKIO', 'MAGMA', 'ROYAL SUNDARAM', 'HDFC ERGO', 'OTHER'].map(co => (
+                    <Pressable
+                      key={co}
+                      style={[
+                        styles.chipSmall,
+                        provider === co && styles.chipSmallActive
+                      ]}
+                      onPress={() => setProvider(co)}
+                    >
+                      <Text style={[styles.chipSmallText, provider === co && styles.chipSmallTextActive]}>{co}</Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
                 <TextInput
                   style={styles.formInput}
-                  placeholder="e.g. Go Digit, ICICI Lombard"
+                  placeholder="Or type custom company..."
                   placeholderTextColor="#94A3B8"
                   value={provider}
                   onChangeText={setProvider}
                 />
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Policy Type</Text>
+                <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
+                  {['FULL', 'TP', 'SAOD', 'COMPREHENSIVE', 'NIL DEP'].map(pt => (
+                    <Pressable
+                      key={pt}
+                      style={[
+                        styles.chipSmall,
+                        policyType === pt && styles.chipSmallActive
+                      ]}
+                      onPress={() => setPolicyType(pt)}
+                    >
+                      <Text style={[styles.chipSmallText, policyType === pt && styles.chipSmallTextActive]}>{pt}</Text>
+                    </Pressable>
+                  ))}
+                </View>
               </View>
 
               <View style={styles.formGroup}>
@@ -1133,6 +1173,22 @@ export default function PolicyApprovalsScreen() {
                   keyboardType="numeric"
                   value={paidAmount}
                   onChangeText={setPaidAmount}
+                />
+              </View>
+
+              {/* Sales Person Access Switch */}
+              <View style={styles.visibilityToggleRow}>
+                <View style={{ flex: 1, paddingRight: 10 }}>
+                  <Text style={styles.visibilityToggleTitle}>Allow Sales Person Access</Text>
+                  <Text style={styles.visibilityToggleDesc}>
+                    {visibleToSales ? 'Sales person can see this policy & docs' : 'Policy will be hidden from sales person'}
+                  </Text>
+                </View>
+                <Switch
+                  value={visibleToSales}
+                  onValueChange={setVisibleToSales}
+                  trackColor={{ false: '#CBD5E1', true: '#10B981' }}
+                  thumbColor="#FFFFFF"
                 />
               </View>
 
@@ -1583,5 +1639,49 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     borderRadius: 8
   },
-  modalIssueButtonText: { fontSize: 13, fontWeight: '800', color: '#FFFFFF' }
+  modalIssueButtonText: { fontSize: 13, fontWeight: '800', color: '#FFFFFF' },
+
+  chipSmall: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 6,
+    backgroundColor: '#F1F5F9',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    marginRight: 6,
+    marginBottom: 4,
+  },
+  chipSmallActive: {
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
+  },
+  chipSmallText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#475569',
+  },
+  chipSmallTextActive: {
+    color: '#FFFFFF',
+  },
+  visibilityToggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#F0FDF4',
+    padding: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#DCFCE7',
+    marginBottom: 10,
+  },
+  visibilityToggleTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#065F46',
+  },
+  visibilityToggleDesc: {
+    fontSize: 10,
+    color: '#047857',
+    marginTop: 1,
+  },
 });
