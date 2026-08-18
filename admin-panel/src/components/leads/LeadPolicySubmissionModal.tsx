@@ -7,6 +7,7 @@ import {
   Car, User, Phone, Calendar, ArrowRight, Sparkles, ExternalLink
 } from 'lucide-react'
 import { fetchApi } from '@/lib/api'
+import { supabase } from '@/lib/supabase'
 
 interface DocumentEntry {
   id: string
@@ -128,11 +129,56 @@ export default function LeadPolicySubmissionModal({ leadId, lead, onClose, onUpd
   // Handle Document Upload
   const handleUploadFile = async (category: string, file: File) => {
     setUploadingCategory(category)
-    const form = new FormData()
-    form.append('file', file)
-    form.append('category', category)
-
     try {
+      const ext = file.name.split('.').pop() || 'jpg'
+      const safeBaseName = file.name.replace(/\.[^/.]+$/, '').replace(/[^a-zA-Z0-9_-]/g, '_')
+      const fileName = `${category.toLowerCase()}_${Date.now()}_${safeBaseName}.${ext}`
+      const storagePath = `lead-documents/${leadId}/${fileName}`
+
+      // 1. Direct Supabase Storage Upload
+      const { data: uploadData, error: uploadErr } = await supabase.storage
+        .from('documents')
+        .upload(storagePath, file, {
+          contentType: file.type || 'application/octet-stream',
+          upsert: true
+        })
+
+      if (!uploadErr && uploadData) {
+        const { data: { publicUrl } } = supabase.storage
+          .from('documents')
+          .getPublicUrl(storagePath)
+
+        const docEntry = {
+          id: `doc_${Date.now()}`,
+          category,
+          categoryLabel: REQUIRED_DOCUMENTS.find(d => d.key === category)?.label || category,
+          fileName: file.name,
+          savedFileName: fileName,
+          filePath: publicUrl,
+          storagePath,
+          fileSize: file.size,
+          fileType: file.type,
+          uploadedAt: new Date().toISOString()
+        }
+
+        // Save doc entry via policy-submission endpoint
+        const res = await fetchApi(`/api/v1/leads/${leadId}/policy-submission`, {
+          method: 'POST',
+          body: JSON.stringify({ document: docEntry })
+        })
+
+        if (res?.submission) {
+          setSubmission(res.submission)
+        }
+        if (onUpdated) onUpdated()
+        return
+      }
+
+      // 2. Fallback to server route
+      const form = new FormData()
+      form.append('file', file)
+      form.append('category', category)
+
       const res = await fetchApi(`/api/v1/leads/${leadId}/policy-submission/upload`, {
         method: 'POST',
         body: form
@@ -140,7 +186,9 @@ export default function LeadPolicySubmissionModal({ leadId, lead, onClose, onUpd
       if (res?.submission) {
         setSubmission(res.submission)
       }
+      if (onUpdated) onUpdated()
     } catch (err: any) {
+      console.error('[Upload error]', err)
       alert(err.message || 'Failed to upload document')
     } finally {
       setUploadingCategory(null)

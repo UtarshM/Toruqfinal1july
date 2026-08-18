@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -14,8 +14,7 @@ import {
   Linking,
   ScrollView,
   StatusBar,
-  Image,
-  Dimensions
+  Image
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
@@ -24,7 +23,6 @@ import * as WebBrowser from 'expo-web-browser';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import * as DocumentPicker from 'expo-document-picker';
-import * as ImagePicker from 'expo-image-picker';
 import * as Print from 'expo-print';
 import { decode } from 'base64-arraybuffer';
 
@@ -36,7 +34,6 @@ import AppFooter from '../../src/components/AppFooter';
 import LeadPolicySubmissionModal from '../../src/components/LeadPolicySubmissionModal';
 
 const LIVE_BASE_URL = 'https://admin-panel-delta-steel.vercel.app';
-const { width } = Dimensions.get('window');
 
 const resolveMediaUrl = (url: string) => {
   if (!url) return '';
@@ -56,17 +53,24 @@ const TABS: TabItem[] = [
   { key: 'Approved', label: 'Approved' },
   { key: 'Issued', label: 'Policy Issued' },
   { key: 'Reverted', label: 'Reverted' },
-  { key: 'all', label: 'All' },
+  { key: 'all', label: 'All Submissions' },
 ];
 
 const DOCUMENT_CATEGORIES: Record<string, string> = {
-  rc_book: 'RC Book (Front & Back)',
-  previous_policy: 'Previous Policy Copy',
-  pan_card: 'PAN Card / ID Proof',
-  vehicle_photo: 'Vehicle Photos (4 Sides)',
-  ncb_confirmation: 'NCB / No Claim Bonus Confirmation',
-  quotation_copy: 'Quotation / Rate Confirmation SS',
-  imp_date_message: 'IMP Date Message Screenshot'
+  IMP_DATE_SS: 'IMP Date Msg SS',
+  NCB_CONFIRMATION_SS: 'NCB Confirmation SS',
+  PAN_CARD: 'PAN Card',
+  PREVIOUS_POLICY: 'Previous Policy',
+  QUOTATION: 'Quotation',
+  RC_BOOK: 'RC Book',
+  VEHICLE_PHOTO: 'Vehicle Photo',
+  rc_book: 'RC Book',
+  previous_policy: 'Previous Policy',
+  pan_card: 'PAN Card',
+  vehicle_photo: 'Vehicle Photo',
+  ncb_confirmation: 'NCB Confirmation',
+  quotation_copy: 'Quotation',
+  imp_date_message: 'IMP Date Msg SS'
 };
 
 export default function PolicyApprovalsScreen() {
@@ -82,10 +86,10 @@ export default function PolicyApprovalsScreen() {
   const [submissions, setSubmissions] = useState<any[]>([]);
   const [expandedLeadIds, setExpandedLeadIds] = useState<Record<string, boolean>>({});
 
-  // Full Policy Modal
+  // Full Policy Edit Modal
   const [selectedLeadModal, setSelectedLeadModal] = useState<any>(null);
 
-  // Single PDF compilation indicator
+  // Single PDF Compilation State
   const [compilingLeadId, setCompilingLeadId] = useState<string | null>(null);
 
   // Revert Modal State
@@ -93,7 +97,7 @@ export default function PolicyApprovalsScreen() {
   const [revertReason, setRevertReason] = useState('');
   const [reverting, setReverting] = useState(false);
 
-  // Issue & Upload Policy Modal State
+  // Issue Policy Modal State
   const [issueItem, setIssueItem] = useState<any>(null);
   const [policyNo, setPolicyNo] = useState('');
   const [provider, setProvider] = useState('Go Digit');
@@ -109,7 +113,7 @@ export default function PolicyApprovalsScreen() {
     try {
       let items: any[] = [];
 
-      // 1. Try API route
+      // 1. Backend Manager Submissions API
       try {
         const queryParams = new URLSearchParams();
         if (activeTab !== 'all') queryParams.set('status', activeTab);
@@ -119,7 +123,7 @@ export default function PolicyApprovalsScreen() {
           items = res.submissions;
         }
       } catch (apiErr) {
-        console.warn('[API error, falling back to Supabase directly]', apiErr);
+        console.warn('[API fetch fallback to Supabase directly]', apiErr);
       }
 
       // 2. Direct Supabase Query Fallback
@@ -155,7 +159,7 @@ export default function PolicyApprovalsScreen() {
         }
       }
 
-      // Local Filter
+      // Local Filtering
       const filtered = items.filter((item: any) => {
         const sub = item.submission || {};
         const st = sub.status || 'Draft';
@@ -181,7 +185,7 @@ export default function PolicyApprovalsScreen() {
 
       setSubmissions(filtered);
     } catch (e) {
-      console.warn('[Policy Approvals] Failed to load:', e);
+      console.warn('[Policy Approvals] Load failed:', e);
     } finally {
       setLoading(false);
     }
@@ -199,47 +203,84 @@ export default function PolicyApprovalsScreen() {
     setRefreshing(false);
   };
 
-  // Compile Single PDF on device if not yet compiled
+  const previewPdf = async (url: string) => {
+    if (!url) return;
+    const fullUrl = resolveMediaUrl(url);
+    try {
+      if (Platform.OS === 'web') {
+        window.open(fullUrl, '_blank');
+      } else {
+        await WebBrowser.openBrowserAsync(fullUrl);
+      }
+    } catch (err) {
+      Linking.openURL(fullUrl).catch(() => Alert.alert('Error', 'Could not open PDF viewer'));
+    }
+  };
+
+  const downloadPdf = async (url: string, vehicleNo: string) => {
+    if (!url) return;
+    const fullUrl = resolveMediaUrl(url);
+    try {
+      const cleanReg = (vehicleNo || 'lead').replace(/[^a-zA-Z0-9_-]/g, '_');
+      const filename = `Policy_Bundle_${cleanReg}_${Date.now()}.pdf`;
+      const localUri = `${FileSystem.documentDirectory}${filename}`;
+
+      const downloadResult = await FileSystem.downloadAsync(fullUrl, localUri);
+      if (downloadResult.status !== 200) throw new Error('Download failed');
+
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(localUri, {
+          mimeType: 'application/pdf',
+          dialogTitle: 'Save / Share Consolidated Policy PDF',
+          UTI: 'com.adobe.pdf'
+        });
+      } else {
+        Alert.alert('PDF Saved! 💾', `File saved at: ${localUri}`);
+      }
+    } catch (e: any) {
+      Alert.alert('Download Error', e.message || 'Could not download PDF');
+    }
+  };
+
   const handleCompileOnDemand = async (item: any) => {
+    const sub = item.submission || {};
+    const docs = sub.documents || [];
+    if (docs.length === 0) {
+      // Prompt user to open edit form and upload docs
+      setSelectedLeadModal(item);
+      return;
+    }
+
     setCompilingLeadId(item.leadId);
     try {
-      const sub = item.submission || {};
-      const docsToCompile = sub.documents || [];
       const formData = sub.formData || {};
-
-      if (docsToCompile.length === 0) {
-        Alert.alert('No Documents Attached', 'Please upload at least one document before compiling the single PDF.');
-        return;
-      }
-
       const clientName = item.clientName || 'Customer';
       const regNumber = formData.regNo || item.vehicleNo || 'N/A';
       const phoneNum = formData.mobileNo1 || item.clientPhone || 'N/A';
 
-      // Inline base64 images
       const docPagesHtml = await Promise.all(
-        docsToCompile.map(async (doc: any, i: number) => {
-          let imgSrc = doc.filePath;
-          const isPdf = (doc.filePath && typeof doc.filePath === 'string' && doc.filePath.toLowerCase().endsWith('.pdf')) || doc.fileType === 'application/pdf';
+        docs.map(async (doc: any, i: number) => {
+          let imgSrc = resolveMediaUrl(doc.filePath);
+          const isPdf = doc.filePath?.toLowerCase().endsWith('.pdf') || doc.fileType === 'application/pdf';
 
           if (isPdf) {
             return `
               <div style="page-break-before: always; padding-top: 16px;">
                 <div style="background: #0284c7; color: #ffffff; padding: 10px 14px; border-radius: 6px; font-size: 14px; font-weight: 800; margin-bottom: 12px;">
-                  <span>Document ${i + 1} of ${docsToCompile.length}: ${doc.categoryLabel || DOCUMENT_CATEGORIES[doc.category] || doc.category}</span>
+                  <span>Document ${i + 1} of ${docs.length}: ${doc.categoryLabel || DOCUMENT_CATEGORIES[doc.category] || doc.category}</span>
                 </div>
                 <div style="text-align: center; border: 1px solid #e2e8f0; border-radius: 8px; padding: 30px; background: #fafafa;">
                   <p style="font-size: 16px; font-weight: bold; color: #0f172a;">Attached PDF Document: ${doc.fileName}</p>
-                  <p style="font-size: 12px; color: #64748b; margin-top: 8px;">Direct Link: <a href="${doc.filePath}" target="_blank" style="color: #0284c7;">${doc.filePath}</a></p>
+                  <p style="font-size: 12px; color: #64748b; margin-top: 8px;">Direct Link: <a href="${imgSrc}" target="_blank" style="color: #0284c7;">${imgSrc}</a></p>
                 </div>
               </div>
             `;
           }
 
           try {
-            if (Platform.OS !== 'web' && doc.filePath && doc.filePath.startsWith('http')) {
+            if (Platform.OS !== 'web' && imgSrc.startsWith('http')) {
               const localTmp = `${FileSystem.cacheDirectory}compile_doc_${i}_${Date.now()}.jpg`;
-              const downloadRes = await FileSystem.downloadAsync(doc.filePath, localTmp);
+              const downloadRes = await FileSystem.downloadAsync(imgSrc, localTmp);
               if (downloadRes?.uri) {
                 const b64 = await FileSystem.readAsStringAsync(downloadRes.uri, {
                   encoding: FileSystem.EncodingType.Base64,
@@ -254,7 +295,7 @@ export default function PolicyApprovalsScreen() {
           return `
             <div style="page-break-before: always; padding-top: 16px;">
               <div style="background: #0284c7; color: #ffffff; padding: 10px 14px; border-radius: 6px; font-size: 14px; font-weight: 800; margin-bottom: 12px;">
-                <span>Document ${i + 1} of ${docsToCompile.length}: ${doc.categoryLabel || DOCUMENT_CATEGORIES[doc.category] || doc.category}</span>
+                <span>Document ${i + 1} of ${docs.length}: ${doc.categoryLabel || DOCUMENT_CATEGORIES[doc.category] || doc.category}</span>
               </div>
               <div style="text-align: center; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px; background: #fafafa;">
                 <img style="max-width: 100%; max-height: 750px; object-fit: contain; border-radius: 6px;" src="${imgSrc}" />
@@ -294,14 +335,10 @@ export default function PolicyApprovalsScreen() {
             <div class="grid">
               <div class="col"><div class="box"><div class="lbl">Vehicle Registration No</div><div class="val">${regNumber}</div></div></div>
               <div class="col"><div class="box"><div class="lbl">Client Mobile Number</div><div class="val">${phoneNum}</div></div></div>
-              <div class="col"><div class="box"><div class="lbl">Insurance Company</div><div class="val">${formData.insCompany || 'N/A'}</div></div></div>
+              <div class="col"><div class="box"><div class="lbl">Insurance Company</div><div class="val">${formData.insCompany || formData.policyType || 'N/A'}</div></div></div>
               <div class="col"><div class="box"><div class="lbl">Payment Mode</div><div class="val">${formData.paymentMode || 'N/A'}</div></div></div>
-              <div class="col"><div class="box"><div class="lbl">GVW / Cubic Capacity</div><div class="val">${formData.gvwCc || 'N/A'}</div></div></div>
-              <div class="col"><div class="box"><div class="lbl">No Claim Bonus (NCB %)</div><div class="val">${formData.ncbPercent || '0'}%</div></div></div>
-              <div class="col"><div class="box"><div class="lbl">Net Premium</div><div class="val">₹${formData.netPremium || '0'}</div></div></div>
-              <div class="col"><div class="box"><div class="lbl">Final Gross Premium</div><div class="val">₹${formData.finalGrossPremium || '0'}</div></div></div>
+              <div class="col"><div class="box"><div class="lbl">Total / Gross Premium</div><div class="val">₹${formData.rsFromCustomer || formData.finalGrossPremium || formData.rate || '0'}</div></div></div>
               <div class="col"><div class="box"><div class="lbl">Policy Expiry Date</div><div class="val">${formData.expDate || 'N/A'}</div></div></div>
-              <div class="col"><div class="box"><div class="lbl">Hypothecation Bank</div><div class="val">${formData.hypothecation || 'None'}</div></div></div>
             </div>
 
             ${docPagesHtml.join('')}
@@ -329,7 +366,7 @@ export default function PolicyApprovalsScreen() {
             .from('documents')
             .getPublicUrl(pdfStoragePath);
 
-          // Save to database
+          // Update database
           const { data: dbLead } = await supabase
             .from('leads')
             .select('customFields')
@@ -355,8 +392,6 @@ export default function PolicyApprovalsScreen() {
 
           loadSubmissions();
           previewPdf(publicUrl);
-        } else {
-          throw new Error(uploadErr?.message || 'Could not upload PDF');
         }
       }
     } catch (compileErr: any) {
@@ -366,56 +401,16 @@ export default function PolicyApprovalsScreen() {
     }
   };
 
-  const previewPdf = async (url: string) => {
-    if (!url) return;
-    const fullUrl = url.startsWith('http') ? url : `${LIVE_BASE_URL}${url}`;
-    try {
-      if (Platform.OS === 'web') {
-        window.open(fullUrl, '_blank');
-      } else {
-        await WebBrowser.openBrowserAsync(fullUrl);
-      }
-    } catch (err) {
-      Linking.openURL(fullUrl).catch(() => Alert.alert('Error', 'Could not open PDF viewer'));
-    }
-  };
-
-  const downloadPdf = async (url: string, vehicleNo: string) => {
-    if (!url) return;
-    const fullUrl = url.startsWith('http') ? url : `${LIVE_BASE_URL}${url}`;
-    try {
-      const cleanReg = (vehicleNo || 'lead').replace(/[^a-zA-Z0-9_-]/g, '_');
-      const filename = `Policy_Bundle_${cleanReg}_${Date.now()}.pdf`;
-      const localUri = `${FileSystem.documentDirectory}${filename}`;
-
-      const downloadResult = await FileSystem.downloadAsync(fullUrl, localUri);
-      if (downloadResult.status !== 200) throw new Error('Download failed');
-
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(localUri, {
-          mimeType: 'application/pdf',
-          dialogTitle: 'Save / Share Consolidated Policy PDF',
-          UTI: 'com.adobe.pdf'
-        });
-      } else {
-        Alert.alert('PDF Saved! 💾', `File saved at: ${localUri}`);
-      }
-    } catch (e: any) {
-      Alert.alert('Download Error', e.message || 'Could not download PDF');
-    }
-  };
-
   const handleApprove = async (item: any) => {
     Alert.alert(
       'Approve Policy Documents',
-      `Confirm approval of all documents for ${item.clientName} (${item.vehicleNo})?`,
+      `Confirm approval of policy documents for ${item.clientName} (${item.vehicleNo})?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Approve ✓',
           onPress: async () => {
             try {
-              // 1. Direct Supabase DB update
               const { data: dbLead } = await supabase
                 .from('leads')
                 .select('customFields')
@@ -451,7 +446,6 @@ export default function PolicyApprovalsScreen() {
                 })
                 .eq('id', item.leadId);
 
-              // 2. Call backend endpoint
               try {
                 await api.post('/manager/submissions', {
                   leadId: item.leadId,
@@ -460,7 +454,7 @@ export default function PolicyApprovalsScreen() {
                 });
               } catch {}
 
-              Alert.alert('Approved ✓', 'Policy documents have been approved. You can now issue the policy once received from the company.');
+              Alert.alert('Approved ✓', 'Policy documents approved.');
               loadSubmissions();
             } catch (e: any) {
               Alert.alert('Approval Failed', e.message || 'Could not approve');
@@ -474,15 +468,13 @@ export default function PolicyApprovalsScreen() {
   const handleConfirmRevert = async () => {
     if (!revertItem) return;
     if (!revertReason.trim()) {
-      Alert.alert('Reason Required', 'Please provide a clear reason for reverting.');
+      Alert.alert('Reason Required', 'Please provide a clear reason for returning the submission.');
       return;
     }
 
     setReverting(true);
     try {
       const reason = revertReason.trim();
-
-      // 1. Direct Supabase DB update
       const { data: dbLead } = await supabase
         .from('leads')
         .select('customFields')
@@ -519,7 +511,6 @@ export default function PolicyApprovalsScreen() {
         })
         .eq('id', revertItem.leadId);
 
-      // 2. Call backend endpoint
       try {
         await api.post('/manager/submissions', {
           leadId: revertItem.leadId,
@@ -528,7 +519,7 @@ export default function PolicyApprovalsScreen() {
         });
       } catch {}
 
-      Alert.alert('Reverted', 'Submission has been reverted to the Sales Executive with your feedback.');
+      Alert.alert('Reverted', 'Submission has been returned to the sales representative.');
       setRevertItem(null);
       setRevertReason('');
       loadSubmissions();
@@ -539,7 +530,6 @@ export default function PolicyApprovalsScreen() {
     }
   };
 
-  // Pick Policy File from Phone (PDF or Image)
   const handlePickPolicyDocument = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
@@ -574,7 +564,7 @@ export default function PolicyApprovalsScreen() {
       const prem = parseFloat(premium) || 0;
       let issuedPdfUrl: string | null = null;
 
-      // 1. Upload the picked policy document to Supabase Storage if attached
+      // Upload policy file if attached
       if (pickedPolicyFile) {
         try {
           const base64Data = await FileSystem.readAsStringAsync(pickedPolicyFile.uri, {
@@ -602,7 +592,7 @@ export default function PolicyApprovalsScreen() {
         }
       }
 
-      // 2. Direct Supabase DB update
+      // Direct Supabase DB update
       const { data: dbLead } = await supabase
         .from('leads')
         .select('customFields')
@@ -635,7 +625,7 @@ export default function PolicyApprovalsScreen() {
                   by: user?.fullName || 'Manager',
                   userId: user?.id,
                   timestamp: new Date().toISOString(),
-                  notes: `Policy #${pNo} issued (${prov}, ₹${prem}) ${issuedPdfUrl ? 'with insurer PDF' : ''}`
+                  notes: `Policy #${pNo} issued (${prov}, ₹${prem})`
                 }
               ]
             }
@@ -643,7 +633,6 @@ export default function PolicyApprovalsScreen() {
         })
         .eq('id', issueItem.leadId);
 
-      // 3. Call backend endpoint
       try {
         await api.post('/manager/submissions', {
           leadId: issueItem.leadId,
@@ -658,7 +647,7 @@ export default function PolicyApprovalsScreen() {
         });
       } catch {}
 
-      Alert.alert('Policy Issued Successfully! 🎉', `Policy #${pNo} recorded and uploaded document archived permanently.`);
+      Alert.alert('Policy Issued Successfully! 🎉', `Policy #${pNo} recorded.`);
       setIssueItem(null);
       setPolicyNo('');
       setPremium('');
@@ -671,15 +660,20 @@ export default function PolicyApprovalsScreen() {
     }
   };
 
-  const getStatusColor = (st: string) => {
+  const getStatusBadge = (st: string) => {
     switch (st) {
-      case 'Pending_Review': return { bg: '#FFFBEB', text: '#B45309', border: '#FDE68A' };
+      case 'Pending_Review':
+        return { label: 'PENDING REVIEW', bg: '#FFFBEB', text: '#D97706', border: '#FDE68A' };
       case 'Approved':
-      case 'Documents_Approved': return { bg: '#ECFDF5', text: '#047857', border: '#A7F3D0' };
+      case 'Documents_Approved':
+        return { label: 'DOCS APPROVED', bg: '#ECFDF5', text: '#059669', border: '#A7F3D0' };
       case 'Issued':
-      case 'Policy_Issued': return { bg: '#EFF6FF', text: '#1D4ED8', border: '#BFDBFE' };
-      case 'Reverted': return { bg: '#FFF1F2', text: '#E11D48', border: '#FECDD3' };
-      default: return { bg: '#F1F5F9', text: '#475569', border: '#E2E8F0' };
+      case 'Policy_Issued':
+        return { label: 'POLICY ISSUED', bg: '#EFF6FF', text: '#2563EB', border: '#BFDBFE' };
+      case 'Reverted':
+        return { label: 'REVERTED', bg: '#FFF1F2', text: '#E11D48', border: '#FECDD3' };
+      default:
+        return { label: 'DRAFT', bg: '#F1F5F9', text: '#64748B', border: '#E2E8F0' };
     }
   };
 
@@ -687,49 +681,49 @@ export default function PolicyApprovalsScreen() {
     <SafeAreaView style={styles.safe} edges={['top']}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
 
-      {/* Header Bar */}
+      {/* Top Header */}
       <View style={styles.headerBar}>
-        <Pressable onPress={() => router.back()} style={styles.backBtn}>
-          <Ionicons name="arrow-back" size={24} color={Colors.text} />
+        <Pressable onPress={() => router.back()} style={styles.iconBtn}>
+          <Ionicons name="arrow-back" size={22} color={Colors.text} />
         </Pressable>
-        <View style={{ flex: 1 }}>
+        <View style={{ flex: 1, paddingHorizontal: 4 }}>
           <Text style={styles.headerTitle}>Policy Approvals</Text>
-          <Text style={styles.headerSubtitle}>Manager Verification & Issuance Hub</Text>
+          <Text style={styles.headerSubtitle}>Manager Verification & Issuance</Text>
         </View>
-        <Pressable onPress={onRefresh} style={styles.refreshBtn}>
+        <Pressable onPress={onRefresh} style={styles.iconBtn}>
           <Ionicons name="refresh" size={20} color={Colors.primary} />
         </Pressable>
       </View>
 
-      {/* Search Bar */}
-      <View style={styles.searchWrap}>
-        <Ionicons name="search" size={18} color={Colors.textMuted} style={styles.searchIcon} />
+      {/* Search Input */}
+      <View style={styles.searchBar}>
+        <Ionicons name="search-outline" size={18} color="#94A3B8" />
         <TextInput
           style={styles.searchInput}
           placeholder="Search client, vehicle no, sales agent..."
-          placeholderTextColor={Colors.textMuted}
+          placeholderTextColor="#94A3B8"
           value={search}
           onChangeText={setSearch}
         />
         {search.length > 0 && (
-          <Pressable onPress={() => setSearch('')} style={styles.clearSearch}>
-            <Ionicons name="close-circle" size={18} color={Colors.textMuted} />
+          <Pressable onPress={() => setSearch('')}>
+            <Ionicons name="close-circle" size={18} color="#94A3B8" />
           </Pressable>
         )}
       </View>
 
-      {/* Filter Tabs */}
-      <View style={styles.tabsContainer}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabsScroll}>
+      {/* Modern Filter Chips */}
+      <View style={styles.filterContainer}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScroll}>
           {TABS.map(tab => {
             const isActive = activeTab === tab.key;
             return (
               <Pressable
                 key={tab.key}
-                style={[styles.tabChip, isActive && styles.tabChipActive]}
+                style={[styles.filterChip, isActive && styles.filterChipActive]}
                 onPress={() => setActiveTab(tab.key)}
               >
-                <Text style={[styles.tabChipText, isActive && styles.tabChipTextActive]}>
+                <Text style={[styles.filterChipText, isActive && styles.filterChipTextActive]}>
                   {tab.label}
                 </Text>
               </Pressable>
@@ -738,11 +732,11 @@ export default function PolicyApprovalsScreen() {
         </ScrollView>
       </View>
 
-      {/* Submissions List */}
+      {/* Main Submissions List */}
       {loading ? (
         <View style={styles.centerView}>
           <ActivityIndicator size="large" color={Colors.primary} />
-          <Text style={styles.loadingText}>Loading policy submissions...</Text>
+          <Text style={styles.loadingText}>Loading submissions...</Text>
         </View>
       ) : (
         <FlatList
@@ -752,10 +746,12 @@ export default function PolicyApprovalsScreen() {
           contentContainerStyle={styles.listContent}
           ListEmptyComponent={
             <View style={styles.emptyView}>
-              <Ionicons name="shield-outline" size={56} color={Colors.textLight} />
+              <View style={styles.emptyIconCircle}>
+                <Ionicons name="shield-checkmark-outline" size={40} color="#94A3B8" />
+              </View>
               <Text style={styles.emptyTitle}>No Submissions Found</Text>
               <Text style={styles.emptySubtitle}>
-                {search ? 'No results matching your search criteria.' : `No submissions under ${activeTab.replace('_', ' ')}.`}
+                {search ? 'No results matched your search query.' : `No submissions found in this tab.`}
               </Text>
             </View>
           }
@@ -764,123 +760,175 @@ export default function PolicyApprovalsScreen() {
             const formData = sub.formData || {};
             const docs = sub.documents || [];
             const st = sub.status || 'Draft';
-            const stColor = getStatusColor(st);
+            const badge = getStatusBadge(st);
             const hasPdf = !!sub.compiledPdfUrl;
             const hasIssuedPdf = !!sub.issuedPolicyPdfUrl;
             const salesName = item.assignee?.fullName || sub.salesPersonName || 'Sales Executive';
             const isExpanded = !!expandedLeadIds[item.leadId];
             const isCompilingThis = compilingLeadId === item.leadId;
 
+            const grossPrem = formData.rsFromCustomer || formData.finalGrossPremium || formData.rate || '0';
+            const netPrem = formData.netPremium || '0';
+            const insCo = formData.insCompany || formData.policyType || 'Comprehensive';
+
             return (
-              <View style={styles.card}>
-                {/* Top Info Header */}
-                <Pressable onPress={() => toggleExpand(item.leadId)} style={styles.cardHeader}>
-                  <View style={styles.avatar}>
+              <View style={styles.modernCard}>
+                {/* 1. Header Row */}
+                <View style={styles.cardTopRow}>
+                  <View style={styles.vehIconBox}>
                     <Ionicons name="car-sport" size={20} color={Colors.primary} />
                   </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.clientName}>{item.clientName}</Text>
-                    <Text style={styles.vehicleNo}>{item.vehicleNo}</Text>
-                  </View>
-                  <View style={{ alignItems: 'flex-end', gap: 4 }}>
-                    <View style={[styles.statusBadge, { backgroundColor: stColor.bg, borderColor: stColor.border }]}>
-                      <Text style={[styles.statusText, { color: stColor.text }]}>
-                        {st === 'Pending_Review' ? 'Under Review' : st.replace('_', ' ')}
-                      </Text>
+                  <View style={{ flex: 1, paddingLeft: 8 }}>
+                    <Text style={styles.cardClientName} numberOfLines={1}>{item.clientName}</Text>
+                    <View style={styles.regPill}>
+                      <Text style={styles.regPillText}>{item.vehicleNo}</Text>
                     </View>
-                    <Ionicons name={isExpanded ? "chevron-up" : "chevron-down"} size={16} color={Colors.textMuted} />
                   </View>
-                </Pressable>
+                  <View style={[styles.badgePill, { backgroundColor: badge.bg, borderColor: badge.border }]}>
+                    <Text style={[styles.badgePillText, { color: badge.text }]}>{badge.label}</Text>
+                  </View>
+                </View>
 
-                {/* Submitter Details */}
-                <View style={styles.submitterRow}>
-                  <View style={styles.metaItem}>
-                    <Ionicons name="person-outline" size={13} color={Colors.textMuted} />
-                    <Text style={styles.metaText}>Submitted by: <Text style={{ fontWeight: '700', color: Colors.text }}>{salesName}</Text></Text>
+                {/* 2. Submitter Info */}
+                <View style={styles.submitterBar}>
+                  <View style={styles.subLeft}>
+                    <Ionicons name="person-circle-outline" size={14} color="#64748B" />
+                    <Text style={styles.subText}>Sales: <Text style={styles.subBold}>{salesName}</Text></Text>
                   </View>
                   {sub.submittedAt && (
-                    <View style={styles.metaItem}>
-                      <Ionicons name="calendar-outline" size={13} color={Colors.textMuted} />
-                      <Text style={styles.metaText}>{new Date(sub.submittedAt).toLocaleDateString('en-IN')}</Text>
-                    </View>
+                    <Text style={styles.dateText}>{new Date(sub.submittedAt).toLocaleDateString('en-IN')}</Text>
                   )}
                 </View>
 
-                {/* Key Summary Particulars */}
-                <View style={styles.particularsGrid}>
-                  <View style={styles.gridCol}>
-                    <Text style={styles.lbl}>NET PREMIUM</Text>
-                    <Text style={styles.val}>₹{formData.netPremium || '0'}</Text>
+                {/* 3. Clean Stats Summary Tiles */}
+                <View style={styles.statsRow}>
+                  <View style={styles.statTile}>
+                    <Text style={styles.statTileLabel}>GROSS PREMIUM</Text>
+                    <Text style={[styles.statTileVal, { color: '#059669' }]}>₹{grossPrem}</Text>
                   </View>
-                  <View style={styles.gridCol}>
-                    <Text style={styles.lbl}>GROSS PREMIUM</Text>
-                    <Text style={styles.val}>₹{formData.finalGrossPremium || '0'}</Text>
+                  <View style={styles.statTile}>
+                    <Text style={styles.statTileLabel}>NET PREMIUM</Text>
+                    <Text style={styles.statTileVal}>₹{netPrem}</Text>
                   </View>
-                  <View style={styles.gridCol}>
-                    <Text style={styles.lbl}>INSURANCE CO</Text>
-                    <Text style={styles.val} numberOfLines={1}>{formData.insCompany || 'N/A'}</Text>
-                  </View>
-                  <View style={styles.gridCol}>
-                    <Text style={styles.lbl}>PAYMENT MODE</Text>
-                    <Text style={styles.val}>{formData.paymentMode || 'N/A'}</Text>
-                  </View>
-                  <View style={styles.gridCol}>
-                    <Text style={styles.lbl}>NCB %</Text>
-                    <Text style={styles.val}>{formData.ncbPercent || '0'}%</Text>
-                  </View>
-                  <View style={styles.gridCol}>
-                    <Text style={styles.lbl}>ATTACHED DOCS</Text>
-                    <Text style={[styles.val, { color: docs.length >= 7 ? '#10B981' : '#F59E0B' }]}>
-                      {docs.length} / 7 Uploaded
+                  <View style={styles.statTile}>
+                    <Text style={styles.statTileLabel}>DOCUMENTS</Text>
+                    <Text style={[styles.statTileVal, { color: docs.length >= 7 ? '#059669' : '#D97706' }]}>
+                      {docs.length} / 7
                     </Text>
                   </View>
                 </View>
 
-                {/* EXPANDED FULL DETAILS (All 25 Fields + 7 Attached Document Previews) */}
+                {/* Reverted Feedback Banner */}
+                {st === 'Reverted' && sub.revertReason && (
+                  <View style={styles.revertBox}>
+                    <Ionicons name="alert-circle" size={15} color="#E11D48" />
+                    <Text style={styles.revertBoxText}>Reason: {sub.revertReason}</Text>
+                  </View>
+                )}
+
+                {/* 4. Single Master PDF Action Strip */}
+                <View style={styles.pdfStrip}>
+                  {hasPdf ? (
+                    <>
+                      <Pressable
+                        style={styles.primaryPdfBtn}
+                        onPress={() => previewPdf(sub.compiledPdfUrl)}
+                      >
+                        <Ionicons name="eye" size={15} color="#FFFFFF" />
+                        <Text style={styles.primaryPdfBtnText}>Preview Single PDF</Text>
+                      </Pressable>
+
+                      <Pressable
+                        style={styles.secondaryPdfBtn}
+                        onPress={() => downloadPdf(sub.compiledPdfUrl, item.vehicleNo)}
+                      >
+                        <Ionicons name="download-outline" size={15} color="#0F172A" />
+                        <Text style={styles.secondaryPdfBtnText}>Save</Text>
+                      </Pressable>
+                    </>
+                  ) : docs.length > 0 ? (
+                    <Pressable
+                      style={styles.compileBtn}
+                      onPress={() => handleCompileOnDemand(item)}
+                      disabled={isCompilingThis}
+                    >
+                      {isCompilingThis ? (
+                        <ActivityIndicator size="small" color={Colors.primary} />
+                      ) : (
+                        <>
+                          <Ionicons name="sparkles" size={15} color={Colors.primary} />
+                          <Text style={styles.compileBtnText}>Compile & Preview Single PDF</Text>
+                        </>
+                      )}
+                    </Pressable>
+                  ) : (
+                    <Pressable
+                      style={styles.uploadPromptBtn}
+                      onPress={() => setSelectedLeadModal(item)}
+                    >
+                      <Ionicons name="cloud-upload-outline" size={15} color={Colors.primary} />
+                      <Text style={styles.uploadPromptBtnText}>Upload Documents & Fill Form</Text>
+                    </Pressable>
+                  )}
+                </View>
+
+                {/* 5. Issued Policy Copy Button (If Available) */}
+                {hasIssuedPdf && (
+                  <Pressable
+                    style={styles.issuedPolicyDocBtn}
+                    onPress={() => previewPdf(sub.issuedPolicyPdfUrl)}
+                  >
+                    <Ionicons name="checkmark-done-circle" size={16} color="#059669" />
+                    <Text style={styles.issuedPolicyDocText}>View Insurer Issued Policy PDF</Text>
+                  </Pressable>
+                )}
+
+                {/* 6. Expand / Collapse Full Details Toggle */}
+                <Pressable onPress={() => toggleExpand(item.leadId)} style={styles.expandToggleBtn}>
+                  <Text style={styles.expandToggleText}>
+                    {isExpanded ? 'Hide Details' : `View Full Details & Documents (${docs.length})`}
+                  </Text>
+                  <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={14} color="#64748B" />
+                </Pressable>
+
+                {/* 7. Expanded Full Particulars & Document Grid */}
                 {isExpanded && (
-                  <View style={styles.expandedSection}>
-                    <Text style={styles.expandedSectionHeader}>Full Policy Particulars (25 Fields)</Text>
-                    <View style={styles.fullGrid}>
-                      <View style={styles.fullCol}><Text style={styles.lbl}>Vehicle Reg No</Text><Text style={styles.valSm}>{formData.regNo || item.vehicleNo}</Text></View>
-                      <View style={styles.fullCol}><Text style={styles.lbl}>Mobile No 1</Text><Text style={styles.valSm}>{formData.mobileNo1 || item.clientPhone}</Text></View>
-                      <View style={styles.fullCol}><Text style={styles.lbl}>Mobile No 2</Text><Text style={styles.valSm}>{formData.mobileNo2 || '-'}</Text></View>
-                      <View style={styles.fullCol}><Text style={styles.lbl}>Policy Type</Text><Text style={styles.valSm}>{formData.policyType || 'Comprehensive'}</Text></View>
-                      <View style={styles.fullCol}><Text style={styles.lbl}>Customer Type</Text><Text style={styles.valSm}>{formData.customerType || 'Existing'}</Text></View>
-                      <View style={styles.fullCol}><Text style={styles.lbl}>Category</Text><Text style={styles.valSm}>{formData.customerCategory || 'MVC'}</Text></View>
-                      <View style={styles.fullCol}><Text style={styles.lbl}>GVW / CC</Text><Text style={styles.valSm}>{formData.gvwCc || '-'}</Text></View>
-                      <View style={styles.fullCol}><Text style={styles.lbl}>Hypothecation Bank</Text><Text style={styles.valSm}>{formData.hypothecation || 'None'}</Text></View>
-                      <View style={styles.fullCol}><Text style={styles.lbl}>Expiry Date</Text><Text style={styles.valSm}>{formData.expDate || '-'}</Text></View>
-                      <View style={styles.fullCol}><Text style={styles.lbl}>Rate Confirmation</Text><Text style={styles.valSm}>{formData.rateConfirmation || 'YES'}</Text></View>
-                      <View style={styles.fullCol}><Text style={styles.lbl}>NCB Confirmation</Text><Text style={styles.valSm}>{formData.ncbConfirmation || 'Yes'}</Text></View>
-                      <View style={styles.fullCol}><Text style={styles.lbl}>Inspection Status</Text><Text style={styles.valSm}>{formData.inspectionStatus || 'Not Required'}</Text></View>
-                      <View style={styles.fullCol}><Text style={styles.lbl}>Google Form Submitted</Text><Text style={styles.valSm}>{formData.googleFormSubmitted || 'YES'}</Text></View>
-                      <View style={styles.fullCol}><Text style={styles.lbl}>Description / Notes</Text><Text style={styles.valSm}>{formData.description || 'None'}</Text></View>
+                  <View style={styles.expandedDrawer}>
+                    <Text style={styles.drawerHeading}>Policy Particulars</Text>
+                    <View style={styles.drawerGrid}>
+                      <View style={styles.drawerGridCol}><Text style={styles.drawerLbl}>Policy Type</Text><Text style={styles.drawerVal}>{formData.policyType || insCo}</Text></View>
+                      <View style={styles.drawerGridCol}><Text style={styles.drawerLbl}>Customer Type</Text><Text style={styles.drawerVal}>{formData.customerType || 'Existing'}</Text></View>
+                      <View style={styles.drawerGridCol}><Text style={styles.drawerLbl}>Category</Text><Text style={styles.drawerVal}>{formData.customerCategory || 'MVC'}</Text></View>
+                      <View style={styles.drawerGridCol}><Text style={styles.drawerLbl}>Payment Mode</Text><Text style={styles.drawerVal}>{formData.paymentMode || 'Cash'}</Text></View>
+                      <View style={styles.drawerGridCol}><Text style={styles.drawerLbl}>NCB Bonus</Text><Text style={styles.drawerVal}>{formData.ncbPercent || '0'}%</Text></View>
+                      <View style={styles.drawerGridCol}><Text style={styles.drawerLbl}>Expiry Date</Text><Text style={styles.drawerVal}>{formData.expDate || '-'}</Text></View>
+                      <View style={styles.drawerGridCol}><Text style={styles.drawerLbl}>Hypothecation</Text><Text style={styles.drawerVal}>{formData.hpDetails || formData.hypothecation || 'None'}</Text></View>
+                      <View style={styles.drawerGridCol}><Text style={styles.drawerLbl}>Rate Confirmation</Text><Text style={styles.drawerVal}>{formData.rateConfirmationSS || 'YES'}</Text></View>
                     </View>
 
-                    {/* 7 Document Thumbnails */}
-                    <Text style={[styles.expandedSectionHeader, { marginTop: 12 }]}>Attached Documents ({docs.length}/7)</Text>
+                    <Text style={[styles.drawerHeading, { marginTop: 12 }]}>Uploaded Documents ({docs.length})</Text>
                     {docs.length === 0 ? (
-                      <Text style={styles.noDocsText}>No documents uploaded yet</Text>
+                      <Text style={styles.noDocsNotice}>No documents attached to this submission yet.</Text>
                     ) : (
-                      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.docsScroll}>
-                        {docs.map((doc: any, index: number) => {
+                      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.docThumbScroll}>
+                        {docs.map((doc: any, idx: number) => {
                           const fullDocUrl = resolveMediaUrl(doc.filePath);
                           const isDocPdf = doc.filePath?.toLowerCase().endsWith('.pdf') || doc.fileType === 'application/pdf';
                           return (
                             <Pressable
-                              key={index}
-                              style={styles.docThumbCard}
+                              key={idx}
+                              style={styles.docThumbBox}
                               onPress={() => previewPdf(fullDocUrl)}
                             >
                               {isDocPdf ? (
-                                <View style={styles.pdfThumbPlaceholder}>
-                                  <Ionicons name="document-text" size={28} color={Colors.primary} />
-                                  <Text style={styles.pdfThumbText}>PDF</Text>
+                                <View style={styles.docPdfPlaceholder}>
+                                  <Ionicons name="document-text" size={24} color={Colors.primary} />
+                                  <Text style={styles.docPdfPlaceholderText}>PDF</Text>
                                 </View>
                               ) : (
-                                <Image source={{ uri: fullDocUrl }} style={styles.docThumbImg} resizeMode="cover" />
+                                <Image source={{ uri: fullDocUrl }} style={styles.docImg} resizeMode="cover" />
                               )}
-                              <Text style={styles.docThumbLabel} numberOfLines={2}>
+                              <Text style={styles.docThumbName} numberOfLines={2}>
                                 {doc.categoryLabel || DOCUMENT_CATEGORIES[doc.category] || doc.category}
                               </Text>
                             </Pressable>
@@ -891,111 +939,54 @@ export default function PolicyApprovalsScreen() {
                   </View>
                 )}
 
-                {/* Reverted Reason if any */}
-                {st === 'Reverted' && sub.revertReason && (
-                  <View style={styles.revertNotice}>
-                    <Ionicons name="alert-circle" size={16} color="#E11D48" />
-                    <Text style={styles.revertNoticeText}>Reverted: "{sub.revertReason}"</Text>
-                  </View>
-                )}
-
-                {/* Single Consolidated PDF Action Buttons */}
-                <View style={styles.pdfActionsRow}>
-                  {hasPdf ? (
-                    <>
-                      <Pressable
-                        style={[styles.pdfBtn, styles.previewPdfBtn]}
-                        onPress={() => previewPdf(sub.compiledPdfUrl)}
-                      >
-                        <Ionicons name="eye-outline" size={16} color="#FFFFFF" />
-                        <Text style={styles.previewPdfBtnText}>Preview Single PDF</Text>
-                      </Pressable>
-
-                      <Pressable
-                        style={[styles.pdfBtn, styles.downloadPdfBtn]}
-                        onPress={() => downloadPdf(sub.compiledPdfUrl, item.vehicleNo)}
-                      >
-                        <Ionicons name="download-outline" size={16} color={Colors.text} />
-                        <Text style={styles.downloadPdfBtnText}>Save PDF</Text>
-                      </Pressable>
-                    </>
-                  ) : (
-                    <Pressable
-                      style={[styles.pdfBtn, styles.compileOnDemandBtn]}
-                      onPress={() => handleCompileOnDemand(item)}
-                      disabled={isCompilingThis}
-                    >
-                      {isCompilingThis ? (
-                        <ActivityIndicator size="small" color={Colors.primary} />
-                      ) : (
-                        <>
-                          <Ionicons name="documents-outline" size={16} color={Colors.primary} />
-                          <Text style={styles.compileOnDemandText}>Compile & Preview Single PDF</Text>
-                        </>
-                      )}
-                    </Pressable>
-                  )}
-                </View>
-
-                {/* Issued Policy Document View Button if Issued */}
-                {hasIssuedPdf && (
-                  <Pressable
-                    style={styles.viewIssuedPdfBtn}
-                    onPress={() => previewPdf(sub.issuedPolicyPdfUrl)}
-                  >
-                    <Ionicons name="shield-checkmark" size={16} color="#059669" />
-                    <Text style={styles.viewIssuedPdfText}>View Company Issued Policy PDF (#{sub.issuedPolicyNumber || 'POL'})</Text>
-                  </Pressable>
-                )}
-
-                {/* Manager Action Buttons */}
+                {/* 8. Manager Action Toolbar */}
                 {isManagerOrAdmin && (
-                  <View style={styles.managerActionRow}>
+                  <View style={styles.actionToolbar}>
                     {st === 'Pending_Review' && (
                       <>
                         <Pressable
-                          style={[styles.actionBtn, styles.approveBtn]}
+                          style={[styles.toolBtn, styles.approveToolBtn]}
                           onPress={() => handleApprove(item)}
                         >
-                          <Ionicons name="checkmark-circle" size={16} color="#FFFFFF" />
-                          <Text style={styles.actionBtnText}>Approve Docs</Text>
+                          <Ionicons name="checkmark-circle" size={15} color="#FFFFFF" />
+                          <Text style={styles.approveToolBtnText}>Approve</Text>
                         </Pressable>
 
                         <Pressable
-                          style={[styles.actionBtn, styles.revertBtn]}
+                          style={[styles.toolBtn, styles.revertToolBtn]}
                           onPress={() => {
                             setRevertItem(item);
                             setRevertReason('');
                           }}
                         >
-                          <Ionicons name="close-circle" size={16} color="#E11D48" />
-                          <Text style={[styles.actionBtnText, { color: '#E11D48' }]}>Revert</Text>
+                          <Ionicons name="close-circle-outline" size={15} color="#E11D48" />
+                          <Text style={styles.revertToolBtnText}>Revert</Text>
                         </Pressable>
                       </>
                     )}
 
                     {(st === 'Approved' || st === 'Documents_Approved' || st === 'Pending_Review') && (
                       <Pressable
-                        style={[styles.actionBtn, styles.issueBtn]}
+                        style={[styles.toolBtn, styles.issueToolBtn]}
                         onPress={() => {
                           setIssueItem(item);
                           setPolicyNo(sub.issuedPolicyNumber || `POL-${(item.vehicleNo || 'NA').replace(/[^a-zA-Z0-9]/g, '')}-${Date.now().toString().slice(-4)}`);
                           setProvider(formData.insCompany || 'Go Digit');
-                          setPremium(formData.finalGrossPremium || '');
+                          setPremium(formData.rsFromCustomer || formData.finalGrossPremium || '');
                           setPickedPolicyFile(null);
                         }}
                       >
-                        <Ionicons name="cloud-upload" size={16} color="#FFFFFF" />
-                        <Text style={styles.actionBtnText}>Issue & Upload Policy</Text>
+                        <Ionicons name="cloud-upload" size={15} color="#FFFFFF" />
+                        <Text style={styles.issueToolBtnText}>Issue Policy</Text>
                       </Pressable>
                     )}
 
                     <Pressable
-                      style={styles.openLeadBtn}
+                      style={styles.editFormBtn}
                       onPress={() => setSelectedLeadModal(item)}
                     >
-                      <Ionicons name="create-outline" size={16} color={Colors.primary} />
-                      <Text style={styles.openLeadBtnText}>Edit</Text>
+                      <Ionicons name="create-outline" size={15} color={Colors.primary} />
+                      <Text style={styles.editFormBtnText}>Edit</Text>
                     </Pressable>
                   </View>
                 )}
@@ -1007,43 +998,43 @@ export default function PolicyApprovalsScreen() {
 
       {/* REVERT MODAL */}
       <Modal visible={!!revertItem} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
+        <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
-            <View style={styles.modalHeader}>
-              <Ionicons name="alert-circle" size={24} color="#E11D48" />
-              <Text style={styles.modalTitle}>Revert Policy Submission</Text>
+            <View style={styles.modalHeaderRow}>
+              <Ionicons name="alert-circle" size={22} color="#E11D48" />
+              <Text style={styles.modalHeaderTitle}>Revert Submission</Text>
             </View>
-            <Text style={styles.modalSubtitle}>
-              Please describe why the policy submission for {revertItem?.clientName} ({revertItem?.vehicleNo}) is being returned:
+            <Text style={styles.modalHelpText}>
+              Explain why {revertItem?.clientName} ({revertItem?.vehicleNo}) is being returned:
             </Text>
 
             <TextInput
-              style={styles.revertInput}
-              placeholder="e.g. RC book photo is blurry, please re-upload page 2..."
-              placeholderTextColor={Colors.textMuted}
+              style={styles.revertBoxInput}
+              placeholder="e.g. Please re-upload clearer RC Book photo..."
+              placeholderTextColor="#94A3B8"
               multiline
               numberOfLines={4}
               value={revertReason}
               onChangeText={setRevertReason}
             />
 
-            <View style={styles.modalActions}>
+            <View style={styles.modalBtnRow}>
               <Pressable
-                style={styles.modalCancelBtn}
+                style={styles.modalCancelButton}
                 onPress={() => setRevertItem(null)}
                 disabled={reverting}
               >
-                <Text style={styles.modalCancelText}>Cancel</Text>
+                <Text style={styles.modalCancelButtonText}>Cancel</Text>
               </Pressable>
               <Pressable
-                style={styles.modalConfirmRevertBtn}
+                style={styles.modalRevertButton}
                 onPress={handleConfirmRevert}
                 disabled={reverting}
               >
                 {reverting ? (
                   <ActivityIndicator size="small" color="#FFFFFF" />
                 ) : (
-                  <Text style={styles.modalConfirmRevertText}>Confirm Revert</Text>
+                  <Text style={styles.modalRevertButtonText}>Confirm Revert</Text>
                 )}
               </Pressable>
             </View>
@@ -1051,87 +1042,87 @@ export default function PolicyApprovalsScreen() {
         </View>
       </Modal>
 
-      {/* ISSUE POLICY & UPLOAD POLICY DOCUMENT MODAL */}
+      {/* ISSUE POLICY MODAL */}
       <Modal visible={!!issueItem} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
+        <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
             <ScrollView showsVerticalScrollIndicator={false}>
-              <View style={styles.modalHeader}>
-                <Ionicons name="ribbon" size={24} color="#10B981" />
-                <Text style={styles.modalTitle}>Issue & Upload Company Policy</Text>
+              <View style={styles.modalHeaderRow}>
+                <Ionicons name="ribbon" size={22} color="#059669" />
+                <Text style={styles.modalHeaderTitle}>Issue & Upload Policy</Text>
               </View>
-              <Text style={styles.modalSubtitle}>
-                Record active policy for {issueItem?.clientName} ({issueItem?.vehicleNo}) and attach the insurer's policy copy:
+              <Text style={styles.modalHelpText}>
+                Finalize policy details for {issueItem?.clientName} ({issueItem?.vehicleNo}):
               </Text>
 
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLbl}>Policy Number *</Text>
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Policy Number *</Text>
                 <TextInput
-                  style={styles.textInput}
+                  style={styles.formInput}
                   placeholder="e.g. POL-2026-98124"
-                  placeholderTextColor={Colors.textMuted}
+                  placeholderTextColor="#94A3B8"
                   value={policyNo}
                   onChangeText={setPolicyNo}
                 />
               </View>
 
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLbl}>Insurance Provider</Text>
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Insurance Provider</Text>
                 <TextInput
-                  style={styles.textInput}
-                  placeholder="e.g. Go Digit, ICICI Lombard, HDFC Ergo"
-                  placeholderTextColor={Colors.textMuted}
+                  style={styles.formInput}
+                  placeholder="e.g. Go Digit, ICICI Lombard"
+                  placeholderTextColor="#94A3B8"
                   value={provider}
                   onChangeText={setProvider}
                 />
               </View>
 
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLbl}>Final Gross Premium (₹)</Text>
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Total Premium (₹)</Text>
                 <TextInput
-                  style={styles.textInput}
+                  style={styles.formInput}
                   placeholder="e.g. 18500"
-                  placeholderTextColor={Colors.textMuted}
+                  placeholderTextColor="#94A3B8"
                   keyboardType="numeric"
                   value={premium}
                   onChangeText={setPremium}
                 />
               </View>
 
-              {/* Upload Company Policy File */}
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLbl}>Attach Insurer Policy Copy (PDF / Photo)</Text>
+              {/* Attach Company Policy PDF */}
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Attach Insurer Policy PDF / Photo</Text>
                 <Pressable
-                  style={styles.pickFileBtn}
+                  style={styles.filePickerButton}
                   onPress={handlePickPolicyDocument}
                 >
-                  <Ionicons name="cloud-upload-outline" size={20} color={Colors.primary} />
-                  <Text style={styles.pickFileBtnText}>
-                    {pickedPolicyFile ? pickedPolicyFile.name : 'Choose Policy PDF or Image'}
+                  <Ionicons name="cloud-upload-outline" size={18} color={Colors.primary} />
+                  <Text style={styles.filePickerButtonText}>
+                    {pickedPolicyFile ? pickedPolicyFile.name : 'Choose File from Device'}
                   </Text>
                 </Pressable>
                 {pickedPolicyFile && (
-                  <Text style={styles.fileSelectedText}>✓ Selected: {pickedPolicyFile.name}</Text>
+                  <Text style={styles.filePickedNotice}>✓ File selected: {pickedPolicyFile.name}</Text>
                 )}
               </View>
 
-              <View style={styles.modalActions}>
+              <View style={styles.modalBtnRow}>
                 <Pressable
-                  style={styles.modalCancelBtn}
+                  style={styles.modalCancelButton}
                   onPress={() => setIssueItem(null)}
                   disabled={issuing}
                 >
-                  <Text style={styles.modalCancelText}>Cancel</Text>
+                  <Text style={styles.modalCancelButtonText}>Cancel</Text>
                 </Pressable>
                 <Pressable
-                  style={styles.modalConfirmIssueBtn}
+                  style={styles.modalIssueButton}
                   onPress={handleConfirmIssueAndUploadPolicy}
                   disabled={issuing}
                 >
                   {issuing ? (
                     <ActivityIndicator size="small" color="#FFFFFF" />
                   ) : (
-                    <Text style={styles.modalConfirmIssueText}>Issue & Save Policy ✓</Text>
+                    <Text style={styles.modalIssueButtonText}>Issue Policy ✓</Text>
                   )}
                 </Pressable>
               </View>
@@ -1161,192 +1152,210 @@ export default function PolicyApprovalsScreen() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#FFFFFF' },
+  safe: { flex: 1, backgroundColor: '#F8FAFC' },
+
   headerBar: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: Spacing.md,
-    paddingTop: Spacing.xs,
-    paddingBottom: Spacing.sm,
+    paddingVertical: 10,
     backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
-    borderBottomColor: Colors.border
+    borderBottomColor: '#E2E8F0'
   },
-  backBtn: { padding: Spacing.xs, marginRight: Spacing.sm },
-  headerTitle: { fontSize: FontSize.lg, fontWeight: '800', color: Colors.text },
-  headerSubtitle: { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: 1 },
-  refreshBtn: { padding: Spacing.xs },
+  iconBtn: { padding: 6, borderRadius: 8 },
+  headerTitle: { fontSize: FontSize.lg, fontWeight: '800', color: '#0F172A' },
+  headerSubtitle: { fontSize: 11, color: '#64748B', marginTop: 1 },
 
-  searchWrap: {
+  searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F8FAFC',
-    borderRadius: BorderRadius.md,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 10,
     marginHorizontal: Spacing.md,
-    marginTop: Spacing.sm,
-    paddingHorizontal: Spacing.sm,
+    marginTop: 10,
+    paddingHorizontal: 12,
+    height: 42,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    gap: 8
+  },
+  searchInput: { flex: 1, fontSize: 13, color: '#0F172A' },
+
+  filterContainer: { marginTop: 10, marginBottom: 4 },
+  filterScroll: { paddingHorizontal: Spacing.md, gap: 8 },
+  filterChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 20,
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: '#E2E8F0'
   },
-  searchIcon: { marginRight: Spacing.xs },
-  searchInput: { flex: 1, height: 38, fontSize: FontSize.sm, color: Colors.text },
-  clearSearch: { padding: 4 },
-
-  tabsContainer: {
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-    marginTop: Spacing.xs
-  },
-  tabsScroll: {
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.xs,
-    gap: Spacing.xs
-  },
-  tabChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    backgroundColor: '#F1F5F9'
-  },
-  tabChipActive: { backgroundColor: Colors.primary },
-  tabChipText: { fontSize: FontSize.xs, fontWeight: '600', color: Colors.textMuted },
-  tabChipTextActive: { color: '#FFFFFF', fontWeight: '800' },
+  filterChipActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
+  filterChipText: { fontSize: 12, fontWeight: '600', color: '#64748B' },
+  filterChipTextActive: { color: '#FFFFFF', fontWeight: '800' },
 
   centerView: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  loadingText: { marginTop: Spacing.sm, color: Colors.textMuted, fontSize: FontSize.sm },
+  loadingText: { marginTop: 10, fontSize: 13, color: '#64748B' },
 
-  listContent: { padding: Spacing.md, paddingBottom: 100, gap: Spacing.md },
-  emptyView: { alignItems: 'center', marginTop: 60, paddingHorizontal: 30 },
-  emptyTitle: { fontSize: FontSize.md, fontWeight: '800', color: Colors.text, marginTop: Spacing.sm },
-  emptySubtitle: { fontSize: FontSize.xs, color: Colors.textMuted, textAlign: 'center', marginTop: 4 },
+  listContent: { padding: Spacing.md, paddingBottom: 110, gap: 12 },
 
-  card: {
+  emptyView: { alignItems: 'center', marginTop: 50, paddingHorizontal: 30 },
+  emptyIconCircle: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    backgroundColor: '#F1F5F9',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 12
+  },
+  emptyTitle: { fontSize: 16, fontWeight: '800', color: '#0F172A' },
+  emptySubtitle: { fontSize: 12, color: '#64748B', textAlign: 'center', marginTop: 4 },
+
+  modernCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 14,
     borderWidth: 1,
     borderColor: '#E2E8F0',
-    padding: Spacing.md,
+    padding: 14,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
+    shadowOpacity: 0.04,
     shadowRadius: 6,
     elevation: 2
   },
-  cardHeader: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
-  avatar: {
-    width: 40,
-    height: 40,
+
+  cardTopRow: { flexDirection: 'row', alignItems: 'center' },
+  vehIconBox: {
+    width: 38,
+    height: 38,
     borderRadius: 10,
     backgroundColor: Colors.primary + '15',
     justifyContent: 'center',
     alignItems: 'center'
   },
-  clientName: { fontSize: FontSize.md, fontWeight: '800', color: Colors.text },
-  vehicleNo: { fontSize: FontSize.xs, fontWeight: '700', color: Colors.primary, marginTop: 1 },
-  statusBadge: {
+  cardClientName: { fontSize: 15, fontWeight: '800', color: '#0F172A' },
+  regPill: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#F1F5F9',
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 4,
+    marginTop: 2
+  },
+  regPillText: { fontSize: 11, fontWeight: '700', color: Colors.primary },
+
+  badgePill: {
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 6,
     borderWidth: 1
   },
-  statusText: { fontSize: 10, fontWeight: '800', textTransform: 'uppercase' },
+  badgePillText: { fontSize: 9, fontWeight: '800', letterSpacing: 0.3 },
 
-  submitterRow: {
+  submitterBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: Spacing.xs,
-    paddingBottom: Spacing.xs,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9'
+    alignItems: 'center',
+    marginTop: 10,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9'
   },
-  metaItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  metaText: { fontSize: 11, color: Colors.textMuted },
+  subLeft: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  subText: { fontSize: 11, color: '#64748B' },
+  subBold: { fontWeight: '700', color: '#0F172A' },
+  dateText: { fontSize: 11, color: '#94A3B8' },
 
-  particularsGrid: {
+  statsRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 10
+  },
+  statTile: {
+    flex: 1,
     backgroundColor: '#F8FAFC',
     borderRadius: 8,
     padding: 8,
-    marginTop: Spacing.xs,
     borderWidth: 1,
     borderColor: '#F1F5F9'
   },
-  gridCol: { width: '50%', paddingVertical: 4, paddingHorizontal: 4 },
-  lbl: { fontSize: 9, fontWeight: '700', color: Colors.textMuted, textTransform: 'uppercase' },
-  val: { fontSize: 12, fontWeight: '800', color: Colors.text, marginTop: 1 },
-  valSm: { fontSize: 11, fontWeight: '700', color: Colors.text, marginTop: 1 },
+  statTileLabel: { fontSize: 9, fontWeight: '700', color: '#94A3B8' },
+  statTileVal: { fontSize: 13, fontWeight: '800', color: '#0F172A', marginTop: 2 },
 
-  expandedSection: {
-    backgroundColor: '#F1F5F9',
-    borderRadius: 8,
-    padding: 10,
-    marginTop: Spacing.xs,
-    borderWidth: 1,
-    borderColor: '#E2E8F0'
-  },
-  expandedSectionHeader: { fontSize: 11, fontWeight: '800', color: Colors.text, textTransform: 'uppercase', marginBottom: 6 },
-  fullGrid: { flexDirection: 'row', flexWrap: 'wrap' },
-  fullCol: { width: '50%', paddingVertical: 3, paddingHorizontal: 2 },
-  noDocsText: { fontSize: 11, color: Colors.textMuted, fontStyle: 'italic', marginVertical: 6 },
-
-  docsScroll: { flexDirection: 'row', gap: 8, paddingVertical: 4 },
-  docThumbCard: {
-    width: 90,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 8,
-    padding: 6,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#E2E8F0'
-  },
-  docThumbImg: { width: 78, height: 78, borderRadius: 6 },
-  pdfThumbPlaceholder: {
-    width: 78,
-    height: 78,
-    borderRadius: 6,
-    backgroundColor: Colors.primary + '15',
-    justifyContent: 'center',
-    alignItems: 'center'
-  },
-  pdfThumbText: { fontSize: 10, fontWeight: '800', color: Colors.primary, marginTop: 2 },
-  docThumbLabel: { fontSize: 9, fontWeight: '600', color: Colors.text, textAlign: 'center', marginTop: 4 },
-
-  revertNotice: {
+  revertBox: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 6,
     backgroundColor: '#FFF1F2',
     borderWidth: 1,
     borderColor: '#FECDD3',
     borderRadius: 6,
     padding: 8,
-    marginTop: Spacing.xs,
-    gap: 6
+    marginTop: 10
   },
-  revertNoticeText: { fontSize: 11, color: '#E11D48', fontWeight: '700', flex: 1 },
+  revertBoxText: { fontSize: 11, fontWeight: '600', color: '#E11D48', flex: 1 },
 
-  pdfActionsRow: {
+  pdfStrip: {
     flexDirection: 'row',
-    gap: Spacing.xs,
-    marginTop: Spacing.sm
+    gap: 8,
+    marginTop: 10
   },
-  pdfBtn: {
+  primaryPdfBtn: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    paddingVertical: 8,
+    backgroundColor: Colors.primary,
+    paddingVertical: 9,
     borderRadius: 8
   },
-  previewPdfBtn: { backgroundColor: Colors.primary },
-  previewPdfBtnText: { fontSize: 11, fontWeight: '800', color: '#FFFFFF' },
-  downloadPdfBtn: { backgroundColor: '#F1F5F9', borderWidth: 1, borderColor: '#E2E8F0' },
-  downloadPdfBtnText: { fontSize: 11, fontWeight: '700', color: Colors.text },
-  compileOnDemandBtn: { backgroundColor: Colors.primary + '15', borderWidth: 1, borderColor: Colors.primary + '30' },
-  compileOnDemandText: { fontSize: 11, fontWeight: '800', color: Colors.primary },
+  primaryPdfBtnText: { fontSize: 12, fontWeight: '800', color: '#FFFFFF' },
+  secondaryPdfBtn: {
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    backgroundColor: '#F1F5F9',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E2E8F0'
+  },
+  secondaryPdfBtnText: { fontSize: 12, fontWeight: '700', color: '#0F172A' },
 
-  viewIssuedPdfBtn: {
+  compileBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: Colors.primary + '15',
+    paddingVertical: 9,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: Colors.primary + '30'
+  },
+  compileBtnText: { fontSize: 12, fontWeight: '800', color: Colors.primary },
+
+  uploadPromptBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: '#F8FAFC',
+    paddingVertical: 9,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E2E8F0'
+  },
+  uploadPromptBtnText: { fontSize: 12, fontWeight: '700', color: Colors.primary },
+
+  issuedPolicyDocBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1356,19 +1365,66 @@ const styles = StyleSheet.create({
     borderColor: '#A7F3D0',
     borderRadius: 8,
     paddingVertical: 8,
-    marginTop: Spacing.xs
+    marginTop: 8
   },
-  viewIssuedPdfText: { fontSize: 11, fontWeight: '800', color: '#047857' },
+  issuedPolicyDocText: { fontSize: 11, fontWeight: '800', color: '#059669' },
 
-  managerActionRow: {
+  expandToggleBtn: {
     flexDirection: 'row',
-    gap: Spacing.xs,
-    marginTop: Spacing.xs,
-    paddingTop: Spacing.xs,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    marginTop: 8,
+    paddingVertical: 4
+  },
+  expandToggleText: { fontSize: 11, fontWeight: '700', color: '#64748B' },
+
+  expandedDrawer: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 10,
+    padding: 10,
+    marginTop: 6,
+    borderWidth: 1,
+    borderColor: '#E2E8F0'
+  },
+  drawerHeading: { fontSize: 11, fontWeight: '800', color: '#0F172A', textTransform: 'uppercase', marginBottom: 6 },
+  drawerGrid: { flexDirection: 'row', flexWrap: 'wrap' },
+  drawerGridCol: { width: '50%', paddingVertical: 3 },
+  drawerLbl: { fontSize: 9, fontWeight: '700', color: '#94A3B8' },
+  drawerVal: { fontSize: 11, fontWeight: '700', color: '#0F172A', marginTop: 1 },
+
+  noDocsNotice: { fontSize: 11, color: '#94A3B8', fontStyle: 'italic', marginVertical: 4 },
+  docThumbScroll: { flexDirection: 'row', gap: 8, paddingVertical: 4 },
+  docThumbBox: {
+    width: 80,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    padding: 5,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E2E8F0'
+  },
+  docImg: { width: 68, height: 68, borderRadius: 6 },
+  docPdfPlaceholder: {
+    width: 68,
+    height: 68,
+    borderRadius: 6,
+    backgroundColor: Colors.primary + '15',
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  docPdfPlaceholderText: { fontSize: 10, fontWeight: '800', color: Colors.primary, marginTop: 2 },
+  docThumbName: { fontSize: 9, fontWeight: '600', color: '#0F172A', textAlign: 'center', marginTop: 3 },
+
+  actionToolbar: {
+    flexDirection: 'row',
+    gap: 6,
+    marginTop: 10,
+    paddingTop: 10,
     borderTopWidth: 1,
     borderTopColor: '#F1F5F9'
   },
-  actionBtn: {
+  toolBtn: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
@@ -1377,22 +1433,24 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 8
   },
-  approveBtn: { backgroundColor: '#10B981' },
-  revertBtn: { backgroundColor: '#FFF1F2', borderWidth: 1, borderColor: '#FECDD3' },
-  issueBtn: { backgroundColor: '#2563EB' },
-  actionBtnText: { fontSize: 11, fontWeight: '800', color: '#FFFFFF' },
-  openLeadBtn: {
+  approveToolBtn: { backgroundColor: '#059669' },
+  approveToolBtnText: { fontSize: 11, fontWeight: '800', color: '#FFFFFF' },
+  revertToolBtn: { backgroundColor: '#FFF1F2', borderWidth: 1, borderColor: '#FECDD3' },
+  revertToolBtnText: { fontSize: 11, fontWeight: '800', color: '#E11D48' },
+  issueToolBtn: { backgroundColor: '#2563EB' },
+  issueToolBtnText: { fontSize: 11, fontWeight: '800', color: '#FFFFFF' },
+  editFormBtn: {
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 8,
-    backgroundColor: Colors.primary + '10',
+    backgroundColor: Colors.primary + '15',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4
   },
-  openLeadBtnText: { fontSize: 11, fontWeight: '700', color: Colors.primary },
+  editFormBtnText: { fontSize: 11, fontWeight: '700', color: Colors.primary },
 
-  modalOverlay: {
+  modalBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'center',
@@ -1411,35 +1469,35 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 5
   },
-  modalHeader: { flexDirection: 'row', alignItems: 'center', gap: Spacing.xs, marginBottom: Spacing.xs },
-  modalTitle: { fontSize: FontSize.md, fontWeight: '800', color: Colors.text },
-  modalSubtitle: { fontSize: FontSize.xs, color: Colors.textMuted, marginBottom: Spacing.sm },
+  modalHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 },
+  modalHeaderTitle: { fontSize: 16, fontWeight: '800', color: '#0F172A' },
+  modalHelpText: { fontSize: 12, color: '#64748B', marginBottom: 12 },
 
-  revertInput: {
+  revertBoxInput: {
     backgroundColor: '#F8FAFC',
     borderWidth: 1,
     borderColor: '#E2E8F0',
     borderRadius: 8,
     padding: 10,
-    fontSize: FontSize.sm,
-    color: Colors.text,
+    fontSize: 13,
+    color: '#0F172A',
     textAlignVertical: 'top',
-    height: 90
+    height: 85
   },
 
-  inputGroup: { marginBottom: Spacing.xs },
-  inputLbl: { fontSize: 11, fontWeight: '700', color: Colors.textMuted, marginBottom: 3 },
-  textInput: {
+  formGroup: { marginBottom: 10 },
+  formLabel: { fontSize: 11, fontWeight: '700', color: '#64748B', marginBottom: 4 },
+  formInput: {
     backgroundColor: '#F8FAFC',
     borderWidth: 1,
     borderColor: '#E2E8F0',
     borderRadius: 8,
     paddingHorizontal: 10,
     height: 40,
-    fontSize: FontSize.sm,
-    color: Colors.text
+    fontSize: 13,
+    color: '#0F172A'
   },
-  pickFileBtn: {
+  filePickerButton: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
@@ -1451,29 +1509,29 @@ const styles = StyleSheet.create({
     padding: 12,
     justifyContent: 'center'
   },
-  pickFileBtnText: { fontSize: 12, fontWeight: '700', color: Colors.primary },
-  fileSelectedText: { fontSize: 11, fontWeight: '700', color: '#10B981', marginTop: 4 },
+  filePickerButtonText: { fontSize: 12, fontWeight: '700', color: Colors.primary },
+  filePickedNotice: { fontSize: 11, fontWeight: '700', color: '#059669', marginTop: 4 },
 
-  modalActions: {
+  modalBtnRow: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
-    gap: Spacing.sm,
-    marginTop: Spacing.md
+    gap: 10,
+    marginTop: 14
   },
-  modalCancelBtn: { paddingVertical: 8, paddingHorizontal: 14 },
-  modalCancelText: { fontSize: FontSize.sm, fontWeight: '700', color: Colors.textMuted },
-  modalConfirmRevertBtn: {
+  modalCancelButton: { paddingVertical: 8, paddingHorizontal: 14 },
+  modalCancelButtonText: { fontSize: 13, fontWeight: '700', color: '#64748B' },
+  modalRevertButton: {
     backgroundColor: '#E11D48',
     paddingVertical: 8,
     paddingHorizontal: 16,
     borderRadius: 8
   },
-  modalConfirmRevertText: { fontSize: FontSize.sm, fontWeight: '800', color: '#FFFFFF' },
-  modalConfirmIssueBtn: {
-    backgroundColor: '#10B981',
+  modalRevertButtonText: { fontSize: 13, fontWeight: '800', color: '#FFFFFF' },
+  modalIssueButton: {
+    backgroundColor: '#059669',
     paddingVertical: 8,
     paddingHorizontal: 16,
     borderRadius: 8
   },
-  modalConfirmIssueText: { fontSize: FontSize.sm, fontWeight: '800', color: '#FFFFFF' }
+  modalIssueButtonText: { fontSize: 13, fontWeight: '800', color: '#FFFFFF' }
 });
