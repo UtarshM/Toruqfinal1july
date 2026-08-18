@@ -199,17 +199,41 @@ export default function DashboardScreen() {
               <Text style={styles.noActivityText}>No recent updates</Text>
             </View>
           ) : (
-            items.slice(0, 4).map((item, i) => (
-              <View key={i} style={styles.activityItem}>
-                <View style={[styles.activityIcon, { backgroundColor: Colors.primary + '12' }]}>
-                  <Ionicons name="flash" size={16} color={Colors.primary} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.activityText} numberOfLines={1}>{item.title || 'New activity'}</Text>
-                  <Text style={styles.activityTime}>{timeAgo(item.createdAt)}</Text>
-                </View>
-              </View>
-            ))
+            items.slice(0, 4).map((item, i) => {
+              const handleActivityPress = () => {
+                const entityType = item.entityType || item.entity_type || '';
+                const entityId = item.entityId || item.entity_id || '';
+                const data = (typeof item.data === 'object' && item.data) ? item.data : {};
+                const leadId = data.leadId || entityId;
+
+                if (entityType === 'lead' && leadId) {
+                  router.push(`/(protected)/lead/${leadId}` as any);
+                } else if (entityType === 'policy' || item.type?.includes('policy')) {
+                  router.push('/(protected)/policy-approvals' as any);
+                } else if (entityType === 'claim') {
+                  router.push('/(protected)/claims' as any);
+                } else {
+                  router.push('/(protected)/notifications' as any);
+                }
+              };
+
+              return (
+                <Pressable
+                  key={i}
+                  style={({ pressed }) => [styles.activityItem, pressed && { opacity: 0.7, transform: [{ scale: 0.98 }] }]}
+                  onPress={handleActivityPress}
+                >
+                  <View style={[styles.activityIcon, { backgroundColor: Colors.primary + '12' }]}>
+                    <Ionicons name="flash" size={16} color={Colors.primary} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.activityText} numberOfLines={1}>{item.title || 'New activity'}</Text>
+                    <Text style={styles.activityTime}>{timeAgo(item.createdAt)}</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={14} color="#94A3B8" />
+                </Pressable>
+              );
+            })
           )}
         </View>
 

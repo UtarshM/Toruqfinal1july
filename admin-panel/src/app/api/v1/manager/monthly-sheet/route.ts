@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { validateAuth } from '@/lib/auth-guard'
+import { supabaseAdmin } from '@/lib/supabase-admin'
 import * as XLSX from 'xlsx'
-import path from 'path'
-import fs from 'fs'
 
 interface SheetFilterOptions {
   month?: string | null
@@ -13,6 +12,7 @@ interface SheetFilterOptions {
 }
 
 // Master function to generate Excel sheet for any Month, Single Date, or Custom Date & Time Range
+// Uploads to Supabase Storage (no local filesystem — Vercel serverless is read-only)
 export async function generateMasterSheet(options: SheetFilterOptions) {
   try {
     const { month, startDate, endDate, singleDate } = options
@@ -44,7 +44,6 @@ export async function generateMasterSheet(options: SheetFilterOptions) {
       if (endDate) {
         const e = new Date(endDate)
         if (!isNaN(e.getTime())) {
-          // If time is not explicitly included in string, default to end of day
           if (!endDate.includes('T') && !endDate.includes(':')) {
             e.setHours(23, 59, 59, 999)
           }
@@ -89,6 +88,7 @@ export async function generateMasterSheet(options: SheetFilterOptions) {
             city: true,
             address: true,
             customFields: true,
+            expiryDate: true,
             assignee: {
               select: { fullName: true, email: true }
             }
@@ -97,33 +97,43 @@ export async function generateMasterSheet(options: SheetFilterOptions) {
       }
     })
 
+    // Headers matching the real business renewal Excel format:
+    // SR NO, ISSUE DATE, REG NO, CAT, MODEL, NAME, MOBILE 1, MOBILE 2, GVW, EXP DATE,
+    // COMPANY, TP/FULL/SAOD, VIA, FROM, NET PREMIUM, TOTAL PREMIUM, RS FROM CUSTOMER,
+    // + additional digital-era fields
     const headers = [
-      'Policy Number',
-      'Client Name',
-      'Phone Number',
-      'Email',
-      'Vehicle Number',
+      'SR NO',
+      'ISSUE DATE',
+      'REG NO',
+      'CAT',
+      'MODEL',
+      'NAME',
+      'MOBILE NUMBER 1',
+      'MOBILE NUMBER 2',
       'GVW',
-      'City',
-      'Insurance Provider',
-      'Policy Type',
-      'Total Premium (INR)',
-      'Paid Amount (INR)',
-      'Pending Due (INR)',
-      'Payment Status',
-      'Payment Mode',
-      'Policy Start Date',
-      '1-Year Expiry Date',
-      'Issued Policy PDF Link',
-      '7-Doc Merged PDF Link',
-      'Sales Executive',
-      'Approving Manager',
-      'Created Timestamp'
+      'EXP DATE',
+      'COMPANY',
+      'TP/FULL/SAOD',
+      'VIA',
+      'FROM',
+      'NET PREMIUM',
+      'TOTAL PREMIUM',
+      'RS FROM CUSTOMER',
+      'PAID AMOUNT',
+      'PENDING DUE',
+      'PAYMENT STATUS',
+      'PAYMENT MODE',
+      'POLICY NUMBER',
+      'ISSUED POLICY PDF',
+      'MERGED DOC PDF',
+      'SALES EXECUTIVE',
+      'APPROVED BY',
+      'REMARKS'
     ]
 
     const rows: any[][] = [headers]
 
-    policies.forEach(p => {
+    policies.forEach((p, idx) => {
       const cf = (p.lead?.customFields && typeof p.lead.customFields === 'object') ? (p.lead.customFields as any) : {}
       const submission = cf.policySubmission || {}
       const formData = submission.formData || {}
@@ -134,28 +144,38 @@ export async function generateMasterSheet(options: SheetFilterOptions) {
       const pendingAmount = Math.max(0, totalPremium - paidAmount)
       const paymentStatus = pendingAmount === 0 ? 'Paid' : (paidAmount > 0 ? 'Partial' : 'Pending')
 
+      // Derive net premium from form or use total
+      const netPremium = parseFloat(formData.netPremium || formData.rate || '0') || totalPremium
+      const rsFromCustomer = parseFloat(formData.rsFromCustomer || '0') || paidAmount
+
       rows.push([
-        p.policyNumber,
+        idx + 1,
+        p.startDate ? new Date(p.startDate).toLocaleDateString('en-IN') : '',
+        p.lead?.vehicleNo || 'N/A',
+        formData.customerCategory || formData.category || '',
+        formData.model || '',
         p.lead?.clientName || 'N/A',
         p.lead?.clientPhone || 'N/A',
-        p.lead?.clientEmail || '',
-        p.lead?.vehicleNo || 'N/A',
+        formData.mobileNo2 || '',
         p.lead?.gvw || '',
-        p.lead?.city || '',
+        p.endDate ? new Date(p.endDate).toLocaleDateString('en-IN') : '',
         p.provider || '',
-        p.type || '',
+        p.type || formData.policyType || '',
+        formData.via || '',
+        formData.from || '',
+        netPremium,
         totalPremium,
+        rsFromCustomer,
         paidAmount,
         pendingAmount,
         paymentStatus,
         formData.paymentMode || 'Cash',
-        p.startDate ? new Date(p.startDate).toLocaleDateString('en-IN') : '',
-        p.endDate ? new Date(p.endDate).toLocaleDateString('en-IN') : '',
-        submission.issuedPolicyPdfUrl || submission.compiledPdfUrl || '',
+        p.policyNumber,
+        submission.issuedPolicyPdfUrl || '',
         submission.compiledPdfUrl || '',
         p.lead?.assignee?.fullName || 'Direct / Unassigned',
         submission.reviewedByName || 'Manager',
-        new Date(p.createdAt).toISOString()
+        formData.description || ''
       ])
     })
 
@@ -163,17 +183,29 @@ export async function generateMasterSheet(options: SheetFilterOptions) {
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Master Policies')
 
-    const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'monthly-sheets')
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true })
-    }
+    // Generate buffer and upload to Supabase Storage (no local disk writes)
+    const xlsxBuffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer
 
     const fileName = `master_policies_${fileSlug}_${Date.now()}.xlsx`
-    const fullFilePath = path.join(uploadDir, fileName)
-    XLSX.writeFile(wb, fullFilePath)
+    const storagePath = `monthly-sheets/${fileName}`
 
-    const relativeUrl = `/uploads/monthly-sheets/${fileName}`
-    return { fileName, fullFilePath, relativeUrl, count: policies.length }
+    const { data: uploadData, error: uploadErr } = await supabaseAdmin.storage
+      .from('documents')
+      .upload(storagePath, xlsxBuffer, {
+        contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        upsert: true
+      })
+
+    if (uploadErr) {
+      console.error('[generateMasterSheet] Supabase upload error:', uploadErr)
+      return null
+    }
+
+    const { data: { publicUrl } } = supabaseAdmin.storage
+      .from('documents')
+      .getPublicUrl(storagePath)
+
+    return { fileName, publicUrl, relativeUrl: publicUrl, count: policies.length }
   } catch (err) {
     console.error('[generateMasterSheet] Error:', err)
     return null
@@ -205,7 +237,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      sheetUrl: sheetResult?.relativeUrl || null,
+      sheetUrl: sheetResult?.publicUrl || null,
       fileName: sheetResult?.fileName || null,
       totalPolicies: sheetResult?.count || 0
     })

@@ -102,6 +102,7 @@ export default function PolicyApprovalsScreen() {
   const [policyNo, setPolicyNo] = useState('');
   const [provider, setProvider] = useState('Go Digit');
   const [premium, setPremium] = useState('');
+  const [paidAmount, setPaidAmount] = useState('');
   const [pickedPolicyFile, setPickedPolicyFile] = useState<{ uri: string; name: string; type: string } | null>(null);
   const [issuing, setIssuing] = useState(false);
 
@@ -562,6 +563,9 @@ export default function PolicyApprovalsScreen() {
       const pNo = policyNo.trim();
       const prov = provider.trim() || 'Go Digit';
       const prem = parseFloat(premium) || 0;
+      const paid = parseFloat(paidAmount) || prem;
+      const sub = issueItem.submission || {};
+      const formData = sub.formData || {};
       let issuedPdfUrl: string | null = null;
 
       // Upload policy file if attached
@@ -592,7 +596,42 @@ export default function PolicyApprovalsScreen() {
         }
       }
 
-      // Direct Supabase DB update
+      // Call backend API to properly create Policy record + Transaction + monthly sheet
+      // This is the primary path — it handles everything atomically
+      const startDate = new Date().toISOString();
+      const endDate = new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString();
+
+      try {
+        const apiRes = await api.post<any>('/manager/submissions', {
+          leadId: issueItem.leadId,
+          action: 'UPLOAD_ISSUED_POLICY',
+          policyNumber: pNo,
+          provider: prov,
+          policyType: formData.policyType || 'Comprehensive',
+          totalPremium: prem,
+          paidAmount: paid,
+          pendingAmount: Math.max(0, prem - paid),
+          paymentMode: formData.paymentMode || 'Cash',
+          issuedPolicyPdfUrl: issuedPdfUrl,
+          startDate,
+          endDate
+        });
+
+        if (apiRes?.success) {
+          Alert.alert('Policy Issued Successfully! 🎉', `Policy #${pNo} recorded and saved to renewals.`);
+          setIssueItem(null);
+          setPolicyNo('');
+          setPremium('');
+          setPaidAmount('');
+          setPickedPolicyFile(null);
+          loadSubmissions();
+          return;
+        }
+      } catch (apiErr) {
+        console.warn('[API UPLOAD_ISSUED_POLICY failed, falling back to direct Supabase]', apiErr);
+      }
+
+      // Fallback: Direct Supabase DB update if API call failed
       const { data: dbLead } = await supabase
         .from('leads')
         .select('customFields')
@@ -610,7 +649,7 @@ export default function PolicyApprovalsScreen() {
             ...cf,
             policySubmission: {
               ...prevSub,
-              status: 'Issued',
+              status: 'Policy_Issued',
               issuedPolicyNumber: pNo,
               issuedProvider: prov,
               issuedPremium: prem,
@@ -618,6 +657,14 @@ export default function PolicyApprovalsScreen() {
               issuedAt: new Date().toISOString(),
               issuedBy: user?.fullName || 'Manager',
               updatedAt: new Date().toISOString(),
+              formData: {
+                ...prevSub.formData,
+                policyNumber: pNo,
+                provider: prov,
+                totalPremium: prem,
+                paidAmount: paid,
+                pendingAmount: Math.max(0, prem - paid),
+              },
               history: [
                 ...(prevSub.history || []),
                 {
@@ -633,24 +680,11 @@ export default function PolicyApprovalsScreen() {
         })
         .eq('id', issueItem.leadId);
 
-      try {
-        await api.post('/manager/submissions', {
-          leadId: issueItem.leadId,
-          action: 'ISSUE_POLICY',
-          policyData: {
-            policyNumber: pNo,
-            provider: prov,
-            premiumAmount: prem,
-            issuedPolicyPdfUrl: issuedPdfUrl,
-            type: issueItem.submission?.formData?.policyType || 'Comprehensive'
-          }
-        });
-      } catch {}
-
       Alert.alert('Policy Issued Successfully! 🎉', `Policy #${pNo} recorded.`);
       setIssueItem(null);
       setPolicyNo('');
       setPremium('');
+      setPaidAmount('');
       setPickedPolicyFile(null);
       loadSubmissions();
     } catch (e: any) {
@@ -970,9 +1004,10 @@ export default function PolicyApprovalsScreen() {
                         style={[styles.toolBtn, styles.issueToolBtn]}
                         onPress={() => {
                           setIssueItem(item);
-                          setPolicyNo(sub.issuedPolicyNumber || `POL-${(item.vehicleNo || 'NA').replace(/[^a-zA-Z0-9]/g, '')}-${Date.now().toString().slice(-4)}`);
-                          setProvider(formData.insCompany || 'Go Digit');
-                          setPremium(formData.rsFromCustomer || formData.finalGrossPremium || '');
+                          setPolicyNo(sub.issuedPolicyNumber || sub.policyNumber || '');
+                          setProvider(formData.insCompany || formData.provider || 'Go Digit');
+                          setPremium(formData.rsFromCustomer || formData.finalGrossPremium || formData.totalPremium || '');
+                          setPaidAmount(formData.paidAmount || formData.rsFromCustomer || '');
                           setPickedPolicyFile(null);
                         }}
                       >
@@ -1086,6 +1121,18 @@ export default function PolicyApprovalsScreen() {
                   keyboardType="numeric"
                   value={premium}
                   onChangeText={setPremium}
+                />
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Paid Amount (₹)</Text>
+                <TextInput
+                  style={styles.formInput}
+                  placeholder="Amount collected from customer"
+                  placeholderTextColor="#94A3B8"
+                  keyboardType="numeric"
+                  value={paidAmount}
+                  onChangeText={setPaidAmount}
                 />
               </View>
 
@@ -1418,20 +1465,23 @@ const styles = StyleSheet.create({
 
   actionToolbar: {
     flexDirection: 'row',
-    gap: 6,
-    marginTop: 10,
-    paddingTop: 10,
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 12,
+    paddingTop: 12,
     borderTopWidth: 1,
     borderTopColor: '#F1F5F9'
   },
   toolBtn: {
-    flex: 1,
+    flexGrow: 1,
+    flexBasis: '30%',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
-    paddingVertical: 8,
-    borderRadius: 8
+    gap: 5,
+    paddingVertical: 10,
+    borderRadius: 10,
+    minHeight: 40
   },
   approveToolBtn: { backgroundColor: '#059669' },
   approveToolBtnText: { fontSize: 11, fontWeight: '800', color: '#FFFFFF' },
