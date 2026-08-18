@@ -10,6 +10,7 @@ import { api } from '../../src/utils/api';
 import { getDB } from '../../src/lib/db';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
+import * as Updates from 'expo-updates';
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -25,6 +26,41 @@ export default function SettingsScreen() {
       { label: 'Security', icon: 'shield-outline', desc: 'Password and authentication' },
     ]},
     { title: 'App Settings', items: [
+      { 
+        label: 'Check for Updates (On-Air)', 
+        icon: 'cloud-download-outline', 
+        desc: 'Check and download latest OTA update instantly',
+        onPress: async () => {
+          try {
+            if (__DEV__) {
+              Alert.alert('Development Mode', 'OTA updates are disabled in local development mode.');
+              return;
+            }
+            Alert.alert('Checking Updates...', 'Connecting to Expo OTA update server...');
+            const update = await Updates.checkForUpdateAsync();
+            if (update.isAvailable) {
+              Alert.alert(
+                'New Update Available! 🎉',
+                'A new on-air update was found. Would you like to download and restart the app now?',
+                [
+                  { text: 'Later', style: 'cancel' },
+                  {
+                    text: 'Update & Restart',
+                    onPress: async () => {
+                      await Updates.fetchUpdateAsync();
+                      await Updates.reloadAsync();
+                    }
+                  }
+                ]
+              );
+            } else {
+              Alert.alert('App Up to Date ✓', 'You are running the latest version.');
+            }
+          } catch (e: any) {
+            Alert.alert('Update Status', e.message || 'Could not verify updates.');
+          }
+        }
+      },
       { label: 'Notifications', icon: 'notifications-outline', desc: 'Manage push notifications', onPress: () => router.push('/(protected)/notifications') },
       { label: 'Data & Storage', icon: 'cloud-outline', desc: 'Cache and data management' },
       { label: 'Language', icon: 'language-outline', desc: 'App language preferences' },
@@ -33,7 +69,7 @@ export default function SettingsScreen() {
       { label: 'Help & Support', icon: 'help-circle-outline', desc: 'Get help and FAQs' },
       { label: 'Terms of Service', icon: 'document-outline', desc: 'Terms and conditions' },
       { label: 'Privacy Policy', icon: 'lock-closed-outline', desc: 'How we handle your data' },
-      { label: 'Version', icon: 'information-circle-outline', desc: 'Torque Auto Advisor v1.0.0' },
+      { label: 'Version', icon: 'information-circle-outline', desc: 'Torque Auto Advisor v2.0.0' },
     ]},
   ];
 
