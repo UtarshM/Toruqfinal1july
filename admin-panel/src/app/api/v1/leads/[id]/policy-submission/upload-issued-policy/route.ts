@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { validateAuth } from '@/lib/auth-guard'
+import { supabaseAdmin } from '@/lib/supabase-admin'
 import prisma from '@/lib/prisma'
 import path from 'path'
-import fs from 'fs'
 
 export async function POST(
   req: NextRequest,
@@ -23,21 +23,29 @@ export async function POST(
     const lead = await prisma.lead.findUnique({ where: { id } })
     if (!lead) return NextResponse.json({ error: 'Lead not found' }, { status: 404 })
 
-    const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'policies', id)
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true })
-    }
-
     const originalName = file.name || 'issued_policy.pdf'
     const ext = path.extname(originalName) || '.pdf'
     const safeBaseName = path.basename(originalName, ext).replace(/[^a-zA-Z0-9_-]/g, '_')
     const fileName = `policy_${Date.now()}_${safeBaseName}${ext}`
-    const filePath = path.join(uploadDir, fileName)
+    const storagePath = `policies/${id}/${fileName}`
 
     const buffer = Buffer.from(await file.arrayBuffer())
-    fs.writeFileSync(filePath, buffer)
 
-    const publicUrl = `/uploads/policies/${id}/${fileName}`
+    const { error: uploadError } = await supabaseAdmin.storage
+      .from('documents')
+      .upload(storagePath, buffer, {
+        contentType: 'application/pdf',
+        upsert: true
+      })
+
+    if (uploadError) {
+      console.error('[upload-issued-policy] Supabase storage error:', uploadError)
+      return NextResponse.json({ error: uploadError.message }, { status: 500 })
+    }
+
+    const { data: { publicUrl } } = supabaseAdmin.storage
+      .from('documents')
+      .getPublicUrl(storagePath)
 
     return NextResponse.json({
       success: true,

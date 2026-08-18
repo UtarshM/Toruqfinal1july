@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { validateAuth } from '@/lib/auth-guard'
+import { supabaseAdmin } from '@/lib/supabase-admin'
 import prisma from '@/lib/prisma'
-import path from 'path'
-import fs from 'fs'
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib'
 
 export async function POST(
@@ -32,9 +31,7 @@ export async function POST(
       return NextResponse.json({ error: 'No policy submission draft found for this lead' }, { status: 400 })
     }
 
-    const formData = submission.formData || {}
     const documents = submission.documents || []
-
     if (documents.length === 0) {
       return NextResponse.json({ error: 'Please upload at least one document before converting to single PDF' }, { status: 400 })
     }
@@ -44,18 +41,37 @@ export async function POST(
     const fontBold = await mergedPdf.embedFont(StandardFonts.HelveticaBold)
 
     // 2. Append all uploaded Document Pages (PDFs & Images)
-    const baseDir = process.cwd()
     for (let dIdx = 0; dIdx < documents.length; dIdx++) {
       const doc = documents[dIdx]
-      const relPath = doc.filePath.startsWith('/') ? doc.filePath.slice(1) : doc.filePath
-      const fullDiskPath = path.join(baseDir, 'public', relPath)
+      let fileBuffer: Buffer | null = null
 
-      if (!fs.existsSync(fullDiskPath)) {
-        console.warn(`[compile-pdf] Document file not found on disk: ${fullDiskPath}`)
+      try {
+        if (doc.storagePath) {
+          const { data: fileData, error: downloadError } = await supabaseAdmin.storage
+            .from('documents')
+            .download(doc.storagePath)
+
+          if (!downloadError && fileData) {
+            fileBuffer = Buffer.from(await fileData.arrayBuffer())
+          }
+        }
+
+        if (!fileBuffer && doc.filePath) {
+          const fileUrl = doc.filePath.startsWith('http') ? doc.filePath : `https://admin-panel-delta-steel.vercel.app${doc.filePath}`
+          const fetchRes = await fetch(fileUrl)
+          if (fetchRes.ok) {
+            fileBuffer = Buffer.from(await fetchRes.arrayBuffer())
+          }
+        }
+      } catch (dlErr) {
+        console.warn(`[compile-pdf] Could not download doc ${doc.fileName}:`, dlErr)
+      }
+
+      if (!fileBuffer) {
+        console.warn(`[compile-pdf] Document buffer empty for ${doc.fileName}`)
         continue
       }
 
-      const fileBuffer = fs.readFileSync(fullDiskPath)
       const isPdf = doc.fileName?.toLowerCase().endsWith('.pdf') || doc.fileType === 'application/pdf'
 
       if (isPdf) {
@@ -116,23 +132,32 @@ export async function POST(
       }
     }
 
-    // 4. Save consolidated PDF to disk
-    const uploadDir = path.join(baseDir, 'public', 'uploads', 'lead-documents', id)
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true })
+    // 4. Save consolidated PDF to Supabase Storage
+    const compiledFileName = `policy_bundle_${id}_${Date.now()}.pdf`
+    const compiledStoragePath = `lead-documents/${id}/${compiledFileName}`
+    const pdfBytes = await mergedPdf.save()
+
+    const { error: uploadError } = await supabaseAdmin.storage
+      .from('documents')
+      .upload(compiledStoragePath, Buffer.from(pdfBytes), {
+        contentType: 'application/pdf',
+        upsert: true
+      })
+
+    if (uploadError) {
+      console.error('[compile-pdf] Failed to upload compiled PDF:', uploadError)
+      return NextResponse.json({ error: uploadError.message }, { status: 500 })
     }
 
-    const compiledFileName = `policy_bundle_${id}_${Date.now()}.pdf`
-    const compiledDiskPath = path.join(uploadDir, compiledFileName)
-    const pdfBytes = await mergedPdf.save()
-    fs.writeFileSync(compiledDiskPath, pdfBytes)
-
-    const compiledPublicUrl = `/uploads/lead-documents/${id}/${compiledFileName}`
+    const { data: { publicUrl: compiledPublicUrl } } = supabaseAdmin.storage
+      .from('documents')
+      .getPublicUrl(compiledStoragePath)
 
     // 5. Update lead state
     const updatedSubmission = {
       ...submission,
       compiledPdfUrl: compiledPublicUrl,
+      compiledStoragePath,
       compiledAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     }

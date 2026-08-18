@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { validateAuth } from '@/lib/auth-guard'
+import { supabaseAdmin } from '@/lib/supabase-admin'
 import prisma from '@/lib/prisma'
 import path from 'path'
-import fs from 'fs'
 import { v4 as uuidv4 } from 'uuid'
 
 export const DOCUMENT_CATEGORIES: Record<string, string> = {
@@ -39,22 +39,30 @@ export async function POST(
     const lead = await prisma.lead.findUnique({ where: { id } })
     if (!lead) return NextResponse.json({ error: 'Lead not found' }, { status: 404 })
 
-    // Create lead-specific uploads directory
-    const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'lead-documents', id)
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true })
-    }
-
-    const originalName = file.name || 'document'
+    const originalName = file.name || 'document.png'
     const ext = path.extname(originalName) || '.png'
     const safeBaseName = path.basename(originalName, ext).replace(/[^a-zA-Z0-9_-]/g, '_')
     const fileName = `${category.toLowerCase()}_${Date.now()}_${safeBaseName}${ext}`
-    const filePath = path.join(uploadDir, fileName)
+    const storagePath = `lead-documents/${id}/${fileName}`
 
     const buffer = Buffer.from(await file.arrayBuffer())
-    fs.writeFileSync(filePath, buffer)
 
-    const publicUrl = `/uploads/lead-documents/${id}/${fileName}`
+    // Upload to Supabase Storage
+    const { error: uploadError } = await supabaseAdmin.storage
+      .from('documents')
+      .upload(storagePath, buffer, {
+        contentType: file.type || 'application/octet-stream',
+        upsert: true
+      })
+
+    if (uploadError) {
+      console.error('[upload document] Supabase storage error:', uploadError)
+      return NextResponse.json({ error: uploadError.message }, { status: 500 })
+    }
+
+    const { data: { publicUrl } } = supabaseAdmin.storage
+      .from('documents')
+      .getPublicUrl(storagePath)
 
     const docEntry = {
       id: uuidv4(),
@@ -63,6 +71,7 @@ export async function POST(
       fileName: originalName,
       savedFileName: fileName,
       filePath: publicUrl,
+      storagePath,
       fileSize: file.size,
       fileType: file.type || 'application/octet-stream',
       uploadedAt: new Date().toISOString(),

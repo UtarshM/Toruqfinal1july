@@ -15,6 +15,9 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
+import * as WebBrowser from 'expo-web-browser';
 import { Colors, Spacing, FontSize, BorderRadius } from '../utils/theme';
 import { api } from '../utils/api';
 import { supabase } from '../lib/supabase';
@@ -340,10 +343,56 @@ export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClo
     }
   };
 
-  const openPdf = (url: string) => {
-    if (!url) return;
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
+
+  const previewPdf = async (url: string) => {
+    if (!url) {
+      Alert.alert('No PDF', 'Single PDF has not been compiled yet.');
+      return;
+    }
     const fullUrl = url.startsWith('http') ? url : `${LIVE_BASE_URL}${url}`;
-    Linking.openURL(fullUrl).catch(() => Alert.alert('Error', 'Could not open PDF viewer'));
+    try {
+      if (Platform.OS === 'web') {
+        window.open(fullUrl, '_blank');
+      } else {
+        await WebBrowser.openBrowserAsync(fullUrl);
+      }
+    } catch (err) {
+      Linking.openURL(fullUrl).catch(() => Alert.alert('Error', 'Could not open PDF viewer'));
+    }
+  };
+
+  const downloadAndSavePdf = async (url: string) => {
+    if (!url) {
+      Alert.alert('No PDF', 'Please convert to Single PDF first.');
+      return;
+    }
+    const fullUrl = url.startsWith('http') ? url : `${LIVE_BASE_URL}${url}`;
+    setDownloadingPdf(true);
+    try {
+      const cleanReg = (formData.regNo || lead?.vehicleNo || 'lead').replace(/[^a-zA-Z0-9_-]/g, '_');
+      const filename = `Policy_Bundle_${cleanReg}_${Date.now()}.pdf`;
+      const localUri = `${FileSystem.documentDirectory}${filename}`;
+
+      const downloadResult = await FileSystem.downloadAsync(fullUrl, localUri);
+      if (downloadResult.status !== 200) {
+        throw new Error(`Download failed with status ${downloadResult.status}`);
+      }
+
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(localUri, {
+          mimeType: 'application/pdf',
+          dialogTitle: 'Save / Share Single Policy PDF',
+          UTI: 'com.adobe.pdf'
+        });
+      } else {
+        Alert.alert('PDF Saved! 💾', `File saved to phone at: ${localUri}`);
+      }
+    } catch (e: any) {
+      Alert.alert('Save Failed', e.message || 'Could not save PDF to phone.');
+    } finally {
+      setDownloadingPdf(false);
+    }
   };
 
   const status = submission?.status || 'Draft';
@@ -480,7 +529,7 @@ export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClo
                     </View>
                   </View>
 
-                  <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
                     <Pressable
                       style={[styles.compileBtn, compiling && { opacity: 0.7 }]}
                       onPress={handleCompilePdf}
@@ -491,13 +540,30 @@ export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClo
                     </Pressable>
 
                     {submission?.compiledPdfUrl && (
-                      <Pressable
-                        style={styles.viewPdfBtn}
-                        onPress={() => openPdf(submission.compiledPdfUrl)}
-                      >
-                        <Ionicons name="eye-outline" size={16} color={Colors.primary} />
-                        <Text style={styles.viewPdfBtnText}>View PDF</Text>
-                      </Pressable>
+                      <>
+                        <Pressable
+                          style={styles.viewPdfBtn}
+                          onPress={() => previewPdf(submission.compiledPdfUrl)}
+                        >
+                          <Ionicons name="eye-outline" size={16} color={Colors.primary} />
+                          <Text style={styles.viewPdfBtnText}>Preview PDF</Text>
+                        </Pressable>
+
+                        <Pressable
+                          style={[styles.downloadPdfBtn, downloadingPdf && { opacity: 0.7 }]}
+                          onPress={() => downloadAndSavePdf(submission.compiledPdfUrl)}
+                          disabled={downloadingPdf}
+                        >
+                          {downloadingPdf ? (
+                            <ActivityIndicator size="small" color="#FFFFFF" />
+                          ) : (
+                            <>
+                              <Ionicons name="download-outline" size={16} color="#FFFFFF" />
+                              <Text style={styles.downloadPdfBtnText}>Save to Phone</Text>
+                            </>
+                          )}
+                        </Pressable>
+                      </>
                     )}
                   </View>
                 </View>
@@ -575,13 +641,24 @@ export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClo
                   </Text>
 
                   {submission?.compiledPdfUrl ? (
-                    <Pressable
-                      style={[styles.viewPdfBtn, { marginTop: 12, width: '100%', justifyContent: 'center' }]}
-                      onPress={() => openPdf(submission.compiledPdfUrl)}
-                    >
-                      <Ionicons name="document-text" size={18} color={Colors.primary} />
-                      <Text style={[styles.viewPdfBtnText, { fontSize: 14 }]}>Download / View Single PDF Bundle</Text>
-                    </Pressable>
+                    <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
+                      <Pressable
+                        style={[styles.viewPdfBtn, { flex: 1, justifyContent: 'center' }]}
+                        onPress={() => previewPdf(submission.compiledPdfUrl)}
+                      >
+                        <Ionicons name="eye" size={16} color={Colors.primary} />
+                        <Text style={styles.viewPdfBtnText}>Preview PDF</Text>
+                      </Pressable>
+
+                      <Pressable
+                        style={[styles.downloadPdfBtn, { flex: 1, justifyContent: 'center' }, downloadingPdf && { opacity: 0.7 }]}
+                        onPress={() => downloadAndSavePdf(submission.compiledPdfUrl)}
+                        disabled={downloadingPdf}
+                      >
+                        <Ionicons name="download" size={16} color="#FFFFFF" />
+                        <Text style={styles.downloadPdfBtnText}>Save to Phone</Text>
+                      </Pressable>
+                    </View>
                   ) : (
                     <View style={styles.warningBox}>
                       <Ionicons name="alert-circle-outline" size={18} color="#D97706" />
@@ -927,6 +1004,20 @@ const styles = StyleSheet.create({
   },
   viewPdfBtnText: {
     color: Colors.primary,
+    fontSize: FontSize.xs,
+    fontWeight: '700',
+  },
+  downloadPdfBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#0284C7',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 10,
+    borderRadius: BorderRadius.md,
+  },
+  downloadPdfBtnText: {
+    color: '#FFFFFF',
     fontSize: FontSize.xs,
     fontWeight: '700',
   },
