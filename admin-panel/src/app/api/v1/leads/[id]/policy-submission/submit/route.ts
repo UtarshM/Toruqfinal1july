@@ -36,6 +36,7 @@ export async function POST(
 
     const salesPersonName = lead.assignee?.fullName || context.name || 'Sales Executive'
     const salesPersonId = lead.assignee?.id || context.userId
+    const managerId = lead.assignee?.managerId || null
 
     let managerName = 'Operations Manager'
     if (managerId) {
