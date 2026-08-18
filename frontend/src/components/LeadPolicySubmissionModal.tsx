@@ -18,6 +18,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import * as WebBrowser from 'expo-web-browser';
+import { decode } from 'base64-arraybuffer';
 import { Colors, Spacing, FontSize, BorderRadius } from '../utils/theme';
 import { api } from '../utils/api';
 import { supabase } from '../lib/supabase';
@@ -183,11 +184,70 @@ export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClo
   const uploadFile = async (uri: string, name: string, type: string, category: string) => {
     setUploadingCategory(category);
     try {
+      const cleanExt = (name.split('.').pop() || (type.includes('pdf') ? 'pdf' : 'jpg')).toLowerCase();
+      const safeName = name || `${category.toLowerCase()}.${cleanExt}`;
+      const savedFileName = `${category.toLowerCase()}_${Date.now()}_${Math.random().toString(36).substring(2, 7)}.${cleanExt}`;
+      const storagePath = `lead-documents/${leadId}/${savedFileName}`;
+      const mimeType = type || (cleanExt === 'pdf' ? 'application/pdf' : 'image/jpeg');
+
+      let uploadedPublicUrl: string | null = null;
+
+      // Strategy 1: Direct Supabase Storage Upload (Fastest & Most Reliable on Mobile)
+      try {
+        let fileBytes: ArrayBuffer | null = null;
+
+        if (Platform.OS !== 'web') {
+          const base64Data = await FileSystem.readAsStringAsync(uri, {
+            encoding: FileSystem.EncodingType.Base64,
+          });
+          fileBytes = decode(base64Data);
+        } else {
+          const fetchRes = await fetch(uri);
+          fileBytes = await fetchRes.arrayBuffer();
+        }
+
+        if (fileBytes) {
+          const { data: uploadData, error: storageError } = await supabase.storage
+            .from('documents')
+            .upload(storagePath, fileBytes, {
+              contentType: mimeType,
+              upsert: true,
+            });
+
+          if (!storageError && uploadData) {
+            const { data: { publicUrl } } = supabase.storage
+              .from('documents')
+              .getPublicUrl(storagePath);
+            uploadedPublicUrl = publicUrl;
+          } else {
+            console.warn('[direct storage upload failed, falling back]', storageError);
+          }
+        }
+      } catch (directErr) {
+        console.warn('[direct upload catch, falling back to server]', directErr);
+      }
+
+      // If Direct Upload succeeded, record metadata via JSON
+      if (uploadedPublicUrl) {
+        await api.post(`/leads/${leadId}/policy-submission/record-document`, {
+          category,
+          fileName: safeName,
+          savedFileName,
+          filePath: uploadedPublicUrl,
+          storagePath,
+          fileType: mimeType,
+        });
+
+        Alert.alert('Upload Successful! ✓', `${DOCUMENT_CATEGORIES[category] || category} uploaded.`);
+        loadSubmission();
+        if (onUpdated) onUpdated();
+        return;
+      }
+
+      // Strategy 2: Server-side Multipart Upload Fallback
+      const uploadUrl = `${LIVE_BASE_URL}/api/v1/leads/${leadId}/policy-submission/upload?category=${encodeURIComponent(category)}`;
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
-      if (!token) throw new Error('Not authenticated. Please log in again.');
-
-      const uploadUrl = `${LIVE_BASE_URL}/api/v1/leads/${leadId}/policy-submission/upload?category=${encodeURIComponent(category)}`;
 
       if (Platform.OS !== 'web') {
         const uploadRes = await FileSystem.uploadAsync(uploadUrl, uri, {
@@ -199,25 +259,22 @@ export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClo
             'Accept': 'application/json',
             'x-document-category': category,
           },
-          parameters: {
-            category: category,
-          },
+          parameters: { category },
         });
 
-        if (uploadRes.status < 200 || uploadRes.status >= 300) {
-          let errJson: any = {};
-          try {
-            errJson = JSON.parse(uploadRes.body);
-          } catch {}
-          throw new Error(errJson.error || errJson.details || `Upload failed (${uploadRes.status}): ${uploadRes.body?.slice(0, 100)}`);
+        if (uploadRes.status >= 200 && uploadRes.status < 300) {
+          Alert.alert('Upload Successful! ✓', `${DOCUMENT_CATEGORIES[category] || category} uploaded.`);
+          loadSubmission();
+          if (onUpdated) onUpdated();
+          return;
         }
+
+        let errObj: any = {};
+        try { errObj = JSON.parse(uploadRes.body); } catch {}
+        throw new Error(errObj.error || errObj.details || `Server upload returned ${uploadRes.status}`);
       } else {
         const formDataUpload = new FormData();
-        formDataUpload.append('file', {
-          uri,
-          name,
-          type
-        } as any);
+        formDataUpload.append('file', { uri, name: safeName, type: mimeType } as any);
         formDataUpload.append('category', category);
 
         const res = await fetch(uploadUrl, {
@@ -231,13 +288,14 @@ export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClo
 
         const resData = await res.json();
         if (!res.ok) throw new Error(resData.error || resData.details || 'Upload failed');
-      }
 
-      Alert.alert('Success ✓', 'Document uploaded successfully!');
-      loadSubmission();
-      if (onUpdated) onUpdated();
+        Alert.alert('Upload Successful! ✓', `${DOCUMENT_CATEGORIES[category] || category} uploaded.`);
+        loadSubmission();
+        if (onUpdated) onUpdated();
+      }
     } catch (err: any) {
-      Alert.alert('Upload Failed', err.message || 'Could not upload document');
+      console.error('[upload error]', err);
+      Alert.alert('Upload Error', err.message || 'Could not upload document');
     } finally {
       setUploadingCategory(null);
     }
