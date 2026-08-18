@@ -10,7 +10,8 @@ import {
   ActivityIndicator,
   Alert,
   Platform,
-  Linking
+  Linking,
+  StatusBar
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
@@ -1190,18 +1191,22 @@ export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClo
                     </View>
                   </View>
 
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
+                  <View style={styles.compiledBtnRow}>
                     <Pressable
                       style={[styles.compileBtn, compiling && { opacity: 0.7 }]}
                       onPress={handleCompilePdf}
                       disabled={compiling || docsCount === 0}
                     >
-                      <Ionicons name="sync-outline" size={16} color="#FFFFFF" />
-                      <Text style={styles.compileBtnText}>{compiling ? 'Compiling...' : 'Convert to Single PDF'}</Text>
+                      {compiling ? (
+                        <ActivityIndicator size="small" color="#FFFFFF" />
+                      ) : (
+                        <Ionicons name="sync-outline" size={16} color="#FFFFFF" />
+                      )}
+                      <Text style={styles.compileBtnText}>{compiling ? 'Compiling Single PDF...' : 'Convert to Single PDF'}</Text>
                     </Pressable>
 
                     {submission?.compiledPdfUrl && (
-                      <>
+                      <View style={styles.pdfActionSubRow}>
                         <Pressable
                           style={styles.viewPdfBtn}
                           onPress={() => previewPdf(submission.compiledPdfUrl)}
@@ -1224,7 +1229,7 @@ export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClo
                             </>
                           )}
                         </Pressable>
-                      </>
+                      </View>
                     )}
                   </View>
                 </View>
@@ -1473,8 +1478,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#0F172A',
     paddingHorizontal: Spacing.lg,
-    paddingTop: Platform.OS === 'ios' ? 50 : 20,
-    paddingBottom: Spacing.md,
+    paddingTop: Platform.OS === 'ios' ? 56 : (StatusBar.currentHeight ? StatusBar.currentHeight + 14 : 40),
+    paddingBottom: Spacing.md + 2,
     gap: 12,
   },
   backBtn: {
@@ -1653,48 +1658,59 @@ const styles = StyleSheet.create({
     color: '#94A3B8',
     marginTop: 2,
   },
+  compiledBtnRow: {
+    marginTop: 14,
+    gap: 8,
+  },
   compileBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#10B981',
+    paddingVertical: 12,
+    borderRadius: BorderRadius.md,
+  },
+  compileBtnText: {
+    color: '#FFFFFF',
+    fontSize: FontSize.sm,
+    fontWeight: '800',
+  },
+  pdfActionSubRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  viewPdfBtn: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    backgroundColor: '#10B981',
-    paddingVertical: 10,
+    backgroundColor: '#EFF6FF',
+    paddingVertical: 11,
     borderRadius: BorderRadius.md,
-  },
-  compileBtnText: {
-    color: '#FFFFFF',
-    fontSize: FontSize.xs,
-    fontWeight: '800',
-  },
-  viewPdfBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: Colors.primaryLight,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: 10,
-    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
   },
   viewPdfBtnText: {
     color: Colors.primary,
     fontSize: FontSize.xs,
-    fontWeight: '700',
+    fontWeight: '800',
   },
   downloadPdfBtn: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 6,
     backgroundColor: '#0284C7',
-    paddingHorizontal: Spacing.md,
-    paddingVertical: 10,
+    paddingVertical: 11,
     borderRadius: BorderRadius.md,
   },
   downloadPdfBtnText: {
     color: '#FFFFFF',
     fontSize: FontSize.xs,
-    fontWeight: '700',
+    fontWeight: '800',
   },
   docSlotCard: {
     backgroundColor: '#FFFFFF',
