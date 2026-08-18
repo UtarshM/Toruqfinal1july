@@ -175,12 +175,11 @@ export async function DELETE(
     const removedDoc = (submission.documents || []).find((d: any) => d.id === docId || d.category === category)
     const updatedDocuments = (submission.documents || []).filter((d: any) => d.id !== docId && d.category !== category)
 
-    // Optionally remove file from disk
-    if (removedDoc?.savedFileName) {
-      const diskPath = path.join(process.cwd(), 'public', 'uploads', 'lead-documents', id, removedDoc.savedFileName)
-      if (fs.existsSync(diskPath)) {
-        try { fs.unlinkSync(diskPath) } catch {}
-      }
+    // Remove file from Supabase Storage
+    if (removedDoc?.storagePath) {
+      try {
+        await supabaseAdmin.storage.from('documents').remove([removedDoc.storagePath])
+      } catch {}
     }
 
     const updatedSubmission = {
