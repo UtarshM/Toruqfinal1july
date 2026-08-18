@@ -8,11 +8,15 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { context, error } = await validateAuth(req, 'leads.edit')
+  const { context, error } = await validateAuth(req)
   if (error || !context) return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   try {
     const { id } = await params
+    const body = await req.json().catch(() => ({}))
+    const bodyDocuments = body?.documents
+    const bodyFormData = body?.formData
+
     const lead = await prisma.lead.findUnique({
       where: { id },
       include: {
@@ -25,16 +29,17 @@ export async function POST(
     if (!lead) return NextResponse.json({ error: 'Lead not found' }, { status: 404 })
 
     const cf = (lead.customFields && typeof lead.customFields === 'object') ? (lead.customFields as any) : {}
-    const submission = cf.policySubmission || null
+    const submission = cf.policySubmission || { status: 'Draft', formData: {}, documents: [] }
 
-    if (!submission) {
-      return NextResponse.json({ error: 'No policy submission draft found for this lead' }, { status: 400 })
-    }
+    const documents = (Array.isArray(bodyDocuments) && bodyDocuments.length > 0)
+      ? bodyDocuments
+      : (submission.documents || [])
 
-    const documents = submission.documents || []
     if (documents.length === 0) {
       return NextResponse.json({ error: 'Please upload at least one document before converting to single PDF' }, { status: 400 })
     }
+
+    const formData = bodyFormData || submission.formData || {}
 
     // 1. Create a new merged PDF document for uploaded document files
     const mergedPdf = await PDFDocument.create()

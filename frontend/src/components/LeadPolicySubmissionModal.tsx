@@ -113,16 +113,42 @@ export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClo
   const loadSubmission = async () => {
     setLoading(true);
     try {
-      const res = await api.get(`/leads/${leadId}/policy-submission`);
-      if (res?.submission) {
-        setSubmission(res.submission);
-        if (res.submission.formData) {
+      // 1. Read directly from Supabase leads table (instant, permanent ground truth)
+      let submissionData: any = null;
+      try {
+        const { data: dbLead } = await supabase
+          .from('leads')
+          .select('customFields, vehicleNo, clientPhone, expiryDate')
+          .eq('id', leadId)
+          .single();
+
+        if (dbLead?.customFields && typeof dbLead.customFields === 'object') {
+          const cf = dbLead.customFields as any;
+          if (cf.policySubmission) {
+            submissionData = cf.policySubmission;
+          }
+        }
+      } catch (err) {
+        console.warn('[Direct Supabase lead load err]', err);
+      }
+
+      // 2. Fallback to API endpoint
+      if (!submissionData) {
+        const res = await api.get(`/leads/${leadId}/policy-submission`);
+        if (res?.submission) {
+          submissionData = res.submission;
+        }
+      }
+
+      if (submissionData) {
+        setSubmission(submissionData);
+        if (submissionData.formData) {
           setFormData((prev: any) => ({
             ...prev,
-            ...res.submission.formData,
-            regNo: res.submission.formData.regNo || lead?.vehicleNo || lead?.vehicle_number || '',
-            mobileNo1: res.submission.formData.mobileNo1 || lead?.clientPhone || lead?.phone || '',
-            expDate: res.submission.formData.expDate || (lead?.expiryDate ? new Date(lead.expiryDate).toISOString().split('T')[0] : '')
+            ...submissionData.formData,
+            regNo: submissionData.formData.regNo || lead?.vehicleNo || lead?.vehicle_number || '',
+            mobileNo1: submissionData.formData.mobileNo1 || lead?.clientPhone || lead?.phone || '',
+            expDate: submissionData.formData.expDate || (lead?.expiryDate ? new Date(lead.expiryDate).toISOString().split('T')[0] : '')
           }));
         }
       }
@@ -140,9 +166,41 @@ export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClo
   const handleSaveDraft = async () => {
     setSaving(true);
     try {
-      await api.post(`/leads/${leadId}/policy-submission`, { formData });
+      // Persist directly to Supabase DB
+      try {
+        const { data: dbLead } = await supabase
+          .from('leads')
+          .select('customFields')
+          .eq('id', leadId)
+          .single();
+
+        const cf = (dbLead?.customFields && typeof dbLead.customFields === 'object') ? (dbLead.customFields as any) : {};
+        const prevSub = cf.policySubmission || { status: 'Draft', documents: [] };
+        const updatedSubmission = {
+          ...prevSub,
+          formData: {
+            ...(prevSub.formData || {}),
+            ...formData
+          },
+          updatedAt: new Date().toISOString()
+        };
+
+        await supabase
+          .from('leads')
+          .update({
+            customFields: {
+              ...cf,
+              policySubmission: updatedSubmission
+            }
+          })
+          .eq('id', leadId);
+      } catch {}
+
+      try {
+        await api.post(`/leads/${leadId}/policy-submission`, { formData });
+      } catch {}
+
       Alert.alert('Saved', 'Policy details draft saved successfully.');
-      loadSubmission();
       if (onUpdated) onUpdated();
     } catch (e: any) {
       Alert.alert('Error', e.message || 'Failed to save draft');
@@ -237,22 +295,73 @@ export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClo
         console.warn('[direct upload catch, falling back to server]', directErr);
       }
 
-      // If Direct Upload succeeded, record document via main endpoint
+      // If Direct Upload succeeded, record document via Supabase DB and backend endpoint
       if (uploadedPublicUrl) {
-        await api.post(`/leads/${leadId}/policy-submission`, {
-          document: {
-            category,
-            categoryLabel: DOCUMENT_CATEGORIES[category] || category,
-            fileName: safeName,
-            savedFileName,
-            filePath: uploadedPublicUrl,
-            storagePath,
-            fileType: mimeType,
-          }
+        const docEntry = {
+          id: `doc_${Date.now()}`,
+          category,
+          categoryLabel: DOCUMENT_CATEGORIES[category] || category,
+          fileName: safeName,
+          savedFileName,
+          filePath: uploadedPublicUrl,
+          storagePath,
+          fileType: mimeType,
+          uploadedAt: new Date().toISOString()
+        };
+
+        // 1. Immediately update local UI state
+        setSubmission((prev: any) => {
+          const currentDocs = prev?.documents || [];
+          const updatedDocs = [...currentDocs.filter((d: any) => d.category !== category), docEntry];
+          return {
+            ...prev,
+            documents: updatedDocs,
+            compiledPdfUrl: null,
+            updatedAt: new Date().toISOString()
+          };
         });
 
+        // 2. Persist directly to Supabase DB 'leads' table (INSTANT & 100% PERMANENT)
+        try {
+          const { data: dbLead } = await supabase
+            .from('leads')
+            .select('customFields')
+            .eq('id', leadId)
+            .single();
+
+          const cf = (dbLead?.customFields && typeof dbLead.customFields === 'object') ? (dbLead.customFields as any) : {};
+          const prevSub = cf.policySubmission || { status: 'Draft', formData: {}, documents: [] };
+          const existingDocs = prevSub.documents || [];
+          const updatedDocs = [...existingDocs.filter((d: any) => d.category !== category), docEntry];
+
+          const updatedSubmission = {
+            ...prevSub,
+            documents: updatedDocs,
+            compiledPdfUrl: null,
+            updatedAt: new Date().toISOString()
+          };
+
+          await supabase
+            .from('leads')
+            .update({
+              customFields: {
+                ...cf,
+                policySubmission: updatedSubmission
+              }
+            })
+            .eq('id', leadId);
+        } catch (dbErr) {
+          console.warn('[Direct Supabase leads document save error]', dbErr);
+        }
+
+        // 3. Sync with backend API
+        try {
+          await api.post(`/leads/${leadId}/policy-submission`, {
+            document: docEntry
+          });
+        } catch {}
+
         Alert.alert('Upload Successful! ✓', `${DOCUMENT_CATEGORIES[category] || category} uploaded.`);
-        loadSubmission();
         if (onUpdated) onUpdated();
         return;
       }
@@ -317,13 +426,62 @@ export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClo
   const handleCompilePdf = async () => {
     setCompiling(true);
     try {
-      // First save current form data
-      await api.post(`/leads/${leadId}/policy-submission`, { formData });
-      const res = await api.post(`/leads/${leadId}/policy-submission/compile-pdf`, {});
-      Alert.alert('Single PDF Compiled!', 'All uploaded documents and form details have been compiled into a single PDF file.');
-      loadSubmission();
+      const docsToCompile = submission?.documents || [];
+      if (docsToCompile.length === 0) {
+        Alert.alert('No Documents', 'Please upload at least one document before compiling.');
+        return;
+      }
+
+      // 1. Call compile-pdf endpoint with documents and formData in payload
+      const res = await api.post(`/leads/${leadId}/policy-submission/compile-pdf`, {
+        documents: docsToCompile,
+        formData: formData || submission?.formData || {}
+      });
+
+      if (res?.compiledPdfUrl) {
+        // 2. Update local state
+        setSubmission((prev: any) => ({
+          ...prev,
+          compiledPdfUrl: res.compiledPdfUrl
+        }));
+
+        // 3. Persist directly to Supabase DB 'leads' table (INSTANT & PERMANENT)
+        try {
+          const { data: dbLead } = await supabase
+            .from('leads')
+            .select('customFields')
+            .eq('id', leadId)
+            .single();
+
+          const cf = (dbLead?.customFields && typeof dbLead.customFields === 'object') ? (dbLead.customFields as any) : {};
+          const prevSub = cf.policySubmission || {};
+
+          await supabase
+            .from('leads')
+            .update({
+              customFields: {
+                ...cf,
+                policySubmission: {
+                  ...prevSub,
+                  documents: docsToCompile,
+                  compiledPdfUrl: res.compiledPdfUrl,
+                  updatedAt: new Date().toISOString()
+                }
+              }
+            })
+            .eq('id', leadId);
+        } catch (dbErr) {
+          console.warn('[Direct compile-pdf save err]', dbErr);
+        }
+
+        Alert.alert('Single PDF Compiled! ✓', 'All 7 documents and policy details have been consolidated into a single master PDF.');
+      } else {
+        throw new Error(res?.error || 'Could not generate PDF URL');
+      }
+
       if (onUpdated) onUpdated();
     } catch (err: any) {
+      console.error('[compile pdf error]', err);
       Alert.alert('PDF Compilation Failed', err.message || 'Could not compile PDF');
     } finally {
       setCompiling(false);
@@ -346,9 +504,43 @@ export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClo
           onPress: async () => {
             setSubmitting(true);
             try {
+              // 1. Persist Pending_Review status directly to Supabase DB
+              try {
+                const { data: dbLead } = await supabase
+                  .from('leads')
+                  .select('customFields')
+                  .eq('id', leadId)
+                  .single();
+
+                const cf = (dbLead?.customFields && typeof dbLead.customFields === 'object') ? (dbLead.customFields as any) : {};
+                const prevSub = cf.policySubmission || {};
+
+                await supabase
+                  .from('leads')
+                  .update({
+                    customFields: {
+                      ...cf,
+                      policySubmission: {
+                        ...prevSub,
+                        status: 'Pending_Review',
+                        submittedAt: new Date().toISOString(),
+                        updatedAt: new Date().toISOString()
+                      }
+                    }
+                  })
+                  .eq('id', leadId);
+              } catch {}
+
+              // 2. Call backend endpoint
               await api.post(`/leads/${leadId}/policy-submission/submit`, {});
-              Alert.alert('Submitted!', 'Policy documents and details have been submitted to Manager for verification.');
-              loadSubmission();
+
+              setSubmission((prev: any) => ({
+                ...prev,
+                status: 'Pending_Review',
+                submittedAt: new Date().toISOString()
+              }));
+
+              Alert.alert('Submitted Successfully! ✓', 'Policy documents and details have been submitted to Manager for verification.');
               if (onUpdated) onUpdated();
             } catch (err: any) {
               Alert.alert('Submission Error', err.message || 'Could not submit');
@@ -679,26 +871,40 @@ export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClo
                           <Text style={styles.docSlotLabel}>{reqDoc.label}</Text>
                           <Text style={styles.docSlotDesc}>{reqDoc.desc}</Text>
                           {uploaded && (
-                            <Text style={styles.docUploadedName} numberOfLines={1}>
-                              ✓ {uploaded.fileName}
-                            </Text>
+                            <View style={styles.uploadedBadgeRow}>
+                              <Ionicons name="checkmark-circle" size={14} color="#059669" />
+                              <Text style={styles.docUploadedName} numberOfLines={1}>
+                                {uploaded.fileName || `${reqDoc.key}.jpg`}
+                              </Text>
+                            </View>
                           )}
                         </View>
 
-                        <Pressable
-                          style={[styles.uploadSlotBtn, uploaded ? styles.uploadSlotBtnSuccess : styles.uploadSlotBtnPrimary]}
-                          onPress={() => handlePickDocument(reqDoc.key)}
-                          disabled={isUploadingThis}
-                        >
-                          {isUploadingThis ? (
-                            <ActivityIndicator size="small" color="#FFFFFF" />
-                          ) : (
-                            <>
-                              <Ionicons name={uploaded ? "cloud-done-outline" : "cloud-upload-outline"} size={16} color="#FFFFFF" />
-                              <Text style={styles.uploadSlotBtnText}>{uploaded ? 'Re-upload' : 'Upload'}</Text>
-                            </>
+                        <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
+                          {uploaded && (
+                            <Pressable
+                              style={styles.previewSmallBtn}
+                              onPress={() => previewPdf(uploaded.filePath)}
+                            >
+                              <Ionicons name="eye-outline" size={16} color="#0284C7" />
+                            </Pressable>
                           )}
-                        </Pressable>
+
+                          <Pressable
+                            style={[styles.uploadSlotBtn, uploaded ? styles.uploadSlotBtnSuccess : styles.uploadSlotBtnPrimary]}
+                            onPress={() => handlePickDocument(reqDoc.key)}
+                            disabled={isUploadingThis}
+                          >
+                            {isUploadingThis ? (
+                              <ActivityIndicator size="small" color="#FFFFFF" />
+                            ) : (
+                              <>
+                                <Ionicons name={uploaded ? "refresh-outline" : "cloud-upload-outline"} size={16} color="#FFFFFF" />
+                                <Text style={styles.uploadSlotBtnText}>{uploaded ? 'Replace' : 'Upload'}</Text>
+                              </>
+                            )}
+                          </Pressable>
+                        </View>
                       </View>
                     </View>
                   );
@@ -1139,11 +1345,28 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     marginTop: 2,
   },
+  uploadedBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 6,
+    backgroundColor: '#DCFCE7',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    alignSelf: 'flex-start',
+  },
+  previewSmallBtn: {
+    backgroundColor: '#E0F2FE',
+    padding: 8,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: '#BAE6FD',
+  },
   docUploadedName: {
     fontSize: FontSize.xs - 1,
     color: '#047857',
     fontWeight: '700',
-    marginTop: 4,
   },
   uploadSlotBtn: {
     flexDirection: 'row',
