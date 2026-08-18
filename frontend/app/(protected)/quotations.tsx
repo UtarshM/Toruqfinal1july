@@ -142,9 +142,9 @@ export default function QuotationsScreen() {
                     ₹{Number(item.rate !== undefined && item.rate !== null ? item.rate : (item.amount || 0)).toLocaleString()}
                   </Text>
                 </View>
-                {item.benefit !== undefined && item.benefit !== null && (
+                {isAdmin && item.benefit !== undefined && item.benefit !== null && (
                   <View>
-                    <Text style={styles.lbl}>Benefit</Text>
+                    <Text style={styles.lbl}>Profit / Benefit</Text>
                     <Text style={[styles.val, { color: Colors.success }]}>
                       ₹{Number(item.benefit).toLocaleString()}
                     </Text>

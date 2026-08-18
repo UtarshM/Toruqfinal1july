@@ -309,9 +309,11 @@ export default function QuotationsPage() {
                   {quote.rate !== null && quote.rate !== undefined ? (
                     <div>
                       <div className="text-sm font-bold text-gray-900">₹{parseFloat(quote.rate).toLocaleString()}</div>
-                      <div className="text-[9px] text-emerald-600 font-extrabold uppercase mt-0.5">
-                        Benefit: ₹{parseFloat(quote.benefit || 0).toLocaleString()}
-                      </div>
+                      {isAdmin && quote.benefit ? (
+                        <div className="text-[9px] text-emerald-600 font-extrabold uppercase mt-0.5">
+                          Profit: ₹{parseFloat(quote.benefit || 0).toLocaleString()}
+                        </div>
+                      ) : null}
                     </div>
                   ) : (
                     <div className="text-sm font-bold text-gray-900">₹{parseFloat(quote.amount).toLocaleString()}</div>
@@ -436,12 +438,14 @@ export default function QuotationsPage() {
               <div className="grid grid-cols-2 gap-4 bg-slate-900 text-white p-4 rounded-2xl shadow-inner">
                 <div>
                   <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Computed Rate</label>
-                  <input type="text" readOnly placeholder="--" value={calcData.rate ? `₹${parseInt(calcData.rate).toLocaleString()}` : ''} className="w-full px-3 py-2 bg-emerald-600 text-white border-none rounded-xl outline-none text-xs font-black" />
+                  <input type="text" readOnly placeholder="--" value={calcData.rate ? `₹${parseInt(calcData.rate).toLocaleString()}` : ''} className="w-full px-3 py-2 bg-slate-900 text-white border-none rounded-xl outline-none text-xs font-black" />
                 </div>
-                <div>
-                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Agent Benefit</label>
-                  <input type="text" readOnly placeholder="--" value={calcData.benefit ? `₹${parseInt(calcData.benefit).toLocaleString()}` : ''} className="w-full px-3 py-2 bg-blue-600 text-white border-none rounded-xl outline-none text-xs font-black" />
-                </div>
+                {isAdmin && (
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Profit / Benefit</label>
+                    <input type="text" readOnly placeholder="--" value={calcData.benefit ? `₹${parseInt(calcData.benefit).toLocaleString()}` : ''} className="w-full px-3 py-2 bg-emerald-600 text-white border-none rounded-xl outline-none text-xs font-black" />
+                  </div>
+                )}
               </div>
 
               <div>

@@ -6,6 +6,8 @@ import * as DocumentPicker from 'expo-document-picker';
 import { Colors, Spacing, FontSize, BorderRadius } from '../../../src/utils/theme';
 import Sidebar from '../../../src/components/Sidebar';
 import { supabase } from '../../../src/lib/supabase';
+import { useAuth } from '../../../src/context/AuthContext';
+import { useRouter } from 'expo-router';
 
 interface Mappings {
   clientName: string;
@@ -81,9 +83,42 @@ function HeaderDropdownSelector({ label, placeholder, options, selectedValue, on
 }
 
 export default function LeadImportScreen() {
+  const router = useRouter();
+  const { user } = useAuth();
+  const roleUpper = (typeof (user?.role as any) === 'object' ? (user?.role as any)?.name : user?.role)?.toUpperCase() || '';
+  const isAdmin = roleUpper.includes('ADMIN') || roleUpper.includes('SUPER') || roleUpper === 'ADMIN';
+
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<DocumentPicker.DocumentPickerAsset | null>(null);
   const [importName, setImportName] = useState('');
+
+  if (user && !isAdmin) {
+    return (
+      <SafeAreaView style={styles.safe} edges={['top']}>
+        <Sidebar visible={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+        <View style={styles.header}>
+          <Pressable onPress={() => setSidebarOpen(true)} style={styles.menuBtn}>
+            <Ionicons name="menu-outline" size={26} color={Colors.text} />
+          </Pressable>
+          <Text style={styles.title}>Import Leads</Text>
+          <View style={{ width: 38 }} />
+        </View>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+          <Ionicons name="lock-closed-outline" size={64} color={Colors.error} style={{ marginBottom: 16 }} />
+          <Text style={{ fontSize: 18, fontWeight: '700', color: Colors.text, marginBottom: 8 }}>Access Denied</Text>
+          <Text style={{ fontSize: 14, color: Colors.textMuted, textAlign: 'center', marginBottom: 24 }}>
+            Only administrators are authorized to import leads into the system.
+          </Text>
+          <Pressable 
+            style={{ backgroundColor: Colors.primary, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8 }} 
+            onPress={() => router.replace('/(protected)/dashboard')}
+          >
+            <Text style={{ color: '#FFFFFF', fontWeight: '700' }}>Go to Dashboard</Text>
+          </Pressable>
+        </View>
+      </SafeAreaView>
+    );
+  }
   
   // Mapping UI states
   const [fileHeaders, setFileHeaders] = useState<string[]>([]);

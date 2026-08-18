@@ -126,6 +126,9 @@ export default function QuotationNewScreen() {
   const [categories, setCategories] = useState<any[]>([]);
   const [loadingConfig, setLoadingConfig] = useState(false);
 
+  const roleUpper = (typeof (currentUser?.role as any) === 'object' ? (currentUser?.role as any)?.name : currentUser?.role)?.toUpperCase() || '';
+  const isAdmin = roleUpper.includes('ADMIN') || roleUpper.includes('SUPER') || roleUpper === 'ADMIN';
+
   // Calculator State
   const [calcData, setCalcData] = useState({
     companyId: '',
@@ -137,9 +140,6 @@ export default function QuotationNewScreen() {
     rate: '',
     benefit: ''
   });
-
-  const roleUpper = currentUser?.role?.toUpperCase() || '';
-  const isAdmin = roleUpper === 'SUPER ADMIN' || roleUpper === 'ADMIN';
 
   const update = (k: string, v: string) => setForm(p => ({ ...p, [k]: v }));
 
@@ -362,16 +362,18 @@ export default function QuotationNewScreen() {
             </View>
           )}
 
-          <View style={styles.ruleContainer}>
-            <View style={styles.ruleCol}>
-              <Text style={styles.ruleLabel}>Percentage Rule</Text>
-              <Text style={styles.ruleVal}>{calcData.percentage}%</Text>
+          {isAdmin && (
+            <View style={styles.ruleContainer}>
+              <View style={styles.ruleCol}>
+                <Text style={styles.ruleLabel}>Percentage Rule</Text>
+                <Text style={styles.ruleVal}>{calcData.percentage}%</Text>
+              </View>
+              <View style={styles.ruleCol}>
+                <Text style={styles.ruleLabel}>Profit Rule</Text>
+                <Text style={styles.ruleVal}>₹{calcData.profit}</Text>
+              </View>
             </View>
-            <View style={styles.ruleCol}>
-              <Text style={styles.ruleLabel}>Profit Rule</Text>
-              <Text style={styles.ruleVal}>₹{calcData.profit}</Text>
-            </View>
-          </View>
+          )}
 
           <Text style={styles.label}>NET PREMIUM (₹) *</Text>
           <TextInput
@@ -400,12 +402,14 @@ export default function QuotationNewScreen() {
                 {calcData.rate ? `₹${Number(calcData.rate).toLocaleString()}` : '--'}
               </Text>
             </View>
-            <View style={styles.calcResultCol}>
-              <Text style={styles.calcResultLabel}>Agent Benefit</Text>
-              <Text style={[styles.calcResultVal, styles.benefitBg]}>
-                {calcData.benefit ? `₹${Number(calcData.benefit).toLocaleString()}` : '--'}
-              </Text>
-            </View>
+            {isAdmin && (
+              <View style={styles.calcResultCol}>
+                <Text style={styles.calcResultLabel}>Profit / Benefit</Text>
+                <Text style={[styles.calcResultVal, styles.benefitBg]}>
+                  {calcData.benefit ? `₹${Number(calcData.benefit).toLocaleString()}` : '--'}
+                </Text>
+              </View>
+            )}
           </View>
           
           <Text style={styles.label}>IDV (₹)</Text>

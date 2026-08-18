@@ -2,9 +2,14 @@
 import React, { useState, useEffect } from 'react'
 import AdminLayout from '@/components/layout/AdminLayout'
 import { fetchApi } from '@/lib/api'
-import { Calculator, Calendar, Info, CheckCircle2 } from 'lucide-react'
+import { Calculator, Calendar, Info, CheckCircle2, Lock } from 'lucide-react'
+import { useAuth } from '@/context/AuthContext'
 
 export default function RateCalculatorPage() {
+  const { user } = useAuth()
+  const roleUpper = user?.role?.name?.toUpperCase() || ''
+  const isAdmin = roleUpper === 'SUPER ADMIN' || roleUpper === 'ADMIN'
+
   // Lists from DB
   const [companies, setCompanies] = useState<any[]>([])
   const [categories, setCategories] = useState<any[]>([])
@@ -136,6 +141,28 @@ export default function RateCalculatorPage() {
   const validCategoryIdsForCompany = new Set(
     relationships.filter(r => r.companyId === companyId).map(r => r.categoryId)
   )
+
+  if (user && !isAdmin) {
+    return (
+      <AdminLayout>
+        <div className="flex flex-col items-center justify-center min-h-[60vh] text-center p-8 bg-white rounded-2xl border border-slate-200 shadow-sm">
+          <div className="w-16 h-16 bg-red-50 text-red-600 rounded-2xl flex items-center justify-center mb-4">
+            <Lock size={32} />
+          </div>
+          <h2 className="text-xl font-bold text-slate-900 mb-2">Access Restricted</h2>
+          <p className="text-sm text-slate-500 max-w-md mb-6">
+            Only administrators are authorized to access the Rate Calculator and view internal profit/benefit margins.
+          </p>
+          <a
+            href="/dashboard"
+            className="px-5 py-2.5 bg-slate-900 text-white text-sm font-bold rounded-xl hover:bg-slate-800 transition-all"
+          >
+            Return to Dashboard
+          </a>
+        </div>
+      </AdminLayout>
+    )
+  }
 
   return (
     <AdminLayout>
