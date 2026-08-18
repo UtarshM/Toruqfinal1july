@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, FlatList, Pressable, RefreshControl, TextInput,
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { api } from '../../src/utils/api';
 import { supabase } from '../../src/lib/supabase';

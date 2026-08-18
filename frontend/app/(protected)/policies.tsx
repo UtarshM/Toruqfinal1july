@@ -1,11 +1,16 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { View, Text, StyleSheet, FlatList, Pressable, RefreshControl, Modal, TextInput, ScrollView, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, StyleSheet, FlatList, Pressable, RefreshControl, Modal, TextInput, ScrollView, ActivityIndicator, Alert, Linking, Platform } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
+import * as WebBrowser from 'expo-web-browser';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
 import { api } from '../../src/utils/api';
+import { supabase } from '../../src/lib/supabase';
 import { Colors, Spacing, FontSize, BorderRadius, StatusColors } from '../../src/utils/theme';
 import { Ionicons } from '@expo/vector-icons';
 import { useCacheStore } from '../../src/store/cacheStore';
+import { useAuth } from '../../src/context/AuthContext';
 import Sidebar from '../../src/components/Sidebar';
 import DatePickerSelector from '../../src/components/DatePickerSelector';
 
@@ -98,10 +103,8 @@ function DropdownSelector({ label, placeholder, options, selectedValue, onSelect
                         setModalVisible(false);
                       }}
                     >
-                      <Text style={[styles.optionText, isSelected && styles.optionTextActive]}>
-                        {opt.label}
-                      </Text>
-                      {isSelected && <Ionicons name="checkmark" size={20} color={Colors.primary} />}
+                      <Text style={[styles.optionText, isSelected && styles.optionTextActive]}>{opt.label}</Text>
+                      {isSelected && <Ionicons name="checkmark" size={18} color={Colors.primary} />}
                     </Pressable>
                   );
                 })
@@ -116,36 +119,40 @@ function DropdownSelector({ label, placeholder, options, selectedValue, onSelect
 
 export default function PoliciesScreen() {
   const router = useRouter();
+  const { user } = useAuth();
+  const roleUpper = user?.role?.toUpperCase() || '';
+  const isManagerOrAdmin = roleUpper.includes('MANAGER') || roleUpper.includes('ADMIN') || roleUpper.includes('SUPER');
+
   const { cache, setCache, loadCache } = useCacheStore();
-
-  const [items, setItems] = useState<any[]>(cache['/policies']?.items || []);
-  const [total, setTotal] = useState(cache['/policies']?.items?.length || 0);
-  const [refreshing, setRefreshing] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [items, setItems] = useState<any[]>([]);
   const [filter, setFilter] = useState('all');
+  const [search, setSearch] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
+  const [total, setTotal] = useState(0);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [downloadingSheet, setDownloadingSheet] = useState(false);
 
-  // Add Policy Modal states
+  // Add Policy Form State
   const [addModalVisible, setAddModalVisible] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [leads, setLeads] = useState<any[]>(cache['/leads']?.items || []);
-  
+  const [leads, setLeads] = useState<any[]>([]);
+  const [loadingLeads, setLoadingLeads] = useState(false);
   const [newPolicy, setNewPolicy] = useState({
     policy_number: '',
     provider: '',
-    type: '',
+    type: 'Comprehensive',
     premium_amount: '',
     status: 'Active',
-    start_date: '',
-    end_date: '',
+    start_date: new Date().toISOString().split('T')[0],
+    end_date: new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString().split('T')[0],
     lead_id: ''
   });
-  const [loadingLeads, setLoadingLeads] = useState(false);
 
   const fetchLeads = async () => {
     setLoadingLeads(true);
     try {
-      const lData = await api.get<any>('/leads');
-      const leadsArr = Array.isArray(lData) ? lData : lData?.leads || lData?.items || [];
+      const res = await api.get<any>('/leads?limit=100');
+      const leadsArr = Array.isArray(res) ? res : res.leads || res.items || [];
       setLeads(leadsArr);
       setCache('/leads', { items: leadsArr });
     } catch (err) {
@@ -161,7 +168,6 @@ export default function PoliciesScreen() {
     }
   }, [addModalVisible]);
 
-  // Load cache on mount
   useEffect(() => {
     loadCache().then(() => {
       const cachedPolicies = cache['/policies'];
@@ -169,31 +175,52 @@ export default function PoliciesScreen() {
         setItems(cachedPolicies.items);
         setTotal(cachedPolicies.items.length);
       }
-      const cachedLeads = cache['/leads'];
-      if (cachedLeads && cachedLeads.items) {
-        setLeads(cachedLeads.items);
-      }
     });
   }, []);
 
   const load = useCallback(async () => {
     try {
       const statusParam = filter !== 'all' ? `?status=${filter}` : '';
-      const [pData, lData] = await Promise.all([
-        api.get<any[]>(`/policies${statusParam}`),
-        api.get<any>('/leads').catch(() => null)
-      ]);
+      let policiesArr: any[] = [];
 
-      const policiesArr = Array.isArray(pData) ? pData : [];
+      try {
+        const pData = await api.get<any[]>(`/policies${statusParam}`);
+        if (Array.isArray(pData)) policiesArr = pData;
+      } catch (apiErr) {
+        console.warn('[Policies API error, falling back to Supabase DB]', apiErr);
+      }
+
+      // Supabase direct fallback
+      if (policiesArr.length === 0) {
+        let query = supabase
+          .from('policies')
+          .select('id, policyNumber, provider, type, premiumAmount, status, startDate, endDate, createdAt, lead:leads(id, clientName, clientPhone, vehicleNo, customFields, assignee:assignedTo(fullName))')
+          .order('createdAt', { ascending: false })
+          .limit(100);
+
+        if (filter !== 'all') {
+          query = query.eq('status', filter);
+        }
+
+        const { data: dbPolicies } = await query;
+        if (dbPolicies) {
+          policiesArr = dbPolicies.map((p: any) => {
+            const cf = (p.lead?.customFields && typeof p.lead.customFields === 'object') ? (p.lead.customFields as any) : {};
+            const sub = cf.policySubmission || {};
+            return {
+              ...p,
+              salesPersonName: p.lead?.assignee?.fullName || 'Direct',
+              clientPhone: p.lead?.clientPhone,
+              compiledPdfUrl: sub.compiledPdfUrl || null,
+              issuedPolicyPdfUrl: sub.issuedPolicyPdfUrl || null,
+            };
+          });
+        }
+      }
+
       setItems(policiesArr);
       setTotal(policiesArr.length);
       setCache('/policies', { items: policiesArr });
-
-      if (lData) {
-        const leadsArr = Array.isArray(lData) ? lData : lData.leads || lData.items || [];
-        setLeads(leadsArr);
-        setCache('/leads', { items: leadsArr });
-      }
     } catch (e) {
       console.error('[PoliciesScreen] Failed to load policies data', e);
     }
@@ -201,6 +228,48 @@ export default function PoliciesScreen() {
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
   const onRefresh = async () => { setRefreshing(true); await load(); setRefreshing(false); };
+
+  const previewPdf = async (url: string) => {
+    if (!url) return;
+    try {
+      if (Platform.OS === 'web') {
+        Linking.openURL(url);
+      } else {
+        await WebBrowser.openBrowserAsync(url);
+      }
+    } catch {
+      Linking.openURL(url);
+    }
+  };
+
+  const handleDownloadMonthlySheet = async () => {
+    setDownloadingSheet(true);
+    try {
+      const res = await api.get<any>('/manager/monthly-sheet');
+      if (res?.sheetUrl) {
+        if (Platform.OS === 'web') {
+          Linking.openURL(res.sheetUrl);
+        } else {
+          const fileUri = FileSystem.documentDirectory + (res.fileName || 'master_policies.xlsx');
+          const download = await FileSystem.downloadAsync(res.sheetUrl, fileUri);
+          if (download.uri) {
+            const canShare = await Sharing.isAvailableAsync();
+            if (canShare) {
+              await Sharing.shareAsync(download.uri);
+            } else {
+              Alert.alert('Downloaded', 'File saved successfully.');
+            }
+          }
+        }
+      } else {
+        Alert.alert('No Data', 'No policies found for this period.');
+      }
+    } catch (err: any) {
+      Alert.alert('Download Error', err?.message || 'Could not download master sheet.');
+    } finally {
+      setDownloadingSheet(false);
+    }
+  };
 
   const handleAddPolicy = async () => {
     if (!newPolicy.policy_number.trim() || !newPolicy.provider.trim() || !newPolicy.type.trim() || !newPolicy.premium_amount || !newPolicy.start_date || !newPolicy.end_date || !newPolicy.lead_id) {
@@ -220,7 +289,7 @@ export default function PoliciesScreen() {
         lead_id: newPolicy.lead_id || null
       });
       setAddModalVisible(false);
-      setNewPolicy({ policy_number: '', provider: '', type: '', premium_amount: '', status: 'Active', start_date: '', end_date: '', lead_id: '' });
+      setNewPolicy({ policy_number: '', provider: '', type: 'Comprehensive', premium_amount: '', status: 'Active', start_date: new Date().toISOString().split('T')[0], end_date: new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString().split('T')[0], lead_id: '' });
       Alert.alert('Success', 'Policy registered successfully!');
       load();
     } catch (e: any) {
@@ -230,26 +299,70 @@ export default function PoliciesScreen() {
     }
   };
 
+  const filteredItems = items.filter(item => {
+    if (!search.trim()) return true;
+    const q = search.toLowerCase();
+    return (
+      item.policyNumber?.toLowerCase().includes(q) ||
+      item.lead?.clientName?.toLowerCase().includes(q) ||
+      item.lead?.vehicleNo?.toLowerCase().includes(q) ||
+      item.provider?.toLowerCase().includes(q)
+    );
+  });
+
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      {/* Sidebar Component */}
       <Sidebar visible={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
-      {/* Header */}
       <View style={styles.header}>
         <Pressable onPress={() => setSidebarOpen(true)} style={styles.menuBtn}>
           <Ionicons name="menu-outline" size={26} color={Colors.text} />
         </Pressable>
-        <Text style={styles.title}>Policies</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.title}>Policies</Text>
+          <Text style={styles.subTitle}>{total} {total === 1 ? 'policy' : 'policies'}</Text>
+        </View>
         <View style={styles.headerRight}>
-          <View style={styles.countBadge}><Text style={styles.countText}>{total}</Text></View>
-          <Pressable style={styles.addBtn} onPress={() => setAddModalVisible(true)}>
-            <Ionicons name="add" size={22} color={Colors.primary} />
-          </Pressable>
+          {isManagerOrAdmin && (
+            <Pressable
+              onPress={handleDownloadMonthlySheet}
+              style={styles.downloadSheetBtn}
+              disabled={downloadingSheet}
+            >
+              {downloadingSheet ? (
+                <ActivityIndicator size="small" color={Colors.primary} />
+              ) : (
+                <>
+                  <Ionicons name="download-outline" size={15} color={Colors.primary} />
+                  <Text style={styles.downloadSheetText}>Excel</Text>
+                </>
+              )}
+            </Pressable>
+          )}
+          {isManagerOrAdmin && (
+            <Pressable style={styles.addBtn} onPress={() => setAddModalVisible(true)}>
+              <Ionicons name="add" size={22} color="#FFFFFF" />
+            </Pressable>
+          )}
         </View>
       </View>
 
-      {/* Filters */}
+      <View style={styles.searchBar}>
+        <Ionicons name="search-outline" size={18} color={Colors.textMuted} />
+        <TextInput
+          style={styles.searchInputField}
+          placeholder="Search by policy no, vehicle, client..."
+          placeholderTextColor={Colors.textLight}
+          value={search}
+          onChangeText={setSearch}
+        />
+        {search ? (
+          <Pressable onPress={() => setSearch('')}>
+            <Ionicons name="close-circle" size={18} color={Colors.textMuted} />
+          </Pressable>
+        ) : null}
+      </View>
+
       <View style={styles.filterRow}>
         {['all', 'Active', 'Expired', 'Lapsed'].map(s => (
           <Pressable key={s} style={[styles.chip, filter === s && styles.chipActive]} onPress={() => setFilter(s)}>
@@ -258,45 +371,72 @@ export default function PoliciesScreen() {
         ))}
       </View>
 
-      {/* List */}
       <FlatList 
-        data={items} 
+        data={filteredItems} 
         keyExtractor={i => i.id} 
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
-        contentContainerStyle={{ padding: Spacing.md, gap: Spacing.sm }}
+        contentContainerStyle={{ padding: Spacing.md, paddingBottom: 100, gap: Spacing.md }}
         ListEmptyComponent={
           <View style={styles.empty}>
             <Ionicons name="shield-checkmark-outline" size={48} color={Colors.textLight} />
-            <Text style={styles.emptyText}>No policies</Text>
+            <Text style={styles.emptyText}>No policies found</Text>
           </View>
         }
         renderItem={({ item }) => {
           const sc = StatusColors[item.status] || StatusColors.active || StatusColors.pending;
+          const pdfUrl = item.issuedPolicyPdfUrl || item.compiledPdfUrl;
+          const expDateFormatted = item.endDate ? new Date(item.endDate).toLocaleDateString('en-IN') : 'N/A';
+
           return (
             <View style={styles.card}>
               <View style={styles.cardTop}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.cardName}>{item.lead?.clientName || 'Direct Policy'}</Text>
-                  <Text style={styles.cardMeta}>{item.policyNumber} · {item.provider} · {item.type}</Text>
+                  {item.lead?.vehicleNo && (
+                    <View style={styles.vehPill}>
+                      <Text style={styles.vehPillText}>{item.lead.vehicleNo}</Text>
+                    </View>
+                  )}
+                  <Text style={styles.cardMeta}>#{item.policyNumber} · {item.provider} · {item.type}</Text>
                 </View>
-                <View style={[styles.badge, { backgroundColor: sc.bg }]}><Text style={[styles.badgeText, { color: sc.text }]}>{item.status}</Text></View>
+                <View style={[styles.badge, { backgroundColor: sc.bg }]}>
+                  <Text style={[styles.badgeText, { color: sc.text }]}>{item.status}</Text>
+                </View>
               </View>
+
               <View style={styles.cardBottom}>
                 <View>
                   <Text style={styles.policyLabel}>Premium</Text>
-                  <Text style={styles.policyValue}>₹{Number(item.premiumAmount || 0).toLocaleString()}</Text>
+                  <Text style={styles.policyValue}>₹{Number(item.premiumAmount || 0).toLocaleString('en-IN')}</Text>
                 </View>
                 <View>
-                  <Text style={styles.policyLabel}>End Date</Text>
-                  <Text style={styles.policyValue}>{new Date(item.endDate).toLocaleDateString()}</Text>
+                  <Text style={styles.policyLabel}>Expiry Date</Text>
+                  <Text style={styles.policyValue}>{expDateFormatted}</Text>
                 </View>
+                {item.salesPersonName && (
+                  <View>
+                    <Text style={styles.policyLabel}>Sales Person</Text>
+                    <Text style={styles.policyValue}>{item.salesPersonName}</Text>
+                  </View>
+                )}
               </View>
+
+              {pdfUrl && (
+                <View style={styles.cardPdfRow}>
+                  <Pressable
+                    style={styles.cardPdfBtn}
+                    onPress={() => previewPdf(pdfUrl)}
+                  >
+                    <Ionicons name="document-text-outline" size={15} color={Colors.primary} />
+                    <Text style={styles.cardPdfBtnText}>View Issued Policy PDF</Text>
+                  </Pressable>
+                </View>
+              )}
             </View>
           );
         }}
       />
 
-      {/* ── Add Policy Modal ── */}
       <Modal
         visible={addModalVisible}
         animationType="slide"
@@ -426,6 +566,55 @@ const styles = StyleSheet.create({
   cardBottom: { flexDirection: 'row', justifyContent: 'space-between', marginTop: Spacing.lg, paddingTop: Spacing.md, borderTopWidth: 1, borderTopColor: Colors.border },
   policyLabel: { fontSize: FontSize.xs, color: Colors.textMuted, fontWeight: '500' },
   policyValue: { fontSize: FontSize.md, fontWeight: '900', color: Colors.text, marginTop: 2 },
+  subTitle: { fontSize: FontSize.xs, color: Colors.textMuted, fontWeight: '500', marginTop: 1 },
+  downloadSheetBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    backgroundColor: Colors.primary + '12',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: Colors.primary + '30',
+  },
+  downloadSheetText: { fontSize: 11, fontWeight: '800', color: Colors.primary },
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.surface,
+    marginHorizontal: Spacing.md,
+    marginTop: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    height: 40,
+    gap: Spacing.sm,
+  },
+  searchInputField: { flex: 1, fontSize: FontSize.sm, color: Colors.text, paddingVertical: 0 },
+  vehPill: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#F1F5F9',
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 4,
+    marginTop: 2,
+  },
+  vehPillText: { fontSize: 10, fontWeight: '700', color: Colors.primary },
+  cardPdfRow: { marginTop: Spacing.sm, paddingTop: Spacing.sm, borderTopWidth: 1, borderTopColor: Colors.border },
+  cardPdfBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    paddingVertical: 7,
+    borderRadius: BorderRadius.sm,
+    backgroundColor: Colors.primary + '12',
+    borderWidth: 1,
+    borderColor: Colors.primary + '25',
+  },
+  cardPdfBtnText: { fontSize: 11, fontWeight: '800', color: Colors.primary },
   empty: { alignItems: 'center', paddingTop: 60, gap: Spacing.md },
   emptyText: { fontSize: FontSize.md, color: Colors.textMuted },
 

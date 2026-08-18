@@ -53,11 +53,11 @@ export default function Sidebar({ visible, onClose }: SidebarProps) {
       label: 'SALES',
       items: [
         { name: 'Leads', icon: 'people-outline', route: '/(protected)/leads', visible: !['ACCOUNTANT'].includes(roleUpper) },
-        { name: 'Import Leads', icon: 'cloud-upload-outline', route: '/(protected)/leads/import', visible: isAdmin || isHrManager },
+        { name: 'Import Leads', icon: 'cloud-upload-outline', route: '/(protected)/leads/import', visible: isAdmin || isManager || isHrManager },
         { name: 'CRM', icon: 'person-add-outline', route: '/(protected)/crm', visible: !['ACCOUNTANT'].includes(roleUpper) },
-        { name: 'Rate Calculator', icon: 'calculator-outline', route: '/(protected)/rate-calculator', visible: isAdmin },
+        { name: 'Rate Calculator', icon: 'calculator-outline', route: '/(protected)/rate-calculator', visible: isAdmin || isManager },
         { name: 'Quotations', icon: 'clipboard-outline', route: '/(protected)/quotations', visible: isAdmin || isManager || isHrManager },
-        { name: 'Policies', icon: 'shield-checkmark-outline', route: '/(protected)/policies', visible: isAdmin || isHrManager },
+        { name: 'Policies', icon: 'shield-checkmark-outline', route: '/(protected)/policies', visible: isAdmin || isManager || isHrManager },
         { name: 'Renewals', icon: 'refresh-outline', route: '/(protected)/renewals', visible: isAdmin || isManager || isHrManager },
         { name: 'Follow-ups', icon: 'calendar-outline', route: '/(protected)/follow-ups', visible: !['ACCOUNTANT'].includes(roleUpper) },
       ]

@@ -152,28 +152,29 @@ export default function DashboardScreen() {
         <View style={styles.statsGrid}>
           {isAdmin ? (
             <>
-              <StatCard icon="people"           value={stats.total_leads ?? 0}    label="Total Leads"   color="#3b82f6" onPress={() => router.push('/(protected)/leads')} />
-              <StatCard icon="shield-checkmark" value={stats.pending_policy_approvals ?? stats.active_policies ?? 'Review'} label="Policy Approvals" color="#6366f1" onPress={() => router.push('/(protected)/policy-approvals')} />
-              <StatCard icon="refresh"          value={stats.renewals_count ?? 'Renewals'} label="Renewals Pipeline" color="#059669" onPress={() => router.push('/(protected)/renewals')} />
-              <StatCard icon="document-text"    value={stats.active_policies ?? 0} label="Active Policies" color="#10b981" onPress={() => router.push('/(protected)/policies')} />
-              <StatCard icon="people-circle"    value={stats.total_employees ?? 0} label="Total Staff"   color="#ec4899" onPress={() => router.push('/(protected)/users')} />
-              <StatCard icon="alert-circle"     value={stats.active_claims ?? 0}   label="Active Claims"  color="#ef4444" onPress={() => router.push('/(protected)/claims')} />
-              <StatCard icon="car"              value={stats.pending_rto ?? 0}     label="Pending RTO"    color="#f59e0b" onPress={() => router.push('/(protected)/rto')} />
-              <StatCard icon="fitness"          value={stats.pending_fitness ?? 0} label="Pending Fitness" color="#06b6d4" onPress={() => router.push('/(protected)/fitness')} />
-              <StatCard icon="cash"             value={stats.active_loans ?? 0}    label="Active Loans"   color="#84cc16" onPress={() => router.push('/(protected)/loans')} />
+              <StatCard icon="people"           value={stats.total_leads ?? 0}    label="Total Leads"   color="#3b82f6" onPress={() => router.push('/(protected)/leads' as any)} />
+              <StatCard icon="shield-checkmark" value={stats.pending_policy_approvals ?? stats.active_policies ?? 'Review'} label="Policy Approvals" color="#6366f1" onPress={() => router.push('/(protected)/policy-approvals' as any)} />
+              <StatCard icon="refresh"          value={stats.renewals_count ?? 'Renewals'} label="Renewals Pipeline" color="#059669" onPress={() => router.push('/(protected)/renewals' as any)} />
+              <StatCard icon="document-text"    value={stats.active_policies ?? 0} label="Active Policies" color="#10b981" onPress={() => router.push('/(protected)/policies' as any)} />
+              <StatCard icon="people-circle"    value={stats.total_employees ?? 0} label="Total Staff"   color="#ec4899" onPress={() => router.push('/(protected)/users' as any)} />
+              <StatCard icon="alert-circle"     value={stats.active_claims ?? 0}   label="Active Claims"  color="#ef4444" onPress={() => router.push('/(protected)/claims' as any)} />
+              <StatCard icon="car"              value={stats.pending_rto ?? 0}     label="Pending RTO"    color="#f59e0b" onPress={() => router.push('/(protected)/rto' as any)} />
+              <StatCard icon="fitness"          value={stats.pending_fitness ?? 0} label="Pending Fitness" color="#06b6d4" onPress={() => router.push('/(protected)/fitness' as any)} />
+              <StatCard icon="cash"             value={stats.active_loans ?? 0}    label="Active Loans"   color="#84cc16" onPress={() => router.push('/(protected)/loans' as any)} />
             </>
           ) : user?.role?.toUpperCase() === 'MANAGER' ? (
             <>
-              <StatCard icon="people"           value={stats.total_leads ?? stats.leads ?? 0} label="Team Leads"   color="#3b82f6" onPress={() => router.push('/(protected)/leads')} />
-              <StatCard icon="shield-checkmark" value={stats.pending_policy_approvals ?? 'Review'} label="Policy Approvals" color="#6366f1" onPress={() => router.push('/(protected)/policy-approvals')} />
-              <StatCard icon="refresh"          value="Renewals"                 label="Renewals"   color="#059669" onPress={() => router.push('/(protected)/renewals')} />
-              <StatCard icon="time"             value={stats.pending_followups ?? stats.pending ?? 0} label="Open Followups" color="#f59e0b" onPress={() => router.push('/(protected)/follow-ups')} />
+              <StatCard icon="people"           value={stats.total_leads ?? stats.leads ?? 0} label="Team Leads"   color="#3b82f6" onPress={() => router.push('/(protected)/leads' as any)} />
+              <StatCard icon="document-text"    value={stats.active_policies ?? 0} label="Active Policies" color="#10b981" onPress={() => router.push('/(protected)/policies' as any)} />
+              <StatCard icon="shield-checkmark" value={stats.pending_policy_approvals ?? 'Review'} label="Policy Approvals" color="#6366f1" onPress={() => router.push('/(protected)/policy-approvals' as any)} />
+              <StatCard icon="refresh"          value="Renewals"                 label="Renewals"   color="#059669" onPress={() => router.push('/(protected)/renewals' as any)} />
+              <StatCard icon="time"             value={stats.pending_followups ?? stats.pending ?? 0} label="Open Followups" color="#f59e0b" onPress={() => router.push('/(protected)/follow-ups' as any)} />
             </>
           ) : (
             <>
-              <StatCard icon="people"           value={stats.leads}              label="My Leads"   color="#3b82f6" onPress={() => router.push('/(protected)/leads')} />
-              <StatCard icon="refresh"          value="Renewals"                 label="Renewals"   color="#059669" onPress={() => router.push('/(protected)/renewals')} />
-              <StatCard icon="time"             value={stats.pending}            label="Pending"    color="#f59e0b" onPress={() => router.push('/(protected)/follow-ups')} />
+              <StatCard icon="people"           value={stats.leads}              label="My Leads"   color="#3b82f6" onPress={() => router.push('/(protected)/leads' as any)} />
+              <StatCard icon="refresh"          value="Renewals"                 label="Renewals"   color="#059669" onPress={() => router.push('/(protected)/renewals' as any)} />
+              <StatCard icon="time"             value={stats.pending}            label="Pending"    color="#f59e0b" onPress={() => router.push('/(protected)/follow-ups' as any)} />
               <StatCard icon="trending-up"      value={`₹${stats.revenue ?? 0}`} label="Revenue"    color="#10b981" />
             </>
           )}

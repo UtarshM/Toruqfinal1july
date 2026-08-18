@@ -58,7 +58,7 @@ const LIVE_BASE_URL = 'https://admin-panel-delta-steel.vercel.app';
 
 export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClose, onUpdated }: Props) {
   const { user } = useAuth();
-  const roleUpper = user?.role?.name?.toUpperCase() || (typeof user?.role === 'string' ? user?.role.toUpperCase() : '');
+  const roleUpper = (typeof (user?.role as any) === 'object' ? (user?.role as any)?.name : user?.role)?.toUpperCase() || '';
   const isManagerOrAdmin = roleUpper.includes('ADMIN') || roleUpper.includes('MANAGER');
 
   const [activeTab, setActiveTab] = useState<'form' | 'docs' | 'manager'>('form');
@@ -691,14 +691,14 @@ export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClo
                   compiledPdfUrl: pdfUrl || prevSub.compiledPdfUrl,
                   status: 'Pending_Review',
                   managerName,
-                  salesPersonName: user?.fullName || 'Sales Executive',
+                  salesPersonName: user?.full_name || (user as any)?.fullName || 'Sales Executive',
                   submittedAt: new Date().toISOString(),
                   updatedAt: new Date().toISOString(),
                   history: [
                     ...(prevSub.history || []),
                     {
                       action: 'SUBMITTED',
-                      by: user?.fullName || 'Sales Executive',
+                      by: user?.full_name || (user as any)?.fullName || 'Sales Executive',
                       userId: user?.id,
                       timestamp: new Date().toISOString(),
                       notes: `Submitted policy document bundle to manager (${managerName}) for review`
@@ -778,13 +778,13 @@ export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClo
                         ...prevSub,
                         status: 'Approved',
                         reviewedAt: new Date().toISOString(),
-                        reviewedBy: user?.fullName || 'Manager',
+                        reviewedBy: user?.full_name || (user as any)?.fullName || 'Manager',
                         updatedAt: new Date().toISOString(),
                         history: [
                           ...(prevSub.history || []),
                           {
                             action: 'APPROVED',
-                            by: user?.fullName || 'Manager',
+                            by: user?.full_name || (user as any)?.fullName || 'Manager',
                             userId: user?.id,
                             timestamp: new Date().toISOString(),
                             notes: 'Approved by Manager on mobile app'
@@ -809,7 +809,7 @@ export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClo
                 ...prev,
                 status: 'Approved',
                 reviewedAt: new Date().toISOString(),
-                reviewedBy: user?.fullName || 'Manager'
+                reviewedBy: user?.full_name || (user as any)?.fullName || 'Manager'
               }));
 
               Alert.alert('Approved ✓', 'Policy documents approved.');
@@ -853,13 +853,13 @@ export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClo
                 status: 'Reverted',
                 revertReason: reason,
                 reviewedAt: new Date().toISOString(),
-                reviewedBy: user?.fullName || 'Manager',
+                reviewedBy: user?.full_name || (user as any)?.fullName || 'Manager',
                 updatedAt: new Date().toISOString(),
                 history: [
                   ...(prevSub.history || []),
                   {
                     action: 'REVERTED',
-                    by: user?.fullName || 'Manager',
+                    by: user?.full_name || (user as any)?.fullName || 'Manager',
                     userId: user?.id,
                     timestamp: new Date().toISOString(),
                     notes: reason
@@ -932,13 +932,13 @@ export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClo
                 issuedProvider: provider,
                 issuedPremium: premium,
                 issuedAt: new Date().toISOString(),
-                issuedBy: user?.fullName || 'Manager',
+                issuedBy: user?.full_name || (user as any)?.fullName || 'Manager',
                 updatedAt: new Date().toISOString(),
                 history: [
                   ...(prevSub.history || []),
                   {
                     action: 'POLICY_ISSUED',
-                    by: user?.fullName || 'Manager',
+                    by: user?.full_name || (user as any)?.fullName || 'Manager',
                     userId: user?.id,
                     timestamp: new Date().toISOString(),
                     notes: `Policy #${policyNumber} issued (${provider}, ₹${premium})`
@@ -1131,35 +1131,35 @@ export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClo
                 <View style={styles.sectionCard}>
                   <Text style={styles.sectionCardTitle}>Vehicle & Policy Basics</Text>
                   
-                  <FormField label="Registration No (Reg No)" value={formData.regNo} onChange={v => handleFieldChange('regNo', v)} placeholder="e.g. GJ18AV5577" />
-                  <FormField label="Policy Type" value={formData.policyType} onChange={v => handleFieldChange('policyType', v)} placeholder="e.g. nil dep, comprehensive, TP" />
-                  <FormField label="Customer Type" value={formData.customerType} onChange={v => handleFieldChange('customerType', v)} placeholder="existing / new" />
-                  <FormField label="Customer Category" value={formData.customerCategory} onChange={v => handleFieldChange('customerCategory', v)} placeholder="MVC, GCV, PCV, etc." />
-                  <FormField label="Expiry Date" value={formData.expDate} onChange={v => handleFieldChange('expDate', v)} placeholder="YYYY-MM-DD" />
+                  <FormField label="Registration No (Reg No)" value={formData.regNo} onChange={(v: string) => handleFieldChange('regNo', v)} placeholder="e.g. GJ18AV5577" />
+                  <FormField label="Policy Type" value={formData.policyType} onChange={(v: string) => handleFieldChange('policyType', v)} placeholder="e.g. nil dep, comprehensive, TP" />
+                  <FormField label="Customer Type" value={formData.customerType} onChange={(v: string) => handleFieldChange('customerType', v)} placeholder="existing / new" />
+                  <FormField label="Customer Category" value={formData.customerCategory} onChange={(v: string) => handleFieldChange('customerCategory', v)} placeholder="MVC, GCV, PCV, etc." />
+                  <FormField label="Expiry Date" value={formData.expDate} onChange={(v: string) => handleFieldChange('expDate', v)} placeholder="YYYY-MM-DD" />
                 </View>
 
                 <View style={styles.sectionCard}>
                   <Text style={styles.sectionCardTitle}>Contact & Commercials</Text>
                   
-                  <FormField label="Mobile No 1" value={formData.mobileNo1} onChange={v => handleFieldChange('mobileNo1', v)} placeholder="Primary Mobile" />
-                  <FormField label="Mobile No 2" value={formData.mobileNo2} onChange={v => handleFieldChange('mobileNo2', v)} placeholder="Secondary Mobile" />
-                  <FormField label="Approved Rate / Quotation" value={formData.rate} onChange={v => handleFieldChange('rate', v)} placeholder="e.g. 18500" />
-                  <FormField label="Rs From Customer (Amount Paid)" value={formData.rsFromCustomer} onChange={v => handleFieldChange('rsFromCustomer', v)} placeholder="e.g. 18500" />
-                  <FormField label="Payment Mode" value={formData.paymentMode} onChange={v => handleFieldChange('paymentMode', v)} placeholder="cash / gpay / bank" />
+                  <FormField label="Mobile No 1" value={formData.mobileNo1} onChange={(v: string) => handleFieldChange('mobileNo1', v)} placeholder="Primary Mobile" />
+                  <FormField label="Mobile No 2" value={formData.mobileNo2} onChange={(v: string) => handleFieldChange('mobileNo2', v)} placeholder="Secondary Mobile" />
+                  <FormField label="Approved Rate / Quotation" value={formData.rate} onChange={(v: string) => handleFieldChange('rate', v)} placeholder="e.g. 18500" />
+                  <FormField label="Rs From Customer (Amount Paid)" value={formData.rsFromCustomer} onChange={(v: string) => handleFieldChange('rsFromCustomer', v)} placeholder="e.g. 18500" />
+                  <FormField label="Payment Mode" value={formData.paymentMode} onChange={(v: string) => handleFieldChange('paymentMode', v)} placeholder="cash / gpay / bank" />
                 </View>
 
                 <View style={styles.sectionCard}>
                   <Text style={styles.sectionCardTitle}>Confirmations & Verifications</Text>
                   
-                  <FormField label="NCB" value={formData.ncb} onChange={v => handleFieldChange('ncb', v)} placeholder="with ncb / without ncb" />
-                  <FormField label="NCB Confirmation Screenshot" value={formData.ncbConfirmation} onChange={v => handleFieldChange('ncbConfirmation', v)} placeholder="Yes / No" />
-                  <FormField label="IMP Date Message SS" value={formData.impDateMsgSS} onChange={v => handleFieldChange('impDateMsgSS', v)} placeholder="Yes / No" />
-                  <FormField label="Rate Confirmation SS" value={formData.rateConfirmationSS} onChange={v => handleFieldChange('rateConfirmationSS', v)} placeholder="YES / NO" />
-                  <FormField label="HP Details (Hypothecation)" value={formData.hpDetails} onChange={v => handleFieldChange('hpDetails', v)} placeholder="as per rc / bank name" />
-                  <FormField label="Vehicle Photo" value={formData.vehiclePhoto} onChange={v => handleFieldChange('vehiclePhoto', v)} placeholder="available / n.a." />
-                  <FormField label="Body Type Matched" value={formData.bodyTypeMatched} onChange={v => handleFieldChange('bodyTypeMatched', v)} placeholder="matched / n.a." />
-                  <FormField label="Inspection Status" value={formData.inspectionStatus} onChange={v => handleFieldChange('inspectionStatus', v)} placeholder="Not Required / Done" />
-                  <FormField label="Description / Remarks" value={formData.description} onChange={v => handleFieldChange('description', v)} placeholder="Special notes..." multiline />
+                  <FormField label="NCB" value={formData.ncb} onChange={(v: string) => handleFieldChange('ncb', v)} placeholder="with ncb / without ncb" />
+                  <FormField label="NCB Confirmation Screenshot" value={formData.ncbConfirmation} onChange={(v: string) => handleFieldChange('ncbConfirmation', v)} placeholder="Yes / No" />
+                  <FormField label="IMP Date Message SS" value={formData.impDateMsgSS} onChange={(v: string) => handleFieldChange('impDateMsgSS', v)} placeholder="Yes / No" />
+                  <FormField label="Rate Confirmation SS" value={formData.rateConfirmationSS} onChange={(v: string) => handleFieldChange('rateConfirmationSS', v)} placeholder="YES / NO" />
+                  <FormField label="HP Details (Hypothecation)" value={formData.hpDetails} onChange={(v: string) => handleFieldChange('hpDetails', v)} placeholder="as per rc / bank name" />
+                  <FormField label="Vehicle Photo" value={formData.vehiclePhoto} onChange={(v: string) => handleFieldChange('vehiclePhoto', v)} placeholder="available / n.a." />
+                  <FormField label="Body Type Matched" value={formData.bodyTypeMatched} onChange={(v: string) => handleFieldChange('bodyTypeMatched', v)} placeholder="matched / n.a." />
+                  <FormField label="Inspection Status" value={formData.inspectionStatus} onChange={(v: string) => handleFieldChange('inspectionStatus', v)} placeholder="Not Required / Done" />
+                  <FormField label="Description / Remarks" value={formData.description} onChange={(v: string) => handleFieldChange('description', v)} placeholder="Special notes..." multiline />
                 </View>
 
                 <Pressable

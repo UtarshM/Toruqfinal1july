@@ -145,7 +145,7 @@ export default function LeadsScreen() {
   };
 
   const { user } = useAuth();
-  const roleUpper = user?.role?.name?.toUpperCase() || (typeof user?.role === 'string' ? user?.role.toUpperCase() : '');
+  const roleUpper = (typeof (user?.role as any) === 'object' ? (user?.role as any)?.name : user?.role)?.toUpperCase() || '';
   const isAdminOrManager = roleUpper === 'SUPER ADMIN' || roleUpper === 'ADMIN' || roleUpper === 'MANAGER' || roleUpper === 'HR MANAGER';
 
   // Bulk selection handlers

@@ -20,7 +20,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as WebBrowser from 'expo-web-browser';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Print from 'expo-print';
@@ -430,13 +430,13 @@ export default function PolicyApprovalsScreen() {
                       ...prevSub,
                       status: 'Approved',
                       reviewedAt: new Date().toISOString(),
-                      reviewedBy: user?.fullName || 'Manager',
+                      reviewedBy: user?.full_name || (user as any)?.fullName || 'Manager',
                       updatedAt: new Date().toISOString(),
                       history: [
                         ...(prevSub.history || []),
                         {
                           action: 'APPROVED',
-                          by: user?.fullName || 'Manager',
+                          by: user?.full_name || (user as any)?.fullName || 'Manager',
                           userId: user?.id,
                           timestamp: new Date().toISOString(),
                           notes: 'Approved by Manager in Policy Approvals'
@@ -495,13 +495,13 @@ export default function PolicyApprovalsScreen() {
               status: 'Reverted',
               revertReason: reason,
               reviewedAt: new Date().toISOString(),
-              reviewedBy: user?.fullName || 'Manager',
+              reviewedBy: user?.full_name || (user as any)?.fullName || 'Manager',
               updatedAt: new Date().toISOString(),
               history: [
                 ...(prevSub.history || []),
                 {
                   action: 'REVERTED',
-                  by: user?.fullName || 'Manager',
+                  by: user?.full_name || (user as any)?.fullName || 'Manager',
                   userId: user?.id,
                   timestamp: new Date().toISOString(),
                   notes: reason
@@ -655,7 +655,7 @@ export default function PolicyApprovalsScreen() {
               issuedPremium: prem,
               issuedPolicyPdfUrl: issuedPdfUrl || prevSub.issuedPolicyPdfUrl,
               issuedAt: new Date().toISOString(),
-              issuedBy: user?.fullName || 'Manager',
+              issuedBy: user?.full_name || (user as any)?.fullName || 'Manager',
               updatedAt: new Date().toISOString(),
               formData: {
                 ...prevSub.formData,
@@ -669,7 +669,7 @@ export default function PolicyApprovalsScreen() {
                 ...(prevSub.history || []),
                 {
                   action: 'POLICY_ISSUED',
-                  by: user?.fullName || 'Manager',
+                  by: user?.full_name || (user as any)?.fullName || 'Manager',
                   userId: user?.id,
                   timestamp: new Date().toISOString(),
                   notes: `Policy #${pNo} issued (${prov}, ₹${prem})`
