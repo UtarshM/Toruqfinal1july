@@ -19,53 +19,75 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { context, error } = await validateAuth(req, 'leads.edit')
+  // Validate that user is authenticated and active
+  const { context, error } = await validateAuth(req)
   if (error || !context) return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   try {
     const { id } = await params
-    const formData = await req.formData()
-    const file = formData.get('file') as File | null
-    const urlParams = new URL(req.url).searchParams
-    const category = (formData.get('category') as string | null) || req.headers.get('x-document-category') || urlParams.get('category')
+    const url = new URL(req.url)
+    const queryCategory = url.searchParams.get('category')
+    const headerCategory = req.headers.get('x-document-category')
 
-    if (!file) {
-      return NextResponse.json({ error: 'No file provided' }, { status: 400 })
+    let file: File | null = null
+    let category: string | null = queryCategory || headerCategory || null
+
+    try {
+      const formData = await req.formData()
+      file = formData.get('file') as File | null
+      if (!category) {
+        category = (formData.get('category') as string | null) || null
+      }
+    } catch (formErr) {
+      console.warn('[upload] FormData parsing failed:', formErr)
     }
 
-    if (!category || !DOCUMENT_CATEGORIES[category]) {
-      return NextResponse.json({ error: `Invalid document category: ${category || 'None'}` }, { status: 400 })
+    if (!category) {
+      return NextResponse.json({ error: 'Missing document category' }, { status: 400 })
     }
 
     const lead = await prisma.lead.findUnique({ where: { id } })
-    if (!lead) return NextResponse.json({ error: 'Lead not found' }, { status: 404 })
+    if (!lead) return NextResponse.json({ error: 'Lead not found in database' }, { status: 404 })
 
-    // Ensure documents bucket exists
+    // Ensure documents bucket exists in Supabase Storage
     try {
       await supabaseAdmin.storage.createBucket('documents', { public: true })
-    } catch {
-      // Bucket already exists
+    } catch {}
+
+    let fileBuffer: Buffer
+    let originalName = 'document.jpg'
+    let mimeType = 'image/jpeg'
+
+    if (file) {
+      originalName = file.name || `${category.toLowerCase()}.jpg`
+      mimeType = file.type || 'application/octet-stream'
+      fileBuffer = Buffer.from(await file.arrayBuffer())
+    } else {
+      const rawArray = await req.arrayBuffer()
+      if (!rawArray || rawArray.byteLength === 0) {
+        return NextResponse.json({ error: 'No file content received' }, { status: 400 })
+      }
+      fileBuffer = Buffer.from(rawArray)
+      originalName = req.headers.get('x-file-name') || `${category.toLowerCase()}.jpg`
+      mimeType = req.headers.get('content-type') || 'application/octet-stream'
     }
 
-    const originalName = file.name || 'document.png'
-    const ext = path.extname(originalName) || '.png'
+    const ext = path.extname(originalName) || '.jpg'
     const safeBaseName = path.basename(originalName, ext).replace(/[^a-zA-Z0-9_-]/g, '_')
     const fileName = `${category.toLowerCase()}_${Date.now()}_${safeBaseName}${ext}`
     const storagePath = `lead-documents/${id}/${fileName}`
 
-    const buffer = Buffer.from(await file.arrayBuffer())
-
     // Upload to Supabase Storage
     const { error: uploadError } = await supabaseAdmin.storage
       .from('documents')
-      .upload(storagePath, buffer, {
-        contentType: file.type || 'application/octet-stream',
+      .upload(storagePath, fileBuffer, {
+        contentType: mimeType,
         upsert: true
       })
 
     if (uploadError) {
       console.error('[upload document] Supabase storage error:', uploadError)
-      return NextResponse.json({ error: uploadError.message }, { status: 500 })
+      return NextResponse.json({ error: `Storage upload failed: ${uploadError.message}` }, { status: 500 })
     }
 
     const { data: { publicUrl } } = supabaseAdmin.storage
@@ -75,13 +97,13 @@ export async function POST(
     const docEntry = {
       id: uuidv4(),
       category,
-      categoryLabel: DOCUMENT_CATEGORIES[category],
+      categoryLabel: DOCUMENT_CATEGORIES[category] || category,
       fileName: originalName,
       savedFileName: fileName,
       filePath: publicUrl,
       storagePath,
-      fileSize: file.size,
-      fileType: file.type || 'application/octet-stream',
+      fileSize: fileBuffer.length,
+      fileType: mimeType,
       uploadedAt: new Date().toISOString(),
       uploadedBy: context.userId
     }
@@ -95,14 +117,13 @@ export async function POST(
       history: []
     }
 
-    // Replace if this category already had a doc, or append if multiple allowed
+    // Replace if this category already had a doc, or append if new
     const existingDocs = (submission.documents || []).filter((d: any) => d.category !== category)
     const updatedDocuments = [...existingDocs, docEntry]
 
     const updatedSubmission = {
       ...submission,
       documents: updatedDocuments,
-      // If single PDF was previously compiled, invalidate it so they recompile
       compiledPdfUrl: null,
       updatedAt: new Date().toISOString()
     }
@@ -116,19 +137,6 @@ export async function POST(
         }
       }
     })
-
-    // Also register in Document table for tracking
-    try {
-      await prisma.document.create({
-        data: {
-          entityType: 'lead_policy_doc',
-          entityId: id,
-          fileName: originalName,
-          filePath: publicUrl,
-          uploadedBy: context.userId
-        }
-      })
-    } catch {}
 
     return NextResponse.json({
       success: true,

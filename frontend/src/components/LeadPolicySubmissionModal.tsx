@@ -187,7 +187,7 @@ export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClo
       const token = session?.access_token;
       if (!token) throw new Error('Not authenticated. Please log in again.');
 
-      const uploadUrl = `${LIVE_BASE_URL}/api/v1/leads/${leadId}/policy-submission/upload`;
+      const uploadUrl = `${LIVE_BASE_URL}/api/v1/leads/${leadId}/policy-submission/upload?category=${encodeURIComponent(category)}`;
 
       if (Platform.OS !== 'web') {
         const uploadRes = await FileSystem.uploadAsync(uploadUrl, uri, {
@@ -209,7 +209,7 @@ export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClo
           try {
             errJson = JSON.parse(uploadRes.body);
           } catch {}
-          throw new Error(errJson.error || errJson.details || `Upload failed with status ${uploadRes.status}`);
+          throw new Error(errJson.error || errJson.details || `Upload failed (${uploadRes.status}): ${uploadRes.body?.slice(0, 100)}`);
         }
       } else {
         const formDataUpload = new FormData();
