@@ -24,6 +24,16 @@ import { api } from '../utils/api';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 
+export const DOCUMENT_CATEGORIES: Record<string, string> = {
+  IMP_DATE_SS: 'IMP date Message Screenshot',
+  NCB_CONFIRMATION_SS: 'NCB Confirmation Screenshot',
+  PAN_CARD: 'Pan Card',
+  PREVIOUS_POLICY: 'Previous Policy (If applicable)',
+  QUOTATION: 'Quotation',
+  RC_BOOK: 'RC book',
+  VEHICLE_PHOTO: 'Vehicle Photo for body type'
+};
+
 export const REQUIRED_DOCUMENTS = [
   { key: 'IMP_DATE_SS', label: '1. IMP Date Message Screenshot', desc: 'Screenshot of important date communication' },
   { key: 'NCB_CONFIRMATION_SS', label: '2. NCB Confirmation Screenshot', desc: 'Proof of No Claim Bonus confirmation' },
@@ -227,15 +237,18 @@ export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClo
         console.warn('[direct upload catch, falling back to server]', directErr);
       }
 
-      // If Direct Upload succeeded, record metadata via JSON
+      // If Direct Upload succeeded, record document via main endpoint
       if (uploadedPublicUrl) {
-        await api.post(`/leads/${leadId}/policy-submission/record-document`, {
-          category,
-          fileName: safeName,
-          savedFileName,
-          filePath: uploadedPublicUrl,
-          storagePath,
-          fileType: mimeType,
+        await api.post(`/leads/${leadId}/policy-submission`, {
+          document: {
+            category,
+            categoryLabel: DOCUMENT_CATEGORIES[category] || category,
+            fileName: safeName,
+            savedFileName,
+            filePath: uploadedPublicUrl,
+            storagePath,
+            fileType: mimeType,
+          }
         });
 
         Alert.alert('Upload Successful! ✓', `${DOCUMENT_CATEGORIES[category] || category} uploaded.`);
