@@ -2,6 +2,7 @@ import { Slot, useRouter, useSegments, useRootNavigationState } from 'expo-route
 import React, { useEffect } from 'react';
 import { View, Text, ScrollView, StatusBar, Platform } from 'react-native';
 import * as SplashScreen from 'expo-splash-screen';
+import * as Updates from 'expo-updates';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider, useAuth } from '../src/context/AuthContext';
 
@@ -49,6 +50,22 @@ function RootLayoutNav() {
       SplashScreen.hideAsync().catch(() => {});
     }
   }, [isLoading]);
+
+  useEffect(() => {
+    async function checkForOtaUpdate() {
+      if (__DEV__) return;
+      try {
+        const update = await Updates.checkForUpdateAsync();
+        if (update.isAvailable) {
+          await Updates.fetchUpdateAsync();
+          await Updates.reloadAsync();
+        }
+      } catch (e) {
+        // Silently continue if offline or update check fails
+      }
+    }
+    checkForOtaUpdate();
+  }, []);
 
   useEffect(() => {
     if (!navigationState?.key || isLoading) return;

@@ -5,7 +5,9 @@
     "version": "2.0.0",
     "orientation": "portrait",
     "updates": {
-      "url": "https://u.expo.dev/08940434-daad-4f58-9bf2-779b2b79cdba"
+      "url": "https://u.expo.dev/08940434-daad-4f58-9bf2-779b2b79cdba",
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 5000
     },
     "runtimeVersion": {
       "policy": "appVersion"
