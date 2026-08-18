@@ -26,18 +26,26 @@ export async function POST(
     const { id } = await params
     const formData = await req.formData()
     const file = formData.get('file') as File | null
-    const category = formData.get('category') as string | null
+    const urlParams = new URL(req.url).searchParams
+    const category = (formData.get('category') as string | null) || req.headers.get('x-document-category') || urlParams.get('category')
 
     if (!file) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 })
     }
 
     if (!category || !DOCUMENT_CATEGORIES[category]) {
-      return NextResponse.json({ error: 'Invalid document category' }, { status: 400 })
+      return NextResponse.json({ error: `Invalid document category: ${category || 'None'}` }, { status: 400 })
     }
 
     const lead = await prisma.lead.findUnique({ where: { id } })
     if (!lead) return NextResponse.json({ error: 'Lead not found' }, { status: 404 })
+
+    // Ensure documents bucket exists
+    try {
+      await supabaseAdmin.storage.createBucket('documents', { public: true })
+    } catch {
+      // Bucket already exists
+    }
 
     const originalName = file.name || 'document.png'
     const ext = path.extname(originalName) || '.png'

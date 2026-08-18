@@ -185,29 +185,55 @@ export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClo
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
-      if (!token) throw new Error('Not authenticated');
+      if (!token) throw new Error('Not authenticated. Please log in again.');
 
-      const formDataUpload = new FormData();
-      formDataUpload.append('file', {
-        uri,
-        name,
-        type
-      } as any);
-      formDataUpload.append('category', category);
+      const uploadUrl = `${LIVE_BASE_URL}/api/v1/leads/${leadId}/policy-submission/upload`;
 
-      const res = await fetch(`${LIVE_BASE_URL}/api/v1/leads/${leadId}/policy-submission/upload`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Accept': 'application/json',
-        },
-        body: formDataUpload,
-      });
+      if (Platform.OS !== 'web') {
+        const uploadRes = await FileSystem.uploadAsync(uploadUrl, uri, {
+          httpMethod: 'POST',
+          uploadType: FileSystem.FileSystemUploadType.MULTIPART,
+          fieldName: 'file',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Accept': 'application/json',
+            'x-document-category': category,
+          },
+          parameters: {
+            category: category,
+          },
+        });
 
-      const resData = await res.json();
-      if (!res.ok) throw new Error(resData.error || 'Upload failed');
+        if (uploadRes.status < 200 || uploadRes.status >= 300) {
+          let errJson: any = {};
+          try {
+            errJson = JSON.parse(uploadRes.body);
+          } catch {}
+          throw new Error(errJson.error || errJson.details || `Upload failed with status ${uploadRes.status}`);
+        }
+      } else {
+        const formDataUpload = new FormData();
+        formDataUpload.append('file', {
+          uri,
+          name,
+          type
+        } as any);
+        formDataUpload.append('category', category);
 
-      Alert.alert('Success', 'Document uploaded successfully!');
+        const res = await fetch(uploadUrl, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Accept': 'application/json',
+          },
+          body: formDataUpload,
+        });
+
+        const resData = await res.json();
+        if (!res.ok) throw new Error(resData.error || resData.details || 'Upload failed');
+      }
+
+      Alert.alert('Success ✓', 'Document uploaded successfully!');
       loadSubmission();
       if (onUpdated) onUpdated();
     } catch (err: any) {
