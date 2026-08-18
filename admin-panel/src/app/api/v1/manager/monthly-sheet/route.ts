@@ -69,8 +69,8 @@ export async function generateMasterSheet(options: SheetFilterOptions) {
       fileSlug = `month_${now.toISOString().slice(0, 7)}`
     }
 
-    // Fetch all policies in the specified date/time range
-    const policies = await prisma.policy.findMany({
+    // Fetch policies in the specified date/time range
+    let policies = await prisma.policy.findMany({
       where,
       orderBy: { createdAt: 'desc' },
       include: {
@@ -95,6 +95,54 @@ export async function generateMasterSheet(options: SheetFilterOptions) {
           }
         }
       }
+    })
+
+    // If 0 policies found in current month range, fetch all policies across all time
+    if (policies.length === 0 && !month && !startDate && !endDate && !singleDate) {
+      policies = await prisma.policy.findMany({
+        orderBy: { createdAt: 'desc' },
+        include: {
+          transactions: {
+            where: { type: 'income' }
+          },
+          lead: {
+            select: {
+              id: true,
+              clientName: true,
+              clientPhone: true,
+              clientEmail: true,
+              vehicleNo: true,
+              gvw: true,
+              city: true,
+              address: true,
+              customFields: true,
+              expiryDate: true,
+              assignee: {
+                select: { fullName: true, email: true }
+              }
+            }
+          }
+        }
+      })
+    }
+
+    // Also fetch any leads that have expiryDate or policySubmission but might not have a separate policy row yet
+    const existingLeadIds = new Set(policies.map(p => p.leadId).filter(Boolean))
+    const extraLeads = await prisma.lead.findMany({
+      where: {
+        id: { notIn: Array.from(existingLeadIds) as string[] },
+        OR: [
+          { expiryDate: { not: null } },
+          { status: 'Won' }
+        ],
+        deletedAt: null
+      },
+      include: {
+        assignee: {
+          select: { fullName: true, email: true }
+        }
+      },
+      orderBy: { updatedAt: 'desc' }
     })
 
     // Headers matching the real business renewal Excel format:
@@ -179,6 +227,51 @@ export async function generateMasterSheet(options: SheetFilterOptions) {
       ])
     })
 
+    // Also append extra leads that have expiryDate or policy submission
+    extraLeads.forEach((lead, lIdx) => {
+      const cf = (lead.customFields && typeof lead.customFields === 'object') ? (lead.customFields as any) : {}
+      const submission = cf.policySubmission || {}
+      const formData = submission.formData || {}
+
+      const totalPremium = parseFloat(formData.totalPremium || formData.rsFromCustomer || submission.issuedPremium || '0') || 0
+      const paidAmount = parseFloat(formData.paidAmount || formData.rsFromCustomer || '0') || totalPremium
+      const pendingAmount = Math.max(0, totalPremium - paidAmount)
+      const paymentStatus = pendingAmount === 0 ? 'Paid' : (paidAmount > 0 ? 'Partial' : 'Pending')
+      const netPremium = parseFloat(formData.netPremium || formData.rate || '0') || totalPremium
+
+      rows.push([
+        policies.length + lIdx + 1,
+        submission.issuedAt ? new Date(submission.issuedAt).toLocaleDateString('en-IN') : '',
+        lead.vehicleNo || formData.regNo || 'N/A',
+        formData.customerCategory || formData.cat || formData.category || '',
+        formData.model || '',
+        lead.clientName || 'N/A',
+        lead.clientPhone || formData.mobileNo1 || 'N/A',
+        formData.mobileNo2 || '',
+        lead.gvw || formData.gvw || '',
+        lead.expiryDate ? new Date(lead.expiryDate).toLocaleDateString('en-IN') : '',
+        submission.issuedProvider || formData.provider || formData.insCompany || 'Torque',
+        formData.policyType || 'Comprehensive',
+        formData.via || 'Direct',
+        formData.from || '',
+        netPremium,
+        totalPremium,
+        paidAmount,
+        paidAmount,
+        pendingAmount,
+        paymentStatus,
+        formData.paymentMode || 'Cash',
+        submission.issuedPolicyNumber || submission.policyNumber || formData.policyNumber || 'N/A',
+        submission.issuedPolicyPdfUrl || '',
+        submission.compiledPdfUrl || '',
+        lead.assignee?.fullName || 'Direct / Unassigned',
+        submission.reviewedByName || 'Manager',
+        formData.description || ''
+      ])
+    })
+
+    const totalCount = policies.length + extraLeads.length
+
     const ws = XLSX.utils.aoa_to_sheet(rows)
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Master Policies')
@@ -205,7 +298,7 @@ export async function generateMasterSheet(options: SheetFilterOptions) {
       .from('documents')
       .getPublicUrl(storagePath)
 
-    return { fileName, publicUrl, relativeUrl: publicUrl, count: policies.length }
+    return { fileName, publicUrl, relativeUrl: publicUrl, count: totalCount }
   } catch (err) {
     console.error('[generateMasterSheet] Error:', err)
     return null

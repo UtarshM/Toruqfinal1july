@@ -295,24 +295,36 @@ export default function PoliciesScreen() {
   const handleDownloadMonthlySheet = async () => {
     setDownloadingSheet(true);
     try {
-      const res = await api.get<any>('/manager/monthly-sheet');
-      if (res?.sheetUrl) {
-        if (Platform.OS === 'web') {
-          Linking.openURL(res.sheetUrl);
-        } else {
-          const fileUri = FileSystem.documentDirectory + (res.fileName || 'master_policies.xlsx');
-          const download = await FileSystem.downloadAsync(res.sheetUrl, fileUri);
-          if (download.uri) {
-            const canShare = await Sharing.isAvailableAsync();
-            if (canShare) {
-              await Sharing.shareAsync(download.uri);
-            } else {
-              Alert.alert('Downloaded', 'File saved successfully.');
+      let downloaded = false;
+      try {
+        const res = await api.get<any>('/manager/monthly-sheet');
+        if (res?.sheetUrl && (res.totalPolicies > 0 || res.count > 0)) {
+          if (Platform.OS === 'web') {
+            Linking.openURL(res.sheetUrl);
+            downloaded = true;
+          } else {
+            const fileUri = FileSystem.documentDirectory + (res.fileName || 'master_policies.xlsx');
+            const download = await FileSystem.downloadAsync(res.sheetUrl, fileUri);
+            if (download.uri) {
+              const canShare = await Sharing.isAvailableAsync();
+              if (canShare) {
+                await Sharing.shareAsync(download.uri, {
+                  mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                  dialogTitle: 'Master Policy Excel Sheet'
+                });
+              } else {
+                Alert.alert('Downloaded', 'File saved successfully.');
+              }
+              downloaded = true;
             }
           }
         }
-      } else {
-        Alert.alert('No Data', 'No policies found for this period.');
+      } catch (serverErr) {
+        console.warn('[Server monthly sheet download error, falling back to local generator]', serverErr);
+      }
+
+      if (!downloaded) {
+        await handleExportCSV();
       }
     } catch (err: any) {
       Alert.alert('Download Error', err?.message || 'Could not download master sheet.');
@@ -322,8 +334,48 @@ export default function PoliciesScreen() {
   };
 
   const handleExportCSV = async () => {
-    if (filteredItems.length === 0) {
-      Alert.alert('No Data', 'No policies matching your filter to export.');
+    let exportRows = filteredItems.length > 0 ? filteredItems : items;
+    if (exportRows.length === 0) {
+      // Direct Supabase fallback
+      const { data: dbPolicies } = await supabase
+        .from('policies')
+        .select('id, policyNumber, provider, type, premiumAmount, status, startDate, endDate, lead:leads(clientName, clientPhone, vehicleNo, customFields, assignee:assignedTo(fullName))')
+        .limit(100);
+
+      if (dbPolicies && dbPolicies.length > 0) {
+        exportRows = dbPolicies.map((p: any) => {
+          const cf = (p.lead?.customFields && typeof p.lead.customFields === 'object') ? (p.lead.customFields as any) : {};
+          const sub = cf.policySubmission || {};
+          const formData = sub.formData || {};
+          return {
+            policyNumber: p.policyNumber || 'N/A',
+            provider: p.provider || 'Torque',
+            category: formData.customerCategory || formData.cat || 'N/A',
+            vehicleNo: p.lead?.vehicleNo || 'N/A',
+            model: formData.model || 'N/A',
+            clientName: p.lead?.clientName || 'Customer',
+            clientPhone: p.lead?.clientPhone || formData.mobileNo1 || '',
+            mobileNo2: formData.mobileNo2 || '',
+            gvw: formData.gvw || 'N/A',
+            type: p.type || 'Comprehensive',
+            startDate: p.startDate,
+            endDate: p.endDate,
+            netPremium: parseFloat(formData.netPremium || '0') || p.premiumAmount || 0,
+            premiumAmount: p.premiumAmount || 0,
+            paidAmount: parseFloat(formData.paidAmount || formData.rsFromCustomer || '0') || p.premiumAmount || 0,
+            pendingAmount: parseFloat(formData.pendingAmount || '0') || 0,
+            paymentMode: formData.paymentMode || 'Cash',
+            salesPersonName: p.lead?.assignee?.fullName || 'Direct',
+            issuedPolicyPdfUrl: sub.issuedPolicyPdfUrl || null,
+            compiledPdfUrl: sub.compiledPdfUrl || null,
+            formData,
+          };
+        });
+      }
+    }
+
+    if (exportRows.length === 0) {
+      Alert.alert('No Data', 'No policies found to export.');
       return;
     }
 

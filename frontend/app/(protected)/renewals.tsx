@@ -208,27 +208,37 @@ export default function RenewalsScreen() {
   const handleDownloadMonthlyMasterSheet = async () => {
     setDownloadingSheet(true);
     try {
-      const res = await api.get<any>('/manager/monthly-sheet');
-      if (res?.sheetUrl) {
-        if (Platform.OS === 'web') {
-          Linking.openURL(res.sheetUrl);
-        } else {
-          const fileUri = FileSystem.documentDirectory + (res.fileName || 'master_renewals.xlsx');
-          const download = await FileSystem.downloadAsync(res.sheetUrl, fileUri);
-          if (download.uri) {
-            const canShare = await Sharing.isAvailableAsync();
-            if (canShare) {
-              await Sharing.shareAsync(download.uri, {
-                mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                dialogTitle: 'Master Monthly Policy Sheet'
-              });
-            } else {
-              Alert.alert('Downloaded', 'Excel sheet saved to your phone.');
+      let downloaded = false;
+      try {
+        const res = await api.get<any>('/manager/monthly-sheet');
+        if (res?.sheetUrl && (res.totalPolicies > 0 || res.count > 0)) {
+          if (Platform.OS === 'web') {
+            Linking.openURL(res.sheetUrl);
+            downloaded = true;
+          } else {
+            const fileUri = FileSystem.documentDirectory + (res.fileName || 'master_renewals.xlsx');
+            const download = await FileSystem.downloadAsync(res.sheetUrl, fileUri);
+            if (download.uri) {
+              const canShare = await Sharing.isAvailableAsync();
+              if (canShare) {
+                await Sharing.shareAsync(download.uri, {
+                  mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                  dialogTitle: 'Master Policy Excel Sheet'
+                });
+              } else {
+                Alert.alert('Downloaded', 'Excel sheet saved to your phone.');
+              }
+              downloaded = true;
             }
           }
         }
-      } else {
-        Alert.alert('No Data', 'No renewal records found for this period.');
+      } catch (serverErr) {
+        console.warn('[Server monthly-sheet download error, falling back to local generator]', serverErr);
+      }
+
+      // If server returned no data or failed, immediately generate locally from items on screen!
+      if (!downloaded) {
+        await handleExportCSV();
       }
     } catch (err: any) {
       Alert.alert('Download Error', err?.message || 'Could not download master sheet.');
@@ -238,8 +248,48 @@ export default function RenewalsScreen() {
   };
 
   const handleExportCSV = async () => {
-    if (items.length === 0) {
-      Alert.alert('No Data', 'No renewal records to export.');
+    let exportRows = items;
+    if (exportRows.length === 0) {
+      // Fallback: Query Supabase directly
+      const { data: dbLeads } = await supabase
+        .from('leads')
+        .select('id, clientName, clientPhone, vehicleNo, expiryDate, status, customFields, assignee:assignedTo(fullName)')
+        .not('expiryDate', 'is', null)
+        .is('deletedAt', null)
+        .limit(100);
+
+      if (dbLeads && dbLeads.length > 0) {
+        exportRows = dbLeads.map((l: any) => {
+          const cf = (l.customFields && typeof l.customFields === 'object') ? (l.customFields as any) : {};
+          const sub = cf.policySubmission || {};
+          const formData = sub.formData || {};
+          return {
+            vehicleNo: l.vehicleNo || formData.regNo || 'N/A',
+            category: formData.customerCategory || formData.cat || 'N/A',
+            clientPhone: l.clientPhone || formData.mobileNo1 || '',
+            mobileNo2: formData.mobileNo2 || '',
+            clientName: l.clientName || 'Customer',
+            model: formData.model || 'N/A',
+            gvw: formData.gvw || 'N/A',
+            expiryDate: l.expiryDate,
+            provider: sub.issuedProvider || formData.provider || formData.insCompany || 'N/A',
+            type: formData.policyType || 'N/A',
+            via: formData.via || 'Direct',
+            netPremium: parseFloat(formData.netPremium || '0') || 0,
+            totalPremium: parseFloat(formData.totalPremium || formData.rsFromCustomer || sub.issuedPremium || '0') || 0,
+            paidAmount: parseFloat(formData.paidAmount || formData.rsFromCustomer || '0') || 0,
+            pendingAmount: parseFloat(formData.pendingAmount || '0') || 0,
+            policyNumber: sub.policyNumber || sub.issuedPolicyNumber || formData.policyNumber || 'N/A',
+            salesPersonName: l.assignee?.fullName || 'Direct',
+            issuedPolicyPdfUrl: sub.issuedPolicyPdfUrl || null,
+            compiledPdfUrl: sub.compiledPdfUrl || null,
+          };
+        });
+      }
+    }
+
+    if (exportRows.length === 0) {
+      Alert.alert('No Data', 'No policies found to export.');
       return;
     }
 
@@ -252,7 +302,7 @@ export default function RenewalsScreen() {
         'SALES EXECUTIVE', 'ISSUED POLICY PDF', 'MERGED 7-DOC PDF'
       ];
 
-      const rows = items.map((r, idx) => [
+      const rows = exportRows.map((r, idx) => [
         idx + 1,
         `"${r.vehicleNo || ''}"`,
         `"${r.category || ''}"`,
@@ -276,18 +326,18 @@ export default function RenewalsScreen() {
       ]);
 
       const csvContent = [headers.join(','), ...rows.map(row => row.join(','))].join('\n');
-      const filename = `Renewals_Master_${urgency}_${new Date().toISOString().split('T')[0]}.csv`;
+      const filename = `Renewals_Master_${new Date().toISOString().split('T')[0]}.csv`;
       const fileUri = FileSystem.documentDirectory + filename;
 
       await FileSystem.writeAsStringAsync(fileUri, csvContent, { encoding: FileSystem.EncodingType.UTF8 });
 
       if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(fileUri, { mimeType: 'text/csv', dialogTitle: 'Share Renewals Master CSV' });
+        await Sharing.shareAsync(fileUri, { mimeType: 'text/csv', dialogTitle: 'Download Renewals Master Sheet' });
       } else {
         Alert.alert('Exported', `File saved to ${fileUri}`);
       }
     } catch (err: any) {
-      Alert.alert('Export Failed', err?.message || 'Could not export CSV');
+      Alert.alert('Export Failed', err?.message || 'Could not export sheet');
     } finally {
       setExportingCSV(false);
     }
