@@ -132,3 +132,90 @@ export async function syncSpreadsheetForBatch(batchName: string | null, customUp
     agentCount
   }
 }
+
+export async function syncRenewalsSpreadsheet(customUploadDir?: string) {
+  const uploadDir = customUploadDir || path.join(process.cwd(), 'public', 'uploads', 'imports')
+  if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir, { recursive: true })
+  }
+
+  const renewals = await prisma.renewalRecord.findMany({
+    include: {
+      assignee: true,
+      lead: true,
+      policy: true
+    },
+    orderBy: { policyEndDate: 'asc' }
+  })
+
+  const headers = [
+    'Client Name',
+    'Phone Number',
+    'Vehicle No',
+    'Policy Number',
+    'Provider / Insurer',
+    'Policy Type',
+    'Premium Amount',
+    'Policy Expiry Date',
+    'Policy Start Date',
+    'Renewal Status',
+    'Assigned To',
+    'Assigned Month',
+    'Assigned Year',
+    'Renewed Date',
+    'Refused Date',
+    'Created At'
+  ]
+
+  const rows: any[][] = [headers]
+
+  renewals.forEach(r => {
+    rows.push([
+      r.clientName || '',
+      r.clientPhone || '',
+      r.vehicleNo || '',
+      r.policyNumber || r.policy?.policyNumber || '',
+      r.provider || r.policy?.provider || '',
+      r.policyType || r.policy?.type || '',
+      r.premiumAmount ? Number(r.premiumAmount) : '',
+      formatDate(r.policyEndDate),
+      formatDate(r.policyStartDate),
+      r.renewalStatus || 'Active',
+      r.assignee?.fullName || 'Unassigned',
+      r.assignedMonth || '',
+      r.assignedYear || '',
+      formatDate(r.renewedAt),
+      formatDate(r.refusedAt),
+      formatDate(r.createdAt)
+    ])
+  })
+
+  const fileName = 'import_renewals.xlsx'
+  const fullPath = path.join(uploadDir, fileName)
+
+  try {
+    const ws = XLSX.utils.aoa_to_sheet(rows)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Renewals')
+
+    try {
+      XLSX.writeFile(wb, fullPath)
+    } catch {
+      const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' })
+      const tempPath = `${fullPath}.tmp`
+      fs.writeFileSync(tempPath, buf)
+      try {
+        fs.renameSync(tempPath, fullPath)
+      } catch {}
+    }
+  } catch (err) {
+    console.warn(`[syncRenewalsSpreadsheet] Error writing ${fileName}:`, err)
+  }
+
+  return {
+    fileName,
+    totalRows: renewals.length,
+    agentCount: 0
+  }
+}
+

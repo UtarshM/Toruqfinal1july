@@ -323,11 +323,13 @@ export default function ImportedSheetsPage() {
         })
         setDeleteSuccessMessage(res?.message || `${filesToDelete.length} spreadsheets deleted successfully.`)
       }
+      // Instantly update local state
+      setFiles(prev => prev.filter(f => !filesToDelete.includes(f.fileName)))
       setSelectedFileNames(prev => prev.filter(f => !filesToDelete.includes(f)))
       setDeleteModalOpen(false)
       setFilesToDelete([])
       setTimeout(() => setDeleteSuccessMessage(''), 5000)
-      fetchFiles(true)
+      fetchFiles(false)
     } catch (err: any) {
       alert(err.message || 'Failed to delete spreadsheets')
     } finally {
@@ -625,11 +627,11 @@ export default function ImportedSheetsPage() {
         </div>
 
         {/* Quick summary cards (Clickable) */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {/* Card 1: Total Spreadsheets -> Click to Reset & Show All Sheets */}
           <button
             onClick={() => handleResetFilters()}
-            className={`p-5 rounded-2xl border text-left transition-all cursor-pointer flex items-center justify-between group ${
+            className={`p-4 rounded-2xl border text-left transition-all cursor-pointer flex items-center justify-between group ${
               activeFiltersCount === 0 && agentFilter === 'all'
                 ? 'bg-white border-blue-300 shadow-md ring-2 ring-blue-500/20'
                 : 'bg-white border-slate-100 hover:border-blue-200 hover:shadow-md hover:bg-blue-50/20'
@@ -640,17 +642,14 @@ export default function ImportedSheetsPage() {
                 <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 group-hover:text-blue-600 transition-colors">
                   Total Spreadsheets
                 </p>
-                <span className="text-[9px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.2 rounded opacity-0 group-hover:opacity-100 transition-opacity">
-                  View All
-                </span>
               </div>
-              <h2 className="text-2xl font-black text-slate-900 mt-1">{files.length}</h2>
-              <p className="text-[11px] font-semibold text-slate-400 mt-0.5">
-                {filteredFiles.length !== files.length ? `${filteredFiles.length} matching • Click to reset` : 'All batches • Click to show all'}
+              <h2 className="text-xl font-black text-slate-900 mt-1">{files.length}</h2>
+              <p className="text-[10px] font-semibold text-slate-400 mt-0.5">
+                {filteredFiles.length !== files.length ? `${filteredFiles.length} matching` : 'All files stored'}
               </p>
             </div>
-            <div className="h-12 w-12 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center group-hover:bg-blue-600 group-hover:text-white transition-all shadow-sm">
-              <FileText size={24} />
+            <div className="h-10 w-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center group-hover:bg-blue-600 group-hover:text-white transition-all shadow-sm shrink-0">
+              <FileText size={20} />
             </div>
           </button>
 
@@ -662,35 +661,60 @@ export default function ImportedSheetsPage() {
                 handleOpenPreview(masterFile)
               }
             }}
-            className="p-5 rounded-2xl border border-slate-100 bg-white hover:border-emerald-200 hover:shadow-md hover:bg-emerald-50/20 text-left transition-all cursor-pointer flex items-center justify-between group"
+            className="p-4 rounded-2xl border border-slate-100 bg-white hover:border-emerald-200 hover:shadow-md hover:bg-emerald-50/20 text-left transition-all cursor-pointer flex items-center justify-between group"
           >
             <div>
               <div className="flex items-center gap-1.5">
                 <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 group-hover:text-emerald-600 transition-colors">
-                  Total Processed Rows
+                  All Leads Master
                 </p>
-                <span className="text-[9px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.2 rounded opacity-0 group-hover:opacity-100 transition-opacity">
-                  Preview Live
-                </span>
               </div>
-              <h2 className="text-2xl font-black text-slate-900 mt-1">
-                {files.reduce((acc, f) => acc + (f.fileName === 'import_all_leads.xlsx' ? 0 : f.totalRows), 0)}
+              <h2 className="text-xl font-black text-slate-900 mt-1">
+                {files.reduce((acc, f) => acc + (f.fileName === 'import_all_leads.xlsx' || f.fileName === 'import_renewals.xlsx' ? 0 : f.totalRows), 0)}
               </h2>
-              <p className="text-[11px] font-semibold text-slate-400 mt-0.5">
-                Leads recorded • Click to preview all
+              <p className="text-[10px] font-semibold text-slate-400 mt-0.5">
+                Click to preview all
               </p>
             </div>
-            <div className="h-12 w-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center group-hover:bg-emerald-600 group-hover:text-white transition-all shadow-sm">
-              <FileSpreadsheet size={24} />
+            <div className="h-10 w-10 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center group-hover:bg-emerald-600 group-hover:text-white transition-all shadow-sm shrink-0">
+              <FileSpreadsheet size={20} />
             </div>
           </button>
 
-          {/* Card 3: Tagged Agent Leads -> Click to Filter / Toggle Agent Tagged Sheets */}
+          {/* Card 3: Renewals Master Sheet */}
+          <button
+            onClick={() => {
+              const renewalsFile = files.find(f => f.fileName === 'import_renewals.xlsx')
+              if (renewalsFile) {
+                handleOpenPreview(renewalsFile)
+              }
+            }}
+            className="p-4 rounded-2xl border border-slate-100 bg-white hover:border-indigo-200 hover:shadow-md hover:bg-indigo-50/20 text-left transition-all cursor-pointer flex items-center justify-between group"
+          >
+            <div>
+              <div className="flex items-center gap-1.5">
+                <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 group-hover:text-indigo-600 transition-colors">
+                  Renewals Master
+                </p>
+              </div>
+              <h2 className="text-xl font-black text-slate-900 mt-1">
+                {files.find(f => f.fileName === 'import_renewals.xlsx')?.totalRows || 0}
+              </h2>
+              <p className="text-[10px] font-semibold text-indigo-600 mt-0.5 font-bold">
+                Click to preview renewals
+              </p>
+            </div>
+            <div className="h-10 w-10 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center group-hover:bg-indigo-600 group-hover:text-white transition-all shadow-sm shrink-0">
+              <RefreshCw size={20} />
+            </div>
+          </button>
+
+          {/* Card 4: Tagged Agent Leads -> Click to Filter / Toggle Agent Tagged Sheets */}
           <button
             onClick={() => {
               setAgentFilter(prev => prev === 'has_agent' ? 'all' : 'has_agent')
             }}
-            className={`p-5 rounded-2xl border text-left transition-all cursor-pointer flex items-center justify-between group ${
+            className={`p-4 rounded-2xl border text-left transition-all cursor-pointer flex items-center justify-between group ${
               agentFilter === 'has_agent'
                 ? 'bg-amber-50/60 border-amber-300 shadow-md ring-2 ring-amber-500/30'
                 : 'bg-white border-slate-100 hover:border-amber-200 hover:shadow-md hover:bg-amber-50/20'
@@ -699,25 +723,18 @@ export default function ImportedSheetsPage() {
             <div>
               <div className="flex items-center gap-1.5">
                 <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 group-hover:text-amber-600 transition-colors">
-                  Tagged Agent Leads
+                  Agent Leads
                 </p>
-                <span className="text-[9px] font-bold text-amber-700 bg-amber-100 px-1.5 py-0.2 rounded">
-                  {agentFilter === 'has_agent' ? 'Filtered Active ✓' : 'Click to Filter'}
-                </span>
               </div>
-              <h2 className="text-2xl font-black text-slate-900 mt-1">
-                {files.reduce((acc, f) => acc + (f.fileName === 'import_all_leads.xlsx' ? 0 : f.agentCount), 0)}
+              <h2 className="text-xl font-black text-slate-900 mt-1">
+                {files.reduce((acc, f) => acc + f.agentCount, 0)}
               </h2>
-              <p className="text-[11px] font-semibold text-slate-400 mt-0.5">
-                {agentFilter === 'has_agent' ? 'Showing agent sheets only' : 'Click to filter agent sheets'}
+              <p className="text-[10px] font-semibold text-slate-400 mt-0.5">
+                {agentFilter === 'has_agent' ? 'Active filter (ON)' : 'Click to filter'}
               </p>
             </div>
-            <div className={`h-12 w-12 rounded-2xl flex items-center justify-center transition-all shadow-sm ${
-              agentFilter === 'has_agent' 
-                ? 'bg-amber-500 text-white' 
-                : 'bg-amber-50 text-amber-600 group-hover:bg-amber-500 group-hover:text-white'
-            }`}>
-              <AlertCircle size={24} />
+            <div className="h-10 w-10 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center group-hover:bg-amber-600 group-hover:text-white transition-all shadow-sm shrink-0">
+              <AlertCircle size={20} />
             </div>
           </button>
         </div>
@@ -778,17 +795,35 @@ export default function ImportedSheetsPage() {
               <select
                 value={selectedFile?.fileName || ''}
                 onChange={(e) => {
-                  const found = files.find(f => f.fileName === e.target.value)
+                  const val = e.target.value
+                  if (!val) return
+                  if (val === '__ALL_CARDS__') {
+                    handleResetFilters()
+                    return
+                  }
+                  const found = files.find(f => f.fileName === val)
                   if (found) handleOpenPreview(found)
                 }}
                 className="w-full bg-slate-50 border border-slate-200 text-slate-900 rounded-xl px-3 py-2.5 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500 transition-all cursor-pointer truncate"
               >
-                <option value="">Jump to Sheet...</option>
-                {files.map(f => (
-                  <option key={f.fileName} value={f.fileName}>
-                    {f.batchName} ({f.totalRows})
-                  </option>
-                ))}
+                <option value="">Jump to Sheet / Master Database...</option>
+                <option value="__ALL_CARDS__">📂 View All Spreadsheets Grid</option>
+
+                <optgroup label="🌟 Central Master Sheets">
+                  {files.filter(f => f.fileName === 'import_all_leads.xlsx' || f.fileName === 'import_renewals.xlsx').map(f => (
+                    <option key={f.fileName} value={f.fileName}>
+                      {f.fileName === 'import_renewals.xlsx' ? '🔄 Policy Renewals (Master)' : '📋 All Active Leads (Master)'} ({f.totalRows} records)
+                    </option>
+                  ))}
+                </optgroup>
+
+                <optgroup label="📁 Uploaded Spreadsheets & Batches">
+                  {files.filter(f => f.fileName !== 'import_all_leads.xlsx' && f.fileName !== 'import_renewals.xlsx').map(f => (
+                    <option key={f.fileName} value={f.fileName}>
+                      {f.batchName} ({f.totalRows} leads)
+                    </option>
+                  ))}
+                </optgroup>
               </select>
             </div>
           </div>

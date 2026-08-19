@@ -76,7 +76,7 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ filename: string }> }
 ) {
-  const { context, error } = await validateAuth(req, 'leads.delete')
+  const { context, error } = await validateAuth(req)
   if (error || !context) return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const roleUpper = (context.role || '').toUpperCase()
@@ -107,32 +107,33 @@ export async function DELETE(
 
     let deletedLeadsCount = 0
     if (deleteLeads && batchName && batchName !== 'all_leads') {
-      // Find matching leads
-      const leads = await prisma.lead.findMany({
-        where: {
-          OR: [
-            { importName: batchName },
-            { importName: batchName.replace(/_/g, '-') },
-            { importName: batchName.replace(/-/g, '_') }
-          ]
-        },
-        select: { id: true }
-      })
+      if (batchName === 'renewals') {
+        const delRenewals = await prisma.renewalRecord.deleteMany({}).catch(() => ({ count: 0 }))
+        deletedLeadsCount = delRenewals.count
+      } else {
+        const cleanBatch = batchName.replace(/[^a-zA-Z0-9]/g, '').toLowerCase()
+        const allLeads = await prisma.lead.findMany({ select: { id: true, importName: true } })
+        const matchedLeadIds = allLeads
+          .filter(l => {
+            if (!l.importName) return false
+            const dbClean = l.importName.replace(/[^a-zA-Z0-9]/g, '').toLowerCase()
+            return dbClean === cleanBatch || dbClean.includes(cleanBatch) || cleanBatch.includes(dbClean)
+          })
+          .map(l => l.id)
 
-      const leadIds = leads.map(l => l.id)
-      if (leadIds.length > 0) {
-        // Delete dependent records first
-        await prisma.leadAssignment.deleteMany({ where: { leadId: { in: leadIds } } }).catch(() => {})
-        await prisma.leadStatusHistory.deleteMany({ where: { leadId: { in: leadIds } } }).catch(() => {})
-        await prisma.leadWhatsAppLog.deleteMany({ where: { leadId: { in: leadIds } } }).catch(() => {})
-        await prisma.call.deleteMany({ where: { leadId: { in: leadIds } } }).catch(() => {})
-        await prisma.followUp.deleteMany({ where: { leadId: { in: leadIds } } }).catch(() => {})
-        await prisma.activityLog.deleteMany({ where: { entityId: { in: leadIds } } }).catch(() => {})
+        if (matchedLeadIds.length > 0) {
+          await prisma.leadAssignment.deleteMany({ where: { leadId: { in: matchedLeadIds } } }).catch(() => {})
+          await prisma.leadStatusHistory.deleteMany({ where: { leadId: { in: matchedLeadIds } } }).catch(() => {})
+          await prisma.leadWhatsAppLog.deleteMany({ where: { leadId: { in: matchedLeadIds } } }).catch(() => {})
+          await prisma.call.deleteMany({ where: { leadId: { in: matchedLeadIds } } }).catch(() => {})
+          await prisma.followUp.deleteMany({ where: { leadId: { in: matchedLeadIds } } }).catch(() => {})
+          await prisma.activityLog.deleteMany({ where: { entityId: { in: matchedLeadIds } } }).catch(() => {})
 
-        const deleteResult = await prisma.lead.deleteMany({
-          where: { id: { in: leadIds } }
-        })
-        deletedLeadsCount = deleteResult.count
+          const deleteResult = await prisma.lead.deleteMany({
+            where: { id: { in: matchedLeadIds } }
+          })
+          deletedLeadsCount = deleteResult.count
+        }
       }
     }
 
@@ -149,7 +150,7 @@ export async function DELETE(
       success: true,
       fileName: safeFileName,
       deletedLeadsCount,
-      message: `Spreadsheet "${safeFileName}" and ${deletedLeadsCount} associated lead(s) deleted successfully.`
+      message: `Spreadsheet "${safeFileName}" and ${deletedLeadsCount} associated record(s) deleted successfully.`
     })
   } catch (err: any) {
     console.error('[sheets DELETE] Error:', err)
