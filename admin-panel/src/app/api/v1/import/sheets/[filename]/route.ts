@@ -37,18 +37,40 @@ export async function GET(
         const { syncRenewalsSpreadsheet } = await import('@/lib/spreadsheet-sync')
         await syncRenewalsSpreadsheet(uploadDir).catch(() => {})
       } else {
-        const cleanBatch = batchName.replace(/_/g, ' ')
-        const count = await prisma.lead.count({
+        // Find all distinct active import batches from database
+        const dbBatches = await prisma.lead.groupBy({
+          by: ['importName'],
           where: {
-            OR: [
-              { importName: batchName },
-              { importName: cleanBatch }
-            ]
+            status: { not: 'Trashed' },
+            deletedAt: null
           }
         })
-        if (count > 0) {
+
+        let actualImportName = batchName
+        let foundMatch = false
+
+        // Check for exact sanitized match
+        for (const batch of dbBatches) {
+          if (!batch.importName) continue
+          const clean = String(batch.importName).trim().replace(/[^a-zA-Z0-9_-]/g, '_')
+          if (clean === batchName) {
+            actualImportName = batch.importName
+            foundMatch = true
+            break
+          }
+        }
+
+        // Fallback for special batches like 'all_leads' or 'direct_entry'
+        if (!foundMatch) {
+          if (batchName === 'all_leads' || batchName === 'direct_entry') {
+            foundMatch = true
+            actualImportName = batchName
+          }
+        }
+
+        if (foundMatch) {
           const { syncSpreadsheetForBatch } = await import('@/lib/spreadsheet-sync')
-          await syncSpreadsheetForBatch(batchName, uploadDir).catch(() => {})
+          await syncSpreadsheetForBatch(actualImportName, uploadDir).catch(() => {})
         }
       }
     }
