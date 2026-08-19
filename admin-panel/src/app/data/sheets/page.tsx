@@ -120,7 +120,7 @@ export default function ImportedSheetsPage() {
     if (!dateStr) return '—'
     try {
       const d = new Date(dateStr)
-      if (isNaN(d.getTime())) return '—'
+      if (isNaN(d.getTime()) || d.getFullYear() < 2000) return 'Recent'
       return d.toLocaleString('en-IN', {
         day: '2-digit',
         month: 'short',
@@ -278,16 +278,13 @@ export default function ImportedSheetsPage() {
 
   // Multi-Selection Handlers
   const toggleSelectFile = (fileName: string) => {
-    if (fileName === 'import_all_leads.xlsx') return
     setSelectedFileNames(prev =>
       prev.includes(fileName) ? prev.filter(f => f !== fileName) : [...prev, fileName]
     )
   }
 
   const selectAllFiles = () => {
-    const selectable = filteredFiles
-      .filter(f => f.fileName !== 'import_all_leads.xlsx')
-      .map(f => f.fileName)
+    const selectable = filteredFiles.map(f => f.fileName)
     setSelectedFileNames(selectable)
   }
 
@@ -296,9 +293,8 @@ export default function ImportedSheetsPage() {
   }
 
   const promptDeleteFiles = (fileNames: string[]) => {
-    const valid = fileNames.filter(f => f !== 'import_all_leads.xlsx')
-    if (valid.length === 0) return
-    setFilesToDelete(valid)
+    if (fileNames.length === 0) return
+    setFilesToDelete(fileNames)
     setDeleteAssociatedLeads(true)
     setDeleteModalOpen(true)
   }
@@ -1129,14 +1125,14 @@ export default function ImportedSheetsPage() {
         )}
 
         {/* BULK ACTIONS TOOLBAR */}
-        {isAdmin && filteredFiles.filter(f => f.fileName !== 'import_all_leads.xlsx').length > 0 && (
+        {isAdmin && filteredFiles.length > 0 && (
           <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white p-3.5 px-5 rounded-2xl border border-slate-100 shadow-sm">
             <div className="flex items-center gap-3 w-full sm:w-auto">
               <button
-                onClick={selectedFileNames.length === filteredFiles.filter(f => f.fileName !== 'import_all_leads.xlsx').length ? clearSelectedFiles : selectAllFiles}
+                onClick={selectedFileNames.length === filteredFiles.length ? clearSelectedFiles : selectAllFiles}
                 className="flex items-center gap-2 text-xs font-bold text-slate-700 hover:text-slate-900 cursor-pointer"
               >
-                {selectedFileNames.length > 0 && selectedFileNames.length === filteredFiles.filter(f => f.fileName !== 'import_all_leads.xlsx').length ? (
+                {selectedFileNames.length > 0 && selectedFileNames.length === filteredFiles.length ? (
                   <CheckSquare size={16} className="text-blue-600" />
                 ) : (
                   <Square size={16} className="text-slate-400" />
@@ -1195,8 +1191,8 @@ export default function ImportedSheetsPage() {
           /* File Cards Grid */
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             {filteredFiles.map(file => {
-              const isMaster = file.fileName === 'import_all_leads.xlsx'
               const isSelected = selectedFileNames.includes(file.fileName)
+              const cleanTitle = (file as any).displayName || file.fileName.replace(/^import_/, '').replace(/\.(xlsx|csv)$/, '').replace(/_/g, ' ') + '.xlsx'
 
               return (
                 <div 
@@ -1210,7 +1206,7 @@ export default function ImportedSheetsPage() {
                   <div className="space-y-3">
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex items-center gap-3">
-                        {!isMaster && isAdmin && (
+                        {isAdmin && (
                           <button
                             onClick={() => toggleSelectFile(file.fileName)}
                             className="text-slate-400 hover:text-blue-600 transition-colors cursor-pointer"
@@ -1244,7 +1240,7 @@ export default function ImportedSheetsPage() {
 
                     <div>
                       <h3 className="text-sm font-black text-slate-900 group-hover:text-blue-600 transition-colors truncate" title={file.fileName}>
-                        {file.fileName}
+                        {cleanTitle}
                       </h3>
                       <p className="text-[11px] font-bold text-slate-400 mt-0.5">
                         Batch: <span className="text-slate-700 font-extrabold">{file.batchName}</span>
@@ -1297,7 +1293,7 @@ export default function ImportedSheetsPage() {
                     >
                       <Download size={14} /> Download
                     </a>
-                    {!isMaster && isAdmin && (
+                    {isAdmin && (
                       <button
                         onClick={() => promptDeleteFiles([file.fileName])}
                         className="p-2 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-xl transition-all cursor-pointer border border-transparent hover:border-rose-100"

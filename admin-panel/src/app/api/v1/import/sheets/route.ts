@@ -34,18 +34,33 @@ export async function GET(req: NextRequest) {
 
     const shouldSync = req.nextUrl.searchParams.get('sync') === 'true'
 
-    // 1. Fetch all distinct import batches from Lead database table
+    // Clean up empty master sheets if 0 leads exist in DB
+    const totalActiveLeads = await prisma.lead.count({ where: { status: { not: 'Trashed' }, deletedAt: null } })
+    const masterFile = path.join(uploadDir, 'import_all_leads.xlsx')
+    if (totalActiveLeads === 0 && fs.existsSync(masterFile)) {
+      try { fs.unlinkSync(masterFile) } catch {}
+    }
+
+    // Clean up empty renewals sheet if 0 renewals exist
+    const totalRenewals = await prisma.renewalRecord.count()
+    const renewalsFile = path.join(uploadDir, 'import_renewals.xlsx')
+    if (totalRenewals === 0 && fs.existsSync(renewalsFile)) {
+      try { fs.unlinkSync(renewalsFile) } catch {}
+    }
+
+    // 1. Fetch all distinct active import batches from database
     const dbBatches = await prisma.lead.groupBy({
       by: ['importName'],
       _count: { _all: true },
       _min: { createdAt: true },
       _max: { createdAt: true, updatedAt: true },
       where: {
-        status: { not: 'Trashed' }
+        status: { not: 'Trashed' },
+        deletedAt: null
       }
     })
 
-    // Synchronize batch spreadsheet files
+    // Synchronize batch spreadsheet files only if active leads exist
     for (const batch of dbBatches) {
       if (!batch.importName) continue
       const cleanBatchName = String(batch.importName).trim().replace(/[^a-zA-Z0-9_-]/g, '_')
@@ -55,18 +70,13 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // Generate/sync master "All Leads" spreadsheet
-    const masterFile = path.join(uploadDir, 'import_all_leads.xlsx')
-    if (shouldSync || !fs.existsSync(masterFile)) {
-      const totalLeadsCount = await prisma.lead.count({ where: { status: { not: 'Trashed' } } })
-      if (totalLeadsCount > 0) {
-        await syncSpreadsheetForBatch('all_leads', uploadDir)
-      }
+    // Only generate master "All Leads" if active leads actually exist
+    if (totalActiveLeads > 0 && (shouldSync || !fs.existsSync(masterFile))) {
+      await syncSpreadsheetForBatch('all_leads', uploadDir)
     }
 
-    // Generate/sync master "Policy Renewals" spreadsheet
-    const renewalsFile = path.join(uploadDir, 'import_renewals.xlsx')
-    if (shouldSync || !fs.existsSync(renewalsFile)) {
+    // Only generate "Policy Renewals" if renewals actually exist
+    if (totalRenewals > 0 && (shouldSync || !fs.existsSync(renewalsFile))) {
       await syncRenewalsSpreadsheet(uploadDir)
     }
 
@@ -141,16 +151,23 @@ export async function GET(req: NextRequest) {
         console.error(`[sheets] Error reading file ${fileName}:`, err)
       }
 
-      // Extract friendly batch name
+      // Clean display name without synthetic "import_" prefix
+      const displayName = fileName
+        .replace(/^import_/, '')
+        .replace(/\.(xlsx|csv)$/, '')
+        .replace(/_/g, ' ')
+        + path.extname(fileName)
+
+      // Friendly batch name
       let batchName = fileName
         .replace(/^import_/, '')
         .replace(/_\d+\.(xlsx|csv)$/, '')
         .replace(/\.(xlsx|csv)$/, '')
-        .replace(/_/g, '-')
+        .replace(/_/g, ' ')
 
-      if (batchName === 'all-leads' || batchName === 'all_leads') {
+      if (fileName === 'import_all_leads.xlsx') {
         batchName = 'All Active Leads (Master)'
-      } else if (batchName === 'renewals') {
+      } else if (fileName === 'import_renewals.xlsx') {
         batchName = 'Policy Renewals (Master)'
       }
 
@@ -159,21 +176,26 @@ export async function GET(req: NextRequest) {
         return fileName === `import_${cleanB}.xlsx` || fileName.includes(cleanB)
       })
 
-      const rawImportedAt = matchingDbBatch?._min?.createdAt || stat.birthtime || stat.mtime
-      const importedDate = new Date(rawImportedAt)
-      const importedAt = !isNaN(importedDate.getTime()) ? importedDate.toISOString() : new Date().toISOString()
-      const updatedAt = matchingDbBatch?._max?.updatedAt || stat.mtime
+      // Robust date calculation (never 1970)
+      let rawImportedAt = matchingDbBatch?._min?.createdAt || stat.birthtime || stat.mtime
+      let importedDate = new Date(rawImportedAt)
+      if (isNaN(importedDate.getTime()) || importedDate.getTime() < 946684800000) { // before year 2000
+        importedDate = stat.mtime && stat.mtime.getTime() > 946684800000 ? stat.mtime : new Date()
+      }
+      const importedAt = importedDate.toISOString()
+      const updatedAt = matchingDbBatch?._max?.updatedAt || stat.mtime || importedDate
 
       const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
-      const dayOfWeek = !isNaN(importedDate.getTime()) ? days[importedDate.getDay()] : 'Unknown'
-      const dateOnly = !isNaN(importedDate.getTime()) ? importedDate.toISOString().split('T')[0] : ''
+      const dayOfWeek = days[importedDate.getDay()] || 'Today'
+      const dateOnly = importedDate.toISOString().split('T')[0]
 
       return {
         fileName,
+        displayName,
         batchName,
         sizeBytes: stat.size,
         importedAt,
-        updatedAt,
+        updatedAt: new Date(updatedAt).toISOString(),
         dayOfWeek,
         dateOnly,
         totalRows,
@@ -183,8 +205,15 @@ export async function GET(req: NextRequest) {
       }
     })
 
-    // Sort by newest imported first, keeping master and renewals on top
-    files.sort((a, b) => {
+    // Filter out 0-row empty master sheets from display
+    const nonDummyFiles = files.filter(f => {
+      if (f.fileName === 'import_all_leads.xlsx' && f.totalRows === 0) return false
+      if (f.fileName === 'import_renewals.xlsx' && f.totalRows === 0) return false
+      return true
+    })
+
+    // Sort by newest imported first
+    nonDummyFiles.sort((a, b) => {
       if (a.fileName === 'import_all_leads.xlsx') return -1
       if (b.fileName === 'import_all_leads.xlsx') return 1
       if (a.fileName === 'import_renewals.xlsx') return -1
@@ -192,7 +221,7 @@ export async function GET(req: NextRequest) {
       return new Date(b.importedAt).getTime() - new Date(a.importedAt).getTime()
     })
 
-    return NextResponse.json({ files, matchingLeads, matchingBatchNames })
+    return NextResponse.json({ files: nonDummyFiles, matchingLeads, matchingBatchNames })
   } catch (err: any) {
     console.error('[sheets] Error:', err)
     return NextResponse.json({ error: 'Internal Server Error', details: err?.message }, { status: 500 })
@@ -211,7 +240,7 @@ export async function DELETE(req: NextRequest) {
 
   try {
     const body = await req.json().catch(() => ({}))
-    const fileNames: string[] = body.fileNames || []
+    const fileNames: string[] = body.fileNames || (body.fileName ? [body.fileName] : [])
     const deleteLeads: boolean = body.deleteLeads !== false
 
     if (!Array.isArray(fileNames) || fileNames.length === 0) {
@@ -222,24 +251,22 @@ export async function DELETE(req: NextRequest) {
     let totalDeletedFiles = 0
     let totalDeletedLeads = 0
 
-    // Fetch all leads to do robust batch matching
     const allLeads = deleteLeads ? await prisma.lead.findMany({ select: { id: true, importName: true } }) : []
 
     for (const rawName of fileNames) {
       const safeFileName = path.basename(rawName)
-      if (safeFileName === 'import_all_leads.xlsx') continue
-
       const filePath = path.join(uploadDir, safeFileName)
 
-      // Extract batch name
       const batchName = safeFileName
         .replace(/^import_/, '')
         .replace(/_\d+\.(xlsx|csv)$/, '')
         .replace(/\.(xlsx|csv)$/, '')
 
-      if (deleteLeads && batchName && batchName !== 'all_leads') {
-        if (batchName === 'renewals') {
-          // If renewals sheet deleted, remove renewal records
+      if (deleteLeads) {
+        if (safeFileName === 'import_all_leads.xlsx') {
+          const delRes = await prisma.lead.deleteMany({}).catch(() => ({ count: 0 }))
+          totalDeletedLeads += delRes.count
+        } else if (safeFileName === 'import_renewals.xlsx' || batchName === 'renewals') {
           const delRenewals = await prisma.renewalRecord.deleteMany({}).catch(() => ({ count: 0 }))
           totalDeletedLeads += delRenewals.count
         } else {
@@ -273,8 +300,10 @@ export async function DELETE(req: NextRequest) {
           fs.unlinkSync(filePath)
           totalDeletedFiles++
         } catch (err: any) {
-          console.warn('[sheets bulk DELETE] Failed to unlink file:', err)
+          console.warn('[sheets DELETE] Failed to unlink file:', err)
         }
+      } else {
+        totalDeletedFiles++
       }
     }
 
@@ -282,7 +311,7 @@ export async function DELETE(req: NextRequest) {
       success: true,
       deletedFilesCount: totalDeletedFiles,
       deletedLeadsCount: totalDeletedLeads,
-      message: `${totalDeletedFiles} spreadsheet(s) and ${totalDeletedLeads} associated record(s) deleted successfully.`
+      message: `${totalDeletedFiles} spreadsheet(s) deleted successfully.`
     })
   } catch (err: any) {
     console.error('[sheets bulk DELETE] Error:', err)

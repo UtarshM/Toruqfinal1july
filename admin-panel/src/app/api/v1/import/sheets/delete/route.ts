@@ -32,23 +32,22 @@ export async function POST(req: NextRequest) {
     let totalDeletedFiles = 0
     let totalDeletedLeads = 0
 
-    // Fetch all leads once to perform fuzzy matching
     const allLeads = deleteLeads ? await prisma.lead.findMany({ select: { id: true, importName: true } }) : []
 
     for (const rawName of rawFileNames) {
       const safeFileName = path.basename(String(rawName).trim())
-      if (safeFileName === 'import_all_leads.xlsx') continue
-
       const filePath = path.join(uploadDir, safeFileName)
 
-      // Extract batch name from filename
       const batchName = safeFileName
         .replace(/^import_/, '')
         .replace(/_\d+\.(xlsx|csv)$/, '')
         .replace(/\.(xlsx|csv)$/, '')
 
-      if (deleteLeads && batchName && batchName !== 'all_leads') {
-        if (batchName === 'renewals') {
+      if (deleteLeads) {
+        if (safeFileName === 'import_all_leads.xlsx') {
+          const delRes = await prisma.lead.deleteMany({}).catch(() => ({ count: 0 }))
+          totalDeletedLeads += delRes.count
+        } else if (safeFileName === 'import_renewals.xlsx' || batchName === 'renewals') {
           const delRenewals = await prisma.renewalRecord.deleteMany({}).catch(() => ({ count: 0 }))
           totalDeletedLeads += delRenewals.count
         } else {
@@ -86,7 +85,6 @@ export async function POST(req: NextRequest) {
           console.warn('[sheets DELETE] Failed to unlink file:', err)
         }
       } else {
-        // Even if file was already unlinked, count it as successfully processed
         totalDeletedFiles++
       }
     }
