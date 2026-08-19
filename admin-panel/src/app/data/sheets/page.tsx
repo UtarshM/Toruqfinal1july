@@ -87,6 +87,9 @@ export default function ImportedSheetsPage() {
   const [sortBy, setSortBy] = useState<'newest' | 'oldest' | 'rows_desc' | 'rows_asc' | 'name_asc'>('newest')
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false)
 
+  // Page level tabs state
+  const [activePageTab, setActivePageTab] = useState<'files' | 'renewals'>('files')
+
   // Preview modal state
   const [selectedFile, setSelectedFile] = useState<SpreadsheetFile | null>(null)
   const [previewData, setPreviewData] = useState<SheetPreviewData | null>(null)
@@ -205,8 +208,25 @@ export default function ImportedSheetsPage() {
     }
   }, [])
 
+  // Load renewals master file automatically when switching to renewals tab
+  useEffect(() => {
+    if (activePageTab === 'renewals') {
+      const renewalsFile = files.find(f => f.fileName === 'import_renewals.xlsx')
+      if (renewalsFile) {
+        handleOpenPreview(renewalsFile)
+      }
+    }
+  }, [activePageTab, files])
+
+  // Reset preview state when switching tabs
+  useEffect(() => {
+    if (activePageTab === 'files') {
+      setSelectedFile(null)
+      setPreviewData(null)
+    }
+  }, [activePageTab])
+
   const handleOpenPreview = async (file: SpreadsheetFile, initialRowSearch?: string) => {
-    setSelectedFile(file)
     setPreviewLoading(true)
     setPreviewSearch(initialRowSearch || '')
     setPreviewAgentFilter('all')
@@ -622,8 +642,34 @@ export default function ImportedSheetsPage() {
           </div>
         </div>
 
-        {/* Quick summary cards (Clickable) */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {/* Navigation Tabs */}
+        <div className="flex border-b border-slate-100 gap-1.5 pb-0.5 mb-6">
+          <button
+            onClick={() => setActivePageTab('files')}
+            className={`px-4 py-2 text-xs font-black uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
+              activePageTab === 'files'
+                ? 'border-b-2 border-slate-900 text-slate-900 font-extrabold'
+                : 'border-transparent text-slate-400 hover:text-slate-600'
+            }`}
+          >
+            📂 Imported Spreadsheets ({files.length - (files.some(f => f.fileName === 'import_renewals.xlsx') ? 1 : 0)})
+          </button>
+          <button
+            onClick={() => setActivePageTab('renewals')}
+            className={`px-4 py-2 text-xs font-black uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
+              activePageTab === 'renewals'
+                ? 'border-b-2 border-slate-900 text-slate-900 font-extrabold'
+                : 'border-transparent text-slate-400 hover:text-slate-600'
+            }`}
+          >
+            🔄 Renewals Master ({files.find(f => f.fileName === 'import_renewals.xlsx')?.totalRows || 0})
+          </button>
+        </div>
+
+        {activePageTab === 'files' && (
+          <>
+            {/* Quick summary cards (Clickable) */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           {/* Card 1: Total Spreadsheets -> Click to Reset & Show All Sheets */}
           <button
             onClick={() => handleResetFilters()}
@@ -652,7 +698,7 @@ export default function ImportedSheetsPage() {
           {/* Card 2: Renewals Master Sheet */}
           <button
             onClick={() => {
-              window.location.href = '/renewals'
+              setActivePageTab('renewals')
             }}
             className="p-4 rounded-2xl border border-slate-100 bg-white hover:border-indigo-200 hover:shadow-md hover:bg-indigo-50/20 text-left transition-all cursor-pointer flex items-center justify-between group"
           >
@@ -666,7 +712,7 @@ export default function ImportedSheetsPage() {
                 {files.find(f => f.fileName === 'import_renewals.xlsx')?.totalRows || 0}
               </h2>
               <p className="text-[10px] font-semibold text-indigo-600 mt-0.5 font-bold">
-                Click to manage renewals page
+                Click to view renewals master
               </p>
             </div>
             <div className="h-10 w-10 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center group-hover:bg-indigo-600 group-hover:text-white transition-all shadow-sm shrink-0">
@@ -1258,44 +1304,266 @@ export default function ImportedSheetsPage() {
                     </div>
                   </div>
 
-                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
-                    <button
-                      onClick={() => {
-                        if (file.fileName === 'import_renewals.xlsx') {
-                          window.location.href = '/renewals'
-                        } else {
-                          handleOpenPreview(file, leadSearch)
-                        }
-                      }}
-                      className="flex-1 py-2 px-3 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                    >
-                      <Eye size={14} /> {file.fileName === 'import_renewals.xlsx' ? 'Manage Renewals' : 'Preview Sheet'}
-                    </button>
-                    <a
-                      href={file.downloadUrl}
-                      download={file.fileName}
-                      className="py-2 px-3 bg-slate-900 hover:bg-black text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
-                    >
-                      <Download size={14} /> Download
-                    </a>
-                    {isAdmin && (
+                    <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
                       <button
-                        onClick={() => promptDeleteFiles([file.fileName])}
-                        className="p-2 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-xl transition-all cursor-pointer border border-transparent hover:border-rose-100"
-                        title="Delete this spreadsheet"
+                        onClick={() => {
+                          if (file.fileName === 'import_renewals.xlsx') {
+                            setActivePageTab('renewals')
+                          } else {
+                            handleOpenPreview(file, leadSearch)
+                          }
+                        }}
+                        className="flex-1 py-2 px-3 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
                       >
-                        <Trash2 size={15} />
+                        <Eye size={14} /> {file.fileName === 'import_renewals.xlsx' ? 'Manage Renewals' : 'Preview Sheet'}
                       </button>
-                    )}
+                      <a
+                        href={file.downloadUrl}
+                        download={file.fileName}
+                        className="py-2 px-3 bg-slate-900 hover:bg-black text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Download size={14} /> Download
+                      </a>
+                      {isAdmin && (
+                        <button
+                          onClick={() => promptDeleteFiles([file.fileName])}
+                          className="p-2 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-xl transition-all cursor-pointer border border-transparent hover:border-rose-100"
+                          title="Delete this spreadsheet"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </>
+      )}
+
+      {activePageTab === 'renewals' && (
+        <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6 space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+            <div>
+              <h2 className="text-lg font-black text-slate-900">🔄 Policy Renewals (Master)</h2>
+              <p className="text-xs text-slate-500 mt-0.5 font-medium">
+                Search active policies, expiry dates, sales agent creation details, and download the synced XLSX file.
+              </p>
+            </div>
+            {previewData?.downloadUrl && (
+              <a
+                href={previewData.downloadUrl}
+                download="import_renewals.xlsx"
+                className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold rounded-xl transition-all flex items-center gap-2 shadow-md cursor-pointer whitespace-nowrap"
+              >
+                <Download size={14} /> Download XLSX
+              </a>
+            )}
+          </div>
+
+          {previewLoading ? (
+            <div className="p-16 text-center space-y-3">
+              <RefreshCw className="animate-spin text-blue-600 mx-auto" size={36} />
+              <p className="text-xs font-bold text-slate-600">Reading renewals master sheet from server database...</p>
+            </div>
+          ) : previewData ? (
+            <div className="space-y-4">
+              {/* Search & filters inline */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50 p-3.5 rounded-2xl border border-slate-100">
+                <div className="relative flex-1 max-w-md">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                  <input
+                    type="text"
+                    placeholder="Search within sheet rows (name, phone, vehicle, insurer)..."
+                    className="w-full bg-white border border-slate-200 rounded-xl py-2 pl-9 pr-8 text-xs outline-none focus:ring-2 focus:ring-blue-500 transition-all font-semibold"
+                    value={previewSearch}
+                    onChange={e => {
+                      setPreviewSearch(e.target.value)
+                      setCurrentPage(1)
+                    }}
+                  />
+                  {previewSearch && (
+                    <button
+                      onClick={() => setPreviewSearch('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex flex-wrap items-center gap-3 text-xs font-bold text-slate-600">
+                  <span>Filtered: <strong className="text-slate-900">{filteredPreviewRows.length}</strong></span>
+
+                  {/* Rows per page selector */}
+                  <div className="flex items-center gap-1.5 ml-auto">
+                    <span className="text-[11px] text-slate-400 font-semibold">Rows:</span>
+                    <select
+                      value={rowsPerPage}
+                      onChange={e => {
+                        const val = e.target.value === 'all' ? 'all' : Number(e.target.value)
+                        setRowsPerPage(val)
+                        setCurrentPage(1)
+                      }}
+                      className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-700 outline-none"
+                    >
+                      <option value={25}>25</option>
+                      <option value={50}>50</option>
+                      <option value={100}>100</option>
+                      <option value={250}>250</option>
+                      <option value="all">All ({previewData.rows.length})</option>
+                    </select>
                   </div>
                 </div>
-              )
-            })}
-          </div>
-        )}
+              </div>
+
+              {/* Expiry filter inline */}
+              <div className="bg-gradient-to-r from-blue-50 via-indigo-50 to-purple-50 p-4 rounded-2xl border border-blue-200">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                  <div className="flex items-center gap-2">
+                    <CalendarDays size={16} className="text-blue-600" />
+                    <span className="text-xs font-black text-slate-800">Filter by Expiry Month:</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={expiryMonthFilter}
+                      onChange={e => handleExpiryMonthChange(Number(e.target.value))}
+                      className="bg-white border border-blue-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                    >
+                      {MONTH_NAMES.map((name, idx) => (
+                        <option key={idx} value={idx}>{name}</option>
+                      ))}
+                    </select>
+                    <select
+                      value={expiryYearFilter}
+                      onChange={e => {
+                        setExpiryYearFilter(Number(e.target.value))
+                        if (expiryMonthFilter > 0) {
+                          handleExpiryMonthChange(expiryMonthFilter)
+                        }
+                      }}
+                      className="bg-white border border-blue-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                    >
+                      {[2024, 2025, 2026, 2027, 2028, 2029, 2030].map(y => (
+                        <option key={y} value={y}>{y}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {expiryMonthFilter > 0 && (
+                    <div className="flex items-center gap-2 ml-auto">
+                      <span className="px-3 py-1 bg-indigo-600 text-white text-xs font-black rounded-lg shadow-sm">
+                        {filteredPreviewRows.length} leads in {MONTH_NAMES[expiryMonthFilter]} {expiryYearFilter}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Inline Data Table */}
+              <div className="border border-slate-200 rounded-2xl overflow-x-auto shadow-inner">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="bg-slate-900 text-slate-100 sticky top-0 z-10 text-[11px] font-black uppercase tracking-wider">
+                      <th className="px-4 py-3 border-b border-slate-700 w-12 text-center">#</th>
+                      {previewData.headers.map((header, idx) => (
+                        <th 
+                          key={idx} 
+                          onClick={() => handleSortColumn(idx)}
+                          className="px-4 py-3 border-b border-slate-700 whitespace-nowrap cursor-pointer hover:bg-slate-800 transition-colors"
+                        >
+                          <div className="flex items-center gap-1.5">
+                            <span>{header || `Col ${idx + 1}`}</span>
+                            <ArrowUpDown size={11} className="opacity-50" />
+                          </div>
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {paginatedRows.length === 0 ? (
+                      <tr>
+                        <td colSpan={previewData.headers.length + 1} className="py-12 text-center text-slate-400 font-semibold">
+                          No matching rows found in this spreadsheet.
+                        </td>
+                      </tr>
+                    ) : (
+                      paginatedRows.map((row, rIdx) => {
+                        const globalRowNumber = rowsPerPage === 'all' ? rIdx + 1 : (currentPage - 1) * (rowsPerPage as number) + rIdx + 1
+
+                        return (
+                          <tr 
+                            key={rIdx}
+                            className={`transition-colors ${
+                              rIdx % 2 === 0 ? 'bg-white hover:bg-slate-50/80' : 'bg-slate-50/40 hover:bg-slate-100/60'
+                            }`}
+                          >
+                            <td className="px-4 py-3 text-slate-400 font-mono text-[10px] text-center">{globalRowNumber}</td>
+                            {previewData.headers.map((_, cIdx) => {
+                              const val = row[cIdx] !== undefined && row[cIdx] !== null ? String(row[cIdx]) : ''
+
+                              return (
+                                <td key={cIdx} className="px-4 py-3 whitespace-nowrap font-medium text-slate-800 font-mono">
+                                  {val ? (
+                                    val.startsWith('http') ? (
+                                      <a href={val} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 underline font-extrabold">
+                                        View PDF
+                                      </a>
+                                    ) : val
+                                  ) : (
+                                    <span className="text-slate-300 italic text-[10px]">—</span>
+                                  )}
+                                </td>
+                              )
+                            })}
+                          </tr>
+                        )
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Inline Pagination Controls */}
+              {totalFilteredRows > 0 && rowsPerPage !== 'all' && totalPages > 1 && (
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2 text-xs font-bold text-slate-600">
+                  <span>
+                    Showing rows <strong className="text-slate-900">{startRowIdx}</strong> to <strong className="text-slate-900">{endRowIdx}</strong> of <strong className="text-slate-900">{totalFilteredRows}</strong>
+                  </span>
+
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => setCurrentPage(p => Math.max(p - 1, 1))}
+                      disabled={currentPage === 1}
+                      className="p-1.5 border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                    >
+                      <ChevronLeft size={16} />
+                    </button>
+                    <span className="px-3 py-1 bg-slate-100 rounded-lg text-xs font-bold text-slate-800">
+                      Page {currentPage} of {totalPages}
+                    </span>
+                    <button
+                      onClick={() => setCurrentPage(p => Math.min(p + 1, totalPages))}
+                      disabled={currentPage === totalPages}
+                      className="p-1.5 border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                    >
+                      <ChevronRight size={16} />
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="p-12 text-center text-slate-400 font-semibold bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+              No active renewals master file found in storage. Try importing a sheet batch or reloading.
+            </div>
+          )}
+        </div>
+      )}
 
         {/* LIVE SPREADSHEET PREVIEW MODAL */}
-        {(selectedFile || previewLoading) && (
+        {(selectedFile || previewLoading) && selectedFile?.fileName !== 'import_renewals.xlsx' && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4">
             <div className="bg-white rounded-3xl w-full max-w-7xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden border border-slate-100 animate-in zoom-in duration-150">
               

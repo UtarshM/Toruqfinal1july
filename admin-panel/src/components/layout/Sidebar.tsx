@@ -24,7 +24,6 @@ const MENU_GROUPS = [
       { name: 'Quotations', href: '/quotations' },
       { name: 'Rate Calculator', href: '/rate-calculator' },
       { name: 'Policies', href: '/policies' },
-      { name: 'Renewals', href: '/renewals' },
       { name: 'Follow-ups', href: '/follow-ups' },
       { name: 'Trashed Leads', href: '/leads/trash' },
     ]
