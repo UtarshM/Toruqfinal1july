@@ -370,6 +370,11 @@ export default function ImportedSheetsPage() {
     const currentMonth = today.getMonth()
 
     return files.filter(f => {
+      // Hide Master Sheets from the general cards list
+      if (f.fileName === 'import_all_leads.xlsx' || f.fileName === 'import_renewals.xlsx') {
+        return false
+      }
+
       const fileDate = f.importedAt ? new Date(f.importedAt) : null
       const dateOnly = f.dateOnly || (fileDate && !isNaN(fileDate.getTime()) ? fileDate.toISOString().split('T')[0] : '')
       const fileDay = f.dayOfWeek || (fileDate && !isNaN(fileDate.getTime()) ? ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][fileDate.getDay()] : '')
