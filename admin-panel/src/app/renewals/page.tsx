@@ -140,6 +140,10 @@ export default function RenewalsPage() {
       'SALES EXECUTIVE (CREATOR)',
       'RENEWAL ASSIGNEE',
       'STATUS',
+      'ASSIGNED MONTH',
+      'ASSIGNED YEAR',
+      'RENEWED DATE',
+      'REFUSED DATE',
       'ISSUED POLICY PDF LINK',
       'MERGED CONSOLIDATED PDF LINK'
     ]
@@ -165,6 +169,10 @@ export default function RenewalsPage() {
         `"${salesPerson}"`,
         `"${r.assignee?.fullName || 'Unassigned'}"`,
         `"${r.renewalStatus}"`,
+        r.assignedMonth || 'N/A',
+        r.assignedYear || 'N/A',
+        r.renewedAt ? new Date(r.renewedAt).toLocaleDateString('en-IN') : 'N/A',
+        r.refusedAt ? new Date(r.refusedAt).toLocaleDateString('en-IN') : 'N/A',
         `"${issuedPdf}"`,
         `"${compiledPdf}"`
       ].join(',')
