@@ -228,6 +228,7 @@ export default function ImportedSheetsPage() {
 
   const handleOpenPreview = async (file: SpreadsheetFile, initialRowSearch?: string) => {
     setPreviewLoading(true)
+    setSelectedFile(file)
     setPreviewSearch(initialRowSearch || '')
     setPreviewAgentFilter('all')
     setPreviewSortCol(null)
