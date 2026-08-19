@@ -69,6 +69,18 @@ export default function NotificationsScreen() {
     } catch {}
   };
 
+  const handlePressNotif = async (item: Notification) => {
+    if (!item.isRead) {
+      await markRead(item.id);
+    }
+    if (item.entityType === 'lead' && item.entityId) {
+      router.push({
+        pathname: '/(protected)/lead/[id]',
+        params: { id: item.entityId, showPolicyModal: 'true' }
+      } as any);
+    }
+  };
+
   const timeAgo = (dt: string) => {
     const diff = Date.now() - new Date(dt).getTime();
     const m = Math.floor(diff / 60000);
@@ -110,7 +122,7 @@ export default function NotificationsScreen() {
           renderItem={({ item }) => (
             <Pressable 
               style={[styles.card, !item.isRead && styles.unreadCard]}
-              onPress={() => markRead(item.id)}
+              onPress={() => handlePressNotif(item)}
             >
               <View style={[styles.iconWrap, { backgroundColor: (COLORS[item.type] || COLORS.default) + '20' }]}>
                 <Ionicons

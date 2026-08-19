@@ -553,8 +553,8 @@ export default function ManagerDocumentsPage() {
                         </span>
                       </div>
 
-                      <div>
-                        <h3 className="text-lg font-black text-slate-900">{item.clientName}</h3>
+                      <div onClick={() => setExpandedLeadId(isExpanded ? null : item.leadId)} className="cursor-pointer select-none">
+                        <h3 className="text-lg font-black text-slate-900 hover:text-blue-600 transition-colors">{item.clientName}</h3>
                         <p className="text-xs font-mono font-bold text-slate-500">{item.clientPhone}</p>
                       </div>
 
@@ -563,12 +563,15 @@ export default function ManagerDocumentsPage() {
                           <User size={13} className="text-slate-400" />
                           <span>Executive: <strong className="text-slate-900">{item.assignee?.fullName || 'Unassigned'}</strong></span>
                         </div>
-                        {sub.documents && (
-                          <div className="flex items-center gap-1.5 text-blue-600">
-                            <FileText size={13} />
-                            <span>{sub.documents.length} / 7 Documents Uploaded</span>
-                          </div>
-                        )}
+                        {sub.documents && (() => {
+                          const uniqueCats = new Set((sub.documents || []).map((d: any) => d.category))
+                          return (
+                            <div className="flex items-center gap-1.5 text-blue-600">
+                              <FileText size={13} />
+                              <span>{uniqueCats.size} / 7 Documents Uploaded</span>
+                            </div>
+                          )
+                        })()}
                         {sub.formData?.rsFromCustomer && (
                           <div className="flex items-center gap-1.5 text-slate-900">
                             <DollarSign size={13} className="text-emerald-600" />
@@ -599,17 +602,29 @@ export default function ManagerDocumentsPage() {
                         )}
                       </button>
 
-                      {/* Download 7-Doc Merged PDF */}
+                      {/* Download/Preview 7-Doc Merged PDF */}
                       {sub.compiledPdfUrl && (
-                        <a
-                          href={sub.compiledPdfUrl}
-                          download={`docs_bundle_${item.clientName}_${item.vehicleNo}.pdf`}
-                          className="px-3.5 py-2.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border border-blue-200 shadow-sm"
-                          title="Download merged 7-document customer PDF"
-                        >
-                          <Download size={14} />
-                          <span>7-Doc Merged PDF</span>
-                        </a>
+                        <div className="flex items-center gap-1.5">
+                          <a
+                            href={sub.compiledPdfUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-3.5 py-2.5 bg-slate-900 hover:bg-black text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm cursor-pointer"
+                            title="Preview merged 7-document customer PDF"
+                          >
+                            <Eye size={14} />
+                            <span>Preview PDF</span>
+                          </a>
+                          <a
+                            href={sub.compiledPdfUrl}
+                            download={`docs_bundle_${item.clientName}_${item.vehicleNo}.pdf`}
+                            className="px-3.5 py-2.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border border-blue-200 shadow-sm cursor-pointer"
+                            title="Download merged 7-document customer PDF"
+                          >
+                            <Download size={14} />
+                            <span>Download PDF</span>
+                          </a>
+                        </div>
                       )}
 
                       {/* Download Issued Policy PDF if already uploaded */}

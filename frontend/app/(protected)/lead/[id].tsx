@@ -115,7 +115,7 @@ function DropdownSelector({ label, placeholder, options, selectedValue, onSelect
 }
 
 export default function LeadDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, showPolicyModal } = useLocalSearchParams<{ id: string; showPolicyModal?: string }>();
   const router = useRouter();
   const { user } = useAuth();
   const roleUpper = user?.role?.toUpperCase() || '';
@@ -309,6 +309,12 @@ export default function LeadDetailScreen() {
   }, [id]);
 
   useFocusEffect(useCallback(() => { loadData(); }, [loadData]));
+
+  useEffect(() => {
+    if (showPolicyModal === 'true') {
+      setShowPolicySubmissionModal(true);
+    }
+  }, [showPolicyModal]);
 
   const makeCall = () => { 
     if (lead?.phone) {
