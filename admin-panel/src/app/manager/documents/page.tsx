@@ -195,15 +195,10 @@ export default function ManagerDocumentsPage() {
         const uploadFormData = new FormData()
         uploadFormData.append('file', policyFile)
 
-        const uploadRes = await fetch(`/api/v1/leads/${uploadPolicyModalLead.leadId}/policy-submission/upload-issued-policy`, {
+        const uploadData = await fetchApi(`/api/v1/leads/${uploadPolicyModalLead.leadId}/policy-submission/upload-issued-policy`, {
           method: 'POST',
           body: uploadFormData
         })
-
-        const uploadData = await uploadRes.json()
-        if (!uploadRes.ok) {
-          throw new Error(uploadData.error || 'Failed to upload policy PDF')
-        }
         uploadedPdfUrl = uploadData.url
       }
 
