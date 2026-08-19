@@ -307,27 +307,21 @@ export default function ImportedSheetsPage() {
     if (filesToDelete.length === 0) return
     setIsDeleting(true)
     try {
-      if (filesToDelete.length === 1) {
-        const res = await fetchApi(`/api/v1/import/sheets/${encodeURIComponent(filesToDelete[0])}?deleteLeads=${deleteAssociatedLeads}`, {
-          method: 'DELETE'
+      const res = await fetchApi('/api/v1/import/sheets/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fileNames: filesToDelete,
+          deleteLeads: deleteAssociatedLeads
         })
-        setDeleteSuccessMessage(res?.message || 'Spreadsheet deleted successfully.')
-      } else {
-        const res = await fetchApi('/api/v1/import/sheets', {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            fileNames: filesToDelete,
-            deleteLeads: deleteAssociatedLeads
-          })
-        })
-        setDeleteSuccessMessage(res?.message || `${filesToDelete.length} spreadsheets deleted successfully.`)
-      }
+      })
+
       // Instantly update local state
       setFiles(prev => prev.filter(f => !filesToDelete.includes(f.fileName)))
       setSelectedFileNames(prev => prev.filter(f => !filesToDelete.includes(f)))
       setDeleteModalOpen(false)
       setFilesToDelete([])
+      setDeleteSuccessMessage(res?.message || 'Spreadsheet(s) deleted successfully.')
       setTimeout(() => setDeleteSuccessMessage(''), 5000)
       fetchFiles(false)
     } catch (err: any) {
