@@ -67,8 +67,17 @@ export async function GET(req: NextRequest) {
         where,
         include: {
           assignee: { select: { id: true, fullName: true, email: true } },
-          lead: { select: { id: true, clientName: true, status: true } },
-          policy: { select: { id: true, policyNumber: true, provider: true, status: true } }
+          lead: {
+            select: {
+              id: true,
+              clientName: true,
+              status: true,
+              customFields: true,
+              assignee: { select: { id: true, fullName: true } }
+            }
+          },
+          policy: { select: { id: true, policyNumber: true, provider: true, status: true } },
+          createdBy: { select: { id: true, fullName: true } }
         },
         orderBy: { policyEndDate: 'asc' },
         skip: (page - 1) * limit,

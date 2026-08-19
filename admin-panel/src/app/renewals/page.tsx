@@ -121,6 +121,66 @@ export default function RenewalsPage() {
     }
   }
 
+  const exportCSV = () => {
+    if (!renewals.length) {
+      alert('No renewals found to export.')
+      return
+    }
+
+    const headers = [
+      'SR NO',
+      'CLIENT NAME',
+      'PHONE',
+      'VEHICLE NO',
+      'POLICY NUMBER',
+      'PROVIDER (COMPANY)',
+      'POLICY TYPE',
+      'PREMIUM AMOUNT',
+      'EXPIRY DATE',
+      'SALES EXECUTIVE (CREATOR)',
+      'RENEWAL ASSIGNEE',
+      'STATUS',
+      'ISSUED POLICY PDF LINK',
+      'MERGED CONSOLIDATED PDF LINK'
+    ]
+
+    const rows = renewals.map((r, idx) => {
+      const cf = (r.lead?.customFields && typeof r.lead.customFields === 'object') ? (r.lead.customFields as any) : {}
+      const sub = cf.policySubmission || {}
+      
+      const salesPerson = r.createdBy?.fullName || r.lead?.assignee?.fullName || 'Direct / Unassigned'
+      const issuedPdf = sub.issuedPolicyPdfUrl || ''
+      const compiledPdf = sub.compiledPdfUrl || ''
+
+      return [
+        idx + 1,
+        `"${r.clientName}"`,
+        `"${r.clientPhone || 'N/A'}"`,
+        `"${r.vehicleNo || 'N/A'}"`,
+        `"${r.policyNumber || 'N/A'}"`,
+        `"${r.provider || 'N/A'}"`,
+        `"${r.policyType || 'N/A'}"`,
+        r.premiumAmount || '0',
+        r.policyEndDate ? new Date(r.policyEndDate).toLocaleDateString('en-IN') : 'N/A',
+        `"${salesPerson}"`,
+        `"${r.assignee?.fullName || 'Unassigned'}"`,
+        `"${r.renewalStatus}"`,
+        `"${issuedPdf}"`,
+        `"${compiledPdf}"`
+      ].join(',')
+    })
+
+    const csvContent = [headers.join(','), ...rows].join('\n')
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.setAttribute('href', url)
+    link.setAttribute('download', `renewals_report_${new Date().toISOString().split('T')[0]}.csv`)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
+
   const formatDate = (d: string | Date | null) => {
     if (!d) return '—'
     try { return new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) } catch { return '—' }
@@ -155,6 +215,14 @@ export default function RenewalsPage() {
             >
               <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
               <span>Refresh</span>
+            </button>
+            <button
+              onClick={exportCSV}
+              disabled={loading || renewals.length === 0}
+              className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-2xl transition-all flex items-center gap-2 cursor-pointer shadow-sm disabled:opacity-50"
+            >
+              <FileText size={14} />
+              <span>Export CSV</span>
             </button>
             {isAdmin && (
               <button
@@ -354,6 +422,7 @@ export default function RenewalsPage() {
                     <th className="px-4 py-3">Policy #</th>
                     <th className="px-4 py-3">Provider</th>
                     <th className="px-4 py-3">Expiry</th>
+                    <th className="px-4 py-3">Sales Person</th>
                     <th className="px-4 py-3">Assigned To</th>
                     <th className="px-4 py-3">Status</th>
                     {isAdmin && <th className="px-4 py-3">Actions</th>}
@@ -374,6 +443,9 @@ export default function RenewalsPage() {
                         <td className="px-4 py-3 text-slate-600">{r.provider || '—'}</td>
                         <td className="px-4 py-3">
                           <span className="font-bold text-slate-800">{formatDate(r.policyEndDate)}</span>
+                        </td>
+                        <td className="px-4 py-3 text-slate-700">
+                          {r.createdBy?.fullName || r.lead?.assignee?.fullName || <span className="text-slate-400 italic">Direct</span>}
                         </td>
                         <td className="px-4 py-3 text-slate-700">{r.assignee?.fullName || <span className="text-slate-400 italic">Unassigned</span>}</td>
                         <td className="px-4 py-3">
