@@ -164,7 +164,8 @@ export async function GET(req: NextRequest) {
       todayVisits,
       totalUsers,
       revenueData,
-      topAgents
+      topAgents,
+      pendingAgentApprovals
     ] = await Promise.all([
       prisma.lead.count({ where: { status: { not: 'Trashed' } } }),
       prisma.lead.count({ where: { createdAt: todayFilter, status: { not: 'Trashed' } } }),
@@ -192,6 +193,13 @@ export async function GET(req: NextRequest) {
         _count: { _all: true },
         orderBy: { _count: { assignedTo: 'desc' } },
         take: 5
+      }),
+      prisma.dataChangeRequest.count({
+        where: {
+          entityType: 'Lead',
+          field: 'existingAgent',
+          status: 'pending'
+        }
       })
     ])
 
@@ -222,6 +230,7 @@ export async function GET(req: NextRequest) {
       today_visits: todayVisits,
       total_employees: totalUsers,
       pending_policy_approvals: pendingPolicyApprovals,
+      pending_agent_approvals: pendingAgentApprovals,
       revenue_trend: revenueData,
       top_agents: topAgents
     })

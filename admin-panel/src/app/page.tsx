@@ -221,6 +221,24 @@ export default function DashboardPage() {
               {/* Admin View */}
               {stats.view === 'admin' && (
                 <>
+                  {stats.pending_agent_approvals > 0 && (
+                    <div className="mb-6 bg-amber-50 border border-amber-200 text-amber-900 p-5 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm animate-pulse">
+                      <div className="flex items-center gap-3">
+                        <AlertCircle className="text-amber-600 shrink-0" size={24} />
+                        <div>
+                          <p className="font-extrabold text-sm">🚨 {stats.pending_agent_approvals} Pending Agent Approval Requests</p>
+                          <p className="text-xs text-amber-700 font-semibold mt-0.5">Staff has uploaded or flagged leads as agents. Admin approval is required to verify them.</p>
+                        </div>
+                      </div>
+                      <button 
+                        onClick={() => router.push('/data')} 
+                        className="px-5 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-black shadow-md transition-all whitespace-nowrap cursor-pointer"
+                      >
+                        Review & Approve
+                      </button>
+                    </div>
+                  )}
+
                   <div className="grid grid-cols-2 lg:grid-cols-5 gap-6">
                     <StatCard label="Leads Pipeline" value={stats.total_leads} icon={Target} color="text-blue-600" bg="bg-blue-50" onClick={() => router.push('/leads')} />
                     <StatCard label="Policy Approvals" value={stats.pending_policy_approvals ?? 0} icon={ShieldCheck} color="text-indigo-600" bg="bg-indigo-50" onClick={() => router.push('/manager/documents')} />
