@@ -32,11 +32,14 @@ export async function POST(req: NextRequest) {
       assignedTo: null,
       deletedAt: null,
       status: { not: 'Trashed' },
-      existingAgent: { not: 'Agent' },
       expiryDate: {
         gte: monthStart,
         lte: monthEnd
-      }
+      },
+      OR: [
+        { existingAgent: null },
+        { existingAgent: { not: 'Agent' } }
+      ]
     }
 
     // If importName is provided, filter by it
