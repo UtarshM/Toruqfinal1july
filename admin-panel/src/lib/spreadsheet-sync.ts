@@ -2,6 +2,7 @@ import path from 'path'
 import fs from 'fs'
 import * as XLSX from 'xlsx'
 import prisma from '@/lib/prisma'
+import { getUploadDir } from './upload-helper'
 
 function formatDate(date: any): string {
   if (!date) return ''
@@ -15,7 +16,7 @@ function formatDate(date: any): string {
 }
 
 export async function syncSpreadsheetForBatch(batchName: string | null, customUploadDir?: string) {
-  const uploadDir = customUploadDir || path.join(process.cwd(), 'public', 'uploads', 'imports')
+  const uploadDir = customUploadDir || getUploadDir()
   if (!fs.existsSync(uploadDir)) {
     fs.mkdirSync(uploadDir, { recursive: true })
   }
@@ -134,7 +135,7 @@ export async function syncSpreadsheetForBatch(batchName: string | null, customUp
 }
 
 export async function syncRenewalsSpreadsheet(customUploadDir?: string) {
-  const uploadDir = customUploadDir || path.join(process.cwd(), 'public', 'uploads', 'imports')
+  const uploadDir = customUploadDir || getUploadDir()
   if (!fs.existsSync(uploadDir)) {
     fs.mkdirSync(uploadDir, { recursive: true })
   }

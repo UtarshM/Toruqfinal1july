@@ -1,6 +1,9 @@
 import { validateAuth } from '@/lib/auth-guard'
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
+import path from 'path'
+import fs from 'fs'
+import { getUploadDir } from '@/lib/upload-helper'
 
 function parseImportedDate(dateVal: any): Date | null {
   if (!dateVal) return null
@@ -48,8 +51,6 @@ function parseImportedDate(dateVal: any): Date | null {
   return null
 }
 
-import path from 'path'
-import fs from 'fs'
 import * as XLSX from 'xlsx'
 
 import { notifyRole } from '@/lib/notify'
@@ -195,12 +196,12 @@ export async function POST(req: NextRequest) {
     }
     const cleanBatch = batchName.replace(/[^a-zA-Z0-9_-]/g, '_')
     const fileName = `import_${cleanBatch}.xlsx`
-    const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'imports')
+    const uploadDir = getUploadDir()
     if (!fs.existsSync(uploadDir)) {
       fs.mkdirSync(uploadDir, { recursive: true })
     }
     const fullFilePath = path.join(uploadDir, fileName)
-    const relativeFilePath = `/uploads/imports/${fileName}`
+    const relativeFilePath = `/api/v1/import/sheets/download?file=${fileName}`
 
     // Process leads sequentially to ensure unique checks
     for (const item of leads) {

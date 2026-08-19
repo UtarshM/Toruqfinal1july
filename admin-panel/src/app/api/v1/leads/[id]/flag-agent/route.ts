@@ -5,6 +5,7 @@ import { notifyMany, notifyRole } from '@/lib/notify'
 import path from 'path'
 import fs from 'fs'
 import * as XLSX from 'xlsx'
+import { getUploadDir } from '@/lib/upload-helper'
 
 export async function POST(
   req: NextRequest,
@@ -126,12 +127,12 @@ export async function POST(
     // Update spreadsheet file
     const cleanBatch = (lead.importName || 'batch').replace(/[^a-zA-Z0-9_-]/g, '_')
     const fileName = `import_${cleanBatch}.xlsx`
-    const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'imports')
+    const uploadDir = getUploadDir()
     if (!fs.existsSync(uploadDir)) {
       fs.mkdirSync(uploadDir, { recursive: true })
     }
     const fullFilePath = path.join(uploadDir, fileName)
-    const relativeFilePath = `/uploads/imports/${fileName}`
+    const relativeFilePath = `/api/v1/import/sheets/download?file=${fileName}`
 
     try {
       if (fs.existsSync(fullFilePath)) {

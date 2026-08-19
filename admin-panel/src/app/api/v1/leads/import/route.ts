@@ -9,6 +9,7 @@ import { setImportJob, ImportJob } from './status/route'
 
 import { notifyRole } from '@/lib/notify'
 import { syncSpreadsheetForBatch } from '@/lib/spreadsheet-sync'
+import { getUploadDir } from '@/lib/upload-helper'
 
 function parseImportedDate(dateVal: any): Date | null {
   if (!dateVal) return null
@@ -584,7 +585,7 @@ export async function POST(req: NextRequest) {
     }
 
     // 6. Direct Spreadsheet Synchronization on Disk
-    const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'imports')
+    const uploadDir = getUploadDir()
     await syncSpreadsheetForBatch(batchImportName, uploadDir).catch(e => console.warn('[leads/import] Batch sync warning:', e))
     await syncSpreadsheetForBatch('all_leads', uploadDir).catch(e => console.warn('[leads/import] Master sync warning:', e))
 

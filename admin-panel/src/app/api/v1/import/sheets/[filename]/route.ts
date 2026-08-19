@@ -4,6 +4,7 @@ import prisma from '@/lib/prisma'
 import path from 'path'
 import fs from 'fs'
 import * as XLSX from 'xlsx'
+import { getUploadDir } from '@/lib/upload-helper'
 
 export async function GET(
   req: NextRequest,
@@ -22,7 +23,7 @@ export async function GET(
     const { filename } = await params
     const safeFileName = path.basename(filename)
 
-    const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'imports')
+    const uploadDir = getUploadDir()
     const filePath = path.join(uploadDir, safeFileName)
 
     if (!fs.existsSync(filePath)) {
@@ -40,7 +41,7 @@ export async function GET(
         headers: [],
         rows: [],
         agentRowsCount: 0,
-        downloadUrl: `/uploads/imports/${safeFileName}`
+        downloadUrl: `/api/v1/import/sheets/download?file=${safeFileName}`
       })
     }
 
@@ -59,7 +60,7 @@ export async function GET(
 
     return NextResponse.json({
       fileName: safeFileName,
-      downloadUrl: `/uploads/imports/${safeFileName}`,
+      downloadUrl: `/api/v1/import/sheets/download?file=${safeFileName}`,
       headers,
       rows: dataRows,
       agentColIdx,
@@ -89,12 +90,7 @@ export async function DELETE(
     const { filename } = await params
     const safeFileName = path.basename(filename)
 
-    // Cannot delete the master aggregated sheet
-    if (safeFileName === 'import_all_leads.xlsx') {
-      return NextResponse.json({ error: 'Cannot delete the master aggregate spreadsheet' }, { status: 400 })
-    }
-
-    const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'imports')
+    const uploadDir = getUploadDir()
     const filePath = path.join(uploadDir, safeFileName)
 
     // Extract batch name

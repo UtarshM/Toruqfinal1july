@@ -5,6 +5,7 @@ import path from 'path'
 import fs from 'fs'
 import * as XLSX from 'xlsx'
 import { syncSpreadsheetForBatch, syncRenewalsSpreadsheet } from '@/lib/spreadsheet-sync'
+import { getUploadDir } from '@/lib/upload-helper'
 
 function formatDate(date: any): string {
   if (!date) return ''
@@ -27,7 +28,7 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'imports')
+    const uploadDir = getUploadDir()
     if (!fs.existsSync(uploadDir)) {
       fs.mkdirSync(uploadDir, { recursive: true })
     }
@@ -201,7 +202,7 @@ export async function GET(req: NextRequest) {
         totalRows,
         agentCount,
         headers,
-        downloadUrl: `/uploads/imports/${fileName}`
+        downloadUrl: `/api/v1/import/sheets/download?file=${fileName}`
       }
     })
 
@@ -247,7 +248,7 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: 'No file names provided for deletion' }, { status: 400 })
     }
 
-    const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'imports')
+    const uploadDir = getUploadDir()
     let totalDeletedFiles = 0
     let totalDeletedLeads = 0
 

@@ -3,6 +3,7 @@ import { validateAuth } from '@/lib/auth-guard'
 import prisma from '@/lib/prisma'
 import path from 'path'
 import fs from 'fs'
+import { getUploadDir } from '@/lib/upload-helper'
 
 export async function POST(req: NextRequest) {
   const { context, error } = await validateAuth(req)
@@ -28,7 +29,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No files specified for deletion' }, { status: 400 })
     }
 
-    const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'imports')
+    const uploadDir = getUploadDir()
     let totalDeletedFiles = 0
     let totalDeletedLeads = 0
 
