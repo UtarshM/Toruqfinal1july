@@ -38,7 +38,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(null)
       setToken(null)
       if (typeof window !== 'undefined') {
-        try { sessionStorage.removeItem('toque_user_profile') } catch {}
+        try { localStorage.removeItem('toque_user_profile') } catch {}
       }
       setIsLoading(false)
       return
@@ -63,18 +63,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
         setUser(profile)
         if (typeof window !== 'undefined') {
-          try { sessionStorage.setItem('toque_user_profile', JSON.stringify(profile)) } catch {}
+          try { localStorage.setItem('toque_user_profile', JSON.stringify(profile)) } catch {}
         }
       } else {
         const errorData = await response.json().catch(() => ({}))
         
         // Handle invalid/expired tokens (401) or missing user profiles (404)
         if (response.status === 401 || response.status === 404) {
+          // Attempt to refresh the session first before signing out
+          const { data: { session: refreshedSession }, error: refreshError } = await supabase.auth.refreshSession()
+          if (refreshedSession && !refreshError) {
+            // Session refreshed successfully, retry profile fetch
+            await fetchProfile(refreshedSession, false)
+            return
+          }
+
           console.error(`[auth-me] Authentication failed (${response.status}). Signing out...`, errorData)
           setUser(null)
           setToken(null)
           if (typeof window !== 'undefined') {
-            try { sessionStorage.removeItem('toque_user_profile') } catch {}
+            try { localStorage.removeItem('toque_user_profile') } catch {}
           }
           setIsLoading(false)
           try {
@@ -119,7 +127,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Check cached session on client mount
     if (typeof window !== 'undefined') {
       try {
-        const cached = sessionStorage.getItem('toque_user_profile')
+        const cached = localStorage.getItem('toque_user_profile')
         if (cached) {
           setUser(JSON.parse(cached))
           setIsLoading(false)

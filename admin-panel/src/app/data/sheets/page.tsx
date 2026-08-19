@@ -799,21 +799,25 @@ export default function ImportedSheetsPage() {
                 <option value="">Jump to Sheet / Master Database...</option>
                 <option value="__ALL_CARDS__">📂 View All Spreadsheets Grid</option>
 
-                <optgroup label="🌟 Central Master Sheets">
-                  {files.filter(f => f.fileName === 'import_all_leads.xlsx' || f.fileName === 'import_renewals.xlsx').map(f => (
-                    <option key={f.fileName} value={f.fileName}>
-                      {f.fileName === 'import_renewals.xlsx' ? '🔄 Policy Renewals (Master)' : '📋 All Active Leads (Master)'} ({f.totalRows} records)
-                    </option>
-                  ))}
-                </optgroup>
+                {files.some(f => f.fileName === 'import_all_leads.xlsx' || f.fileName === 'import_renewals.xlsx') && (
+                  <optgroup label="🌟 Central Master Sheets">
+                    {files.filter(f => f.fileName === 'import_all_leads.xlsx' || f.fileName === 'import_renewals.xlsx').map(f => (
+                      <option key={f.fileName} value={f.fileName}>
+                        {f.fileName === 'import_renewals.xlsx' ? '🔄 Policy Renewals (Master)' : '📋 All Active Leads (Master)'} ({f.totalRows} records)
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
 
-                <optgroup label="📁 Uploaded Spreadsheets & Batches">
-                  {files.filter(f => f.fileName !== 'import_all_leads.xlsx' && f.fileName !== 'import_renewals.xlsx').map(f => (
-                    <option key={f.fileName} value={f.fileName}>
-                      {f.batchName} ({f.totalRows} leads)
-                    </option>
-                  ))}
-                </optgroup>
+                {files.some(f => f.fileName !== 'import_all_leads.xlsx' && f.fileName !== 'import_renewals.xlsx') && (
+                  <optgroup label="📁 Uploaded Spreadsheets & Batches">
+                    {files.filter(f => f.fileName !== 'import_all_leads.xlsx' && f.fileName !== 'import_renewals.xlsx').map(f => (
+                      <option key={f.fileName} value={f.fileName}>
+                        {f.batchName} ({f.totalRows} leads)
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
               </select>
             </div>
           </div>

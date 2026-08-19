@@ -110,6 +110,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (!response.ok) {
         console.warn('Profile fetch failed:', response.status);
+        if (response.status === 401 || response.status === 404) {
+          // Attempt to refresh token on 401
+          const { data: { session: refreshedSession }, error: refreshError } = await supabase.auth.refreshSession();
+          if (refreshedSession && !refreshError) {
+            // Retry fetchProfile with the valid session
+            await fetchProfile();
+            return;
+          }
+        }
         setUser(null);
         return;
       }
