@@ -723,9 +723,88 @@ export default function ManagerDocumentsPage() {
                         </div>
                       </div>
 
-                      {/* Structured WhatsApp summary preview */}
-                      <div className="bg-slate-900 text-slate-100 p-4 rounded-2xl font-mono text-xs overflow-x-auto whitespace-pre-wrap">
-                        {sub.copyableSummary}
+                      {/* 25-Field Form Details & WhatsApp copyable preview */}
+                      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        {/* Left/Middle: Structured Form Details */}
+                        <div className="lg:col-span-2 space-y-3">
+                          <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider">
+                            Form Submission Details (26 Fields)
+                          </h4>
+                          
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                            {/* Group 1: Basic Info */}
+                            <div className="space-y-3">
+                              <h5 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider border-b pb-1">Client & Vehicle Info</h5>
+                              <div className="space-y-2 text-xs">
+                                <div className="flex justify-between"><span className="text-slate-500">Client Name:</span> <span className="font-bold text-slate-900">{item.clientName}</span></div>
+                                <div className="flex justify-between"><span className="text-slate-500">Reg No:</span> <span className="font-mono font-bold text-slate-900">{sub.formData?.regNo || item.vehicleNo || 'N/A'}</span></div>
+                                <div className="flex justify-between"><span className="text-slate-500">Mobile No 1:</span> <span className="font-bold text-slate-900">{sub.formData?.mobileNo1 || item.clientPhone || 'N/A'}</span></div>
+                                <div className="flex justify-between"><span className="text-slate-500">Mobile No 2:</span> <span className="font-bold text-slate-900">{sub.formData?.mobileNo2 || 'N/A'}</span></div>
+                                <div className="flex justify-between"><span className="text-slate-500">Customer Type:</span> <span className="font-bold text-slate-900 capitalize">{sub.formData?.customerType || 'N/A'}</span></div>
+                              </div>
+                            </div>
+
+                            {/* Group 2: Policy Details */}
+                            <div className="space-y-3">
+                              <h5 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider border-b pb-1">Policy Parameters</h5>
+                              <div className="space-y-2 text-xs">
+                                <div className="flex justify-between"><span className="text-slate-500">Policy Type:</span> <span className="font-bold text-slate-900">{sub.formData?.policyType || 'N/A'}</span></div>
+                                <div className="flex justify-between"><span className="text-slate-500">Category:</span> <span className="font-bold text-slate-900">{sub.formData?.customerCategory || 'N/A'}</span></div>
+                                <div className="flex justify-between"><span className="text-slate-500">Expiry Date:</span> <span className="font-bold text-slate-900">{sub.formData?.expDate || 'N/A'}</span></div>
+                                <div className="flex justify-between"><span className="text-slate-500">NCB Status:</span> <span className="font-bold text-slate-900">{sub.formData?.ncb || 'N/A'}</span></div>
+                                <div className="flex justify-between"><span className="text-slate-500">HP Details:</span> <span className="font-bold text-slate-900">{sub.formData?.hpDetails || 'N/A'}</span></div>
+                              </div>
+                            </div>
+
+                            {/* Group 3: Financials */}
+                            <div className="space-y-3">
+                              <h5 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider border-b pb-1">Rates & Premium</h5>
+                              <div className="space-y-2 text-xs">
+                                <div className="flex justify-between"><span className="text-slate-500">Quoted Rate:</span> <span className="font-bold text-slate-900">{sub.formData?.rate || 'N/A'}</span></div>
+                                <div className="flex justify-between"><span className="text-slate-500">Rate Confirm Screenshot:</span> <span className="font-bold text-slate-900">{sub.formData?.rateConfirmationSS || 'N/A'}</span></div>
+                                <div className="flex justify-between"><span className="text-slate-500">Premium From Customer:</span> <span className="font-bold text-emerald-700">₹{sub.formData?.rsFromCustomer || 'N/A'}</span></div>
+                                <div className="flex justify-between"><span className="text-slate-500">Payment Mode:</span> <span className="font-bold text-slate-900 capitalize">{sub.formData?.paymentMode || 'N/A'}</span></div>
+                                <div className="flex justify-between"><span className="text-slate-500">IDV Breakup:</span> <span className="font-bold text-slate-900">{sub.formData?.idvBreakup || 'N/A'}</span></div>
+                              </div>
+                            </div>
+
+                            {/* Group 4: Verification Checklist */}
+                            <div className="space-y-3">
+                              <h5 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider border-b pb-1">Checklist & Compliance</h5>
+                              <div className="space-y-2 text-xs">
+                                <div className="flex justify-between"><span className="text-slate-500">NCB Confirmation:</span> <span className="font-bold text-slate-900">{sub.formData?.ncbConfirmation || 'N/A'}</span></div>
+                                <div className="flex justify-between"><span className="text-slate-500">IMP Date Message SS:</span> <span className="font-bold text-slate-900">{sub.formData?.impDateMsgSS || 'N/A'}</span></div>
+                                <div className="flex justify-between"><span className="text-slate-500">Vehicle Photo Matched:</span> <span className="font-bold text-slate-900">{sub.formData?.vehiclePhoto || 'N/A'}</span></div>
+                                <div className="flex justify-between"><span className="text-slate-500">Body Type Matched:</span> <span className="font-bold text-slate-900">{sub.formData?.bodyTypeMatched || 'N/A'}</span></div>
+                                <div className="flex justify-between"><span className="text-slate-500">Google Form Submitted:</span> <span className="font-bold text-slate-900">{sub.formData?.googleFormSubmitted || 'N/A'}</span></div>
+                                <div className="flex justify-between"><span className="text-slate-500">No Jack Cover SS:</span> <span className="font-bold text-slate-900">{sub.formData?.noJackCoverConfirmationSS || 'N/A'}</span></div>
+                                <div className="flex justify-between"><span className="text-slate-500">Inspection Status:</span> <span className="font-bold text-slate-900">{sub.formData?.inspectionStatus || 'N/A'}</span></div>
+                                <div className="flex justify-between"><span className="text-slate-500">mParivahan RC Status:</span> <span className="font-bold text-slate-900">{sub.formData?.mparivahanRcStatus || 'N/A'}</span></div>
+                                <div className="flex justify-between"><span className="text-slate-500">Amt Due Date Msg SS:</span> <span className="font-bold text-slate-900">{sub.formData?.amountDueDateMsgSS || 'N/A'}</span></div>
+                              </div>
+                            </div>
+
+                            {/* Group 5: Other details */}
+                            <div className="md:col-span-2 space-y-3">
+                              <h5 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider border-b pb-1">Notes & Adjustments</h5>
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs pt-1">
+                                <div><span className="text-slate-500 block mb-1">New Client Name (If changed):</span> <span className="font-bold text-slate-800">{sub.formData?.newName || 'N/A'}</span></div>
+                                <div><span className="text-slate-500 block mb-1">Description:</span> <span className="font-bold text-slate-800">{sub.formData?.description || 'N/A'}</span></div>
+                                <div className="md:col-span-2"><span className="text-slate-500 block mb-1">Other Works Required:</span> <span className="font-bold text-slate-800">{sub.formData?.otherWorks || 'N/A'}</span></div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Right: WhatsApp copyable text preview */}
+                        <div className="space-y-3">
+                          <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider">
+                            WhatsApp Copy Text Summary
+                          </h4>
+                          <div className="bg-slate-950 text-slate-200 p-4 rounded-2xl font-mono text-xs overflow-x-auto whitespace-pre-wrap border border-slate-850 leading-relaxed shadow-sm">
+                            {sub.copyableSummary}
+                          </div>
+                        </div>
                       </div>
                     </div>
                   )}
