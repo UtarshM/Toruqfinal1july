@@ -45,10 +45,7 @@ export async function POST(req: NextRequest) {
         .replace(/\.(xlsx|csv)$/, '')
 
       if (deleteLeads) {
-        if (safeFileName === 'import_all_leads.xlsx') {
-          const delRes = await prisma.lead.deleteMany({}).catch(() => ({ count: 0 }))
-          totalDeletedLeads += delRes.count
-        } else if (safeFileName === 'import_renewals.xlsx' || batchName === 'renewals') {
+        if (safeFileName === 'import_renewals.xlsx' || batchName === 'renewals') {
           const delRenewals = await prisma.renewalRecord.deleteMany({}).catch(() => ({ count: 0 }))
           totalDeletedLeads += delRenewals.count
         } else {

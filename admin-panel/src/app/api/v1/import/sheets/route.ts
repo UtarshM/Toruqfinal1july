@@ -35,13 +35,6 @@ export async function GET(req: NextRequest) {
 
     const shouldSync = req.nextUrl.searchParams.get('sync') === 'true'
 
-    // Clean up empty master sheets if 0 leads exist in DB
-    const totalActiveLeads = await prisma.lead.count({ where: { status: { not: 'Trashed' }, deletedAt: null } })
-    const masterFile = path.join(uploadDir, 'import_all_leads.xlsx')
-    if (totalActiveLeads === 0 && fs.existsSync(masterFile)) {
-      try { fs.unlinkSync(masterFile) } catch {}
-    }
-
     // Clean up empty renewals sheet if 0 renewals exist
     const totalRenewals = await prisma.renewalRecord.count()
     const renewalsFile = path.join(uploadDir, 'import_renewals.xlsx')
@@ -69,11 +62,6 @@ export async function GET(req: NextRequest) {
       if (shouldSync || !fs.existsSync(targetFile)) {
         await syncSpreadsheetForBatch(batch.importName, uploadDir)
       }
-    }
-
-    // Only generate master "All Leads" if active leads actually exist
-    if (totalActiveLeads > 0 && (shouldSync || !fs.existsSync(masterFile))) {
-      await syncSpreadsheetForBatch('all_leads', uploadDir)
     }
 
     // Only generate "Policy Renewals" if renewals actually exist
@@ -166,9 +154,7 @@ export async function GET(req: NextRequest) {
         .replace(/\.(xlsx|csv)$/, '')
         .replace(/_/g, ' ')
 
-      if (fileName === 'import_all_leads.xlsx') {
-        batchName = 'All Active Leads (Master)'
-      } else if (fileName === 'import_renewals.xlsx') {
+      if (fileName === 'import_renewals.xlsx') {
         batchName = 'Policy Renewals (Master)'
       }
 
@@ -208,15 +194,12 @@ export async function GET(req: NextRequest) {
 
     // Filter out 0-row empty master sheets from display
     const nonDummyFiles = files.filter(f => {
-      if (f.fileName === 'import_all_leads.xlsx' && f.totalRows === 0) return false
       if (f.fileName === 'import_renewals.xlsx' && f.totalRows === 0) return false
       return true
     })
 
     // Sort by newest imported first
     nonDummyFiles.sort((a, b) => {
-      if (a.fileName === 'import_all_leads.xlsx') return -1
-      if (b.fileName === 'import_all_leads.xlsx') return 1
       if (a.fileName === 'import_renewals.xlsx') return -1
       if (b.fileName === 'import_renewals.xlsx') return 1
       return new Date(b.importedAt).getTime() - new Date(a.importedAt).getTime()
@@ -264,10 +247,7 @@ export async function DELETE(req: NextRequest) {
         .replace(/\.(xlsx|csv)$/, '')
 
       if (deleteLeads) {
-        if (safeFileName === 'import_all_leads.xlsx') {
-          const delRes = await prisma.lead.deleteMany({}).catch(() => ({ count: 0 }))
-          totalDeletedLeads += delRes.count
-        } else if (safeFileName === 'import_renewals.xlsx' || batchName === 'renewals') {
+        if (safeFileName === 'import_renewals.xlsx' || batchName === 'renewals') {
           const delRenewals = await prisma.renewalRecord.deleteMany({}).catch(() => ({ count: 0 }))
           totalDeletedLeads += delRenewals.count
         } else {

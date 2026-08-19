@@ -371,7 +371,7 @@ export default function ImportedSheetsPage() {
 
     return files.filter(f => {
       // Hide Master Sheets from the general cards list
-      if (f.fileName === 'import_all_leads.xlsx' || f.fileName === 'import_renewals.xlsx') {
+      if (f.fileName === 'import_renewals.xlsx') {
         return false
       }
 
@@ -401,7 +401,7 @@ export default function ImportedSheetsPage() {
           const cleanBn = bn.toLowerCase().replace(/[^a-z0-9]/g, '')
           return cleanBatch.includes(cleanBn) || cleanFile.includes(cleanBn) || bn === 'all_leads'
         })
-        if (!matchesLeadBatch && f.fileName !== 'import_all_leads.xlsx') return false
+        if (!matchesLeadBatch) return false
       }
 
       // 3. Date Preset filtering
@@ -622,7 +622,7 @@ export default function ImportedSheetsPage() {
         </div>
 
         {/* Quick summary cards (Clickable) */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           {/* Card 1: Total Spreadsheets -> Click to Reset & Show All Sheets */}
           <button
             onClick={() => handleResetFilters()}
@@ -648,35 +648,7 @@ export default function ImportedSheetsPage() {
             </div>
           </button>
 
-          {/* Card 2: Total Processed Rows -> Click to Preview Master Sheet / All Leads */}
-          <button
-            onClick={() => {
-              const masterFile = files.find(f => f.fileName === 'import_all_leads.xlsx') || files[0]
-              if (masterFile) {
-                handleOpenPreview(masterFile)
-              }
-            }}
-            className="p-4 rounded-2xl border border-slate-100 bg-white hover:border-emerald-200 hover:shadow-md hover:bg-emerald-50/20 text-left transition-all cursor-pointer flex items-center justify-between group"
-          >
-            <div>
-              <div className="flex items-center gap-1.5">
-                <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 group-hover:text-emerald-600 transition-colors">
-                  All Leads Master
-                </p>
-              </div>
-              <h2 className="text-xl font-black text-slate-900 mt-1">
-                {files.reduce((acc, f) => acc + (f.fileName === 'import_all_leads.xlsx' || f.fileName === 'import_renewals.xlsx' ? 0 : f.totalRows), 0)}
-              </h2>
-              <p className="text-[10px] font-semibold text-slate-400 mt-0.5">
-                Click to preview all
-              </p>
-            </div>
-            <div className="h-10 w-10 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center group-hover:bg-emerald-600 group-hover:text-white transition-all shadow-sm shrink-0">
-              <FileSpreadsheet size={20} />
-            </div>
-          </button>
-
-          {/* Card 3: Renewals Master Sheet */}
+          {/* Card 2: Renewals Master Sheet */}
           <button
             onClick={() => {
               const renewalsFile = files.find(f => f.fileName === 'import_renewals.xlsx')
@@ -704,7 +676,7 @@ export default function ImportedSheetsPage() {
             </div>
           </button>
 
-          {/* Card 4: Tagged Agent Leads -> Click to Filter / Toggle Agent Tagged Sheets */}
+          {/* Card 3: Tagged Agent Leads -> Click to Filter / Toggle Agent Tagged Sheets */}
           <button
             onClick={() => {
               setAgentFilter(prev => prev === 'has_agent' ? 'all' : 'has_agent')
@@ -804,19 +776,19 @@ export default function ImportedSheetsPage() {
                 <option value="">Jump to Sheet / Master Database...</option>
                 <option value="__ALL_CARDS__">📂 View All Spreadsheets Grid</option>
 
-                {files.some(f => f.fileName === 'import_all_leads.xlsx' || f.fileName === 'import_renewals.xlsx') && (
+                {files.some(f => f.fileName === 'import_renewals.xlsx') && (
                   <optgroup label="🌟 Central Master Sheets">
-                    {files.filter(f => f.fileName === 'import_all_leads.xlsx' || f.fileName === 'import_renewals.xlsx').map(f => (
+                    {files.filter(f => f.fileName === 'import_renewals.xlsx').map(f => (
                       <option key={f.fileName} value={f.fileName}>
-                        {f.fileName === 'import_renewals.xlsx' ? '🔄 Policy Renewals (Master)' : '📋 All Active Leads (Master)'} ({f.totalRows} records)
+                        🔄 Policy Renewals (Master) ({f.totalRows} records)
                       </option>
                     ))}
                   </optgroup>
                 )}
 
-                {files.some(f => f.fileName !== 'import_all_leads.xlsx' && f.fileName !== 'import_renewals.xlsx') && (
+                {files.some(f => f.fileName !== 'import_renewals.xlsx') && (
                   <optgroup label="📁 Uploaded Spreadsheets & Batches">
-                    {files.filter(f => f.fileName !== 'import_all_leads.xlsx' && f.fileName !== 'import_renewals.xlsx').map(f => (
+                    {files.filter(f => f.fileName !== 'import_renewals.xlsx').map(f => (
                       <option key={f.fileName} value={f.fileName}>
                         {f.batchName} ({f.totalRows} leads)
                       </option>
@@ -1059,7 +1031,7 @@ export default function ImportedSheetsPage() {
                     const cleanBatch = f.batchName.toLowerCase().replace(/[^a-z0-9]/g, '')
                     const leadBatch = (lead.importName || 'direct_entry').toLowerCase().replace(/[^a-z0-9]/g, '')
                     return cleanBatch.includes(leadBatch) || leadBatch.includes(cleanBatch)
-                  }) || files.find(f => f.fileName === 'import_all_leads.xlsx')
+                  }) || files[0]
 
                   return (
                     <div
