@@ -252,6 +252,70 @@ export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClo
     }
   };
 
+  const handleDeleteDoc = async (docId: string, category: string) => {
+    Alert.alert(
+      'Remove Document',
+      'Are you sure you want to remove this document?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              // 1. Local update
+              setSubmission((prev: any) => {
+                const currentDocs = prev?.documents || [];
+                const updatedDocs = currentDocs.filter((d: any) => d.id !== docId);
+                return {
+                  ...prev,
+                  documents: updatedDocs,
+                  compiledPdfUrl: null,
+                  updatedAt: new Date().toISOString()
+                };
+              });
+
+              // 2. Direct Supabase DB update
+              const { data: dbLead } = await supabase
+                .from('leads')
+                .select('customFields')
+                .eq('id', leadId)
+                .single();
+
+              const cf = (dbLead?.customFields && typeof dbLead.customFields === 'object') ? (dbLead.customFields as any) : {};
+              const prevSub = cf.policySubmission || {};
+              const existingDocs = prevSub.documents || [];
+              const updatedDocs = existingDocs.filter((d: any) => d.id !== docId);
+
+              await supabase
+                .from('leads')
+                .update({
+                  customFields: {
+                    ...cf,
+                    policySubmission: {
+                      ...prevSub,
+                      documents: updatedDocs,
+                      compiledPdfUrl: null,
+                      updatedAt: new Date().toISOString()
+                    }
+                  }
+                })
+                .eq('id', leadId);
+
+              // 3. Call backend delete endpoint
+              await api.delete(`/leads/${leadId}/policy-submission/upload?docId=${docId}&category=${category}`);
+
+              Alert.alert('Deleted', 'Document removed.');
+              if (onUpdated) onUpdated();
+            } catch (err: any) {
+              Alert.alert('Error', err.message || 'Could not delete document');
+            }
+          }
+        }
+      ]
+    );
+  };
+
   const uploadFile = async (uri: string, name: string, type: string, category: string) => {
     setUploadingCategory(category);
     try {
@@ -312,10 +376,19 @@ export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClo
           uploadedAt: new Date().toISOString()
         };
 
+        const currentDocs = submission?.documents || [];
+        const otherDocs = currentDocs.filter((d: any) => d.category !== category);
+        const categoryDocs = currentDocs.filter((d: any) => d.category === category);
+        if (categoryDocs.length >= 15) {
+          Alert.alert('Limit Reached', 'You cannot upload more than 15 documents for this category.');
+          setUploadingCategory(null);
+          return;
+        }
+
+        const updatedDocs = [...otherDocs, ...categoryDocs, docEntry];
+
         // 1. Immediately update local UI state
         setSubmission((prev: any) => {
-          const currentDocs = prev?.documents || [];
-          const updatedDocs = [...currentDocs.filter((d: any) => d.category !== category), docEntry];
           return {
             ...prev,
             documents: updatedDocs,
@@ -335,11 +408,13 @@ export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClo
           const cf = (dbLead?.customFields && typeof dbLead.customFields === 'object') ? (dbLead.customFields as any) : {};
           const prevSub = cf.policySubmission || { status: 'Draft', formData: {}, documents: [] };
           const existingDocs = prevSub.documents || [];
-          const updatedDocs = [...existingDocs.filter((d: any) => d.category !== category), docEntry];
+          const otherDocsDb = existingDocs.filter((d: any) => d.category !== category);
+          const categoryDocsDb = existingDocs.filter((d: any) => d.category === category);
+          const updatedDocsDb = [...otherDocsDb, ...categoryDocsDb, docEntry];
 
           const updatedSubmission = {
             ...prevSub,
-            documents: updatedDocs,
+            documents: updatedDocsDb,
             compiledPdfUrl: null,
             updatedAt: new Date().toISOString()
           };
@@ -366,6 +441,7 @@ export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClo
 
         Alert.alert('Upload Successful! ✓', `${DOCUMENT_CATEGORIES[category] || category} uploaded.`);
         if (onUpdated) onUpdated();
+        setUploadingCategory(null);
         return;
       }
 
@@ -1388,37 +1464,20 @@ export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClo
                 <Text style={styles.sectionHeaderTitle}>Upload 7 Required Documents</Text>
 
                 {REQUIRED_DOCUMENTS.map((reqDoc, idx) => {
-                  const uploaded = (submission?.documents || []).find((d: any) => d.category === reqDoc.key);
+                  const attachedFiles = (submission?.documents || []).filter((d: any) => d.category === reqDoc.key);
                   const isUploadingThis = uploadingCategory === reqDoc.key;
 
                   return (
-                    <View key={reqDoc.key} style={[styles.docSlotCard, uploaded && styles.docSlotCardUploaded]}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <View key={reqDoc.key} style={[styles.docSlotCard, attachedFiles.length > 0 && styles.docSlotCardUploaded]}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: attachedFiles.length > 0 ? 8 : 0 }}>
                         <View style={{ flex: 1, paddingRight: 8 }}>
                           <Text style={styles.docSlotLabel}>{reqDoc.label}</Text>
                           <Text style={styles.docSlotDesc}>{reqDoc.desc}</Text>
-                          {uploaded && (
-                            <View style={styles.uploadedBadgeRow}>
-                              <Ionicons name="checkmark-circle" size={14} color="#059669" />
-                              <Text style={styles.docUploadedName} numberOfLines={1}>
-                                {uploaded.fileName || `${reqDoc.key}.jpg`}
-                              </Text>
-                            </View>
-                          )}
                         </View>
 
-                        <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
-                          {uploaded && (
-                            <Pressable
-                              style={styles.previewSmallBtn}
-                              onPress={() => previewPdf(uploaded.filePath)}
-                            >
-                              <Ionicons name="eye-outline" size={16} color="#0284C7" />
-                            </Pressable>
-                          )}
-
+                        {attachedFiles.length < 15 && (
                           <Pressable
-                            style={[styles.uploadSlotBtn, uploaded ? styles.uploadSlotBtnSuccess : styles.uploadSlotBtnPrimary]}
+                            style={[styles.uploadSlotBtn, styles.uploadSlotBtnPrimary]}
                             onPress={() => handlePickDocument(reqDoc.key)}
                             disabled={isUploadingThis}
                           >
@@ -1426,13 +1485,44 @@ export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClo
                               <ActivityIndicator size="small" color="#FFFFFF" />
                             ) : (
                               <>
-                                <Ionicons name={uploaded ? "refresh-outline" : "cloud-upload-outline"} size={16} color="#FFFFFF" />
-                                <Text style={styles.uploadSlotBtnText}>{uploaded ? 'Replace' : 'Upload'}</Text>
+                                <Ionicons name="cloud-upload-outline" size={16} color="#FFFFFF" />
+                                <Text style={styles.uploadSlotBtnText}>
+                                  {attachedFiles.length > 0 ? 'Add File' : 'Upload'}
+                                </Text>
                               </>
                             )}
                           </Pressable>
-                        </View>
+                        )}
                       </View>
+
+                      {attachedFiles.length > 0 && (
+                        <View style={{ borderTopWidth: 1, borderTopColor: '#E2E8F0', paddingTop: 8, marginTop: 4, gap: 6 }}>
+                          {attachedFiles.map((uploaded: any, uIdx: number) => (
+                            <View key={uploaded.id || uIdx} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#F8FAFC', padding: 8, borderRadius: 8, borderWidth: 1, borderColor: '#E2E8F0' }}>
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, marginRight: 8 }}>
+                                <Ionicons name="document-text" size={16} color="#059669" />
+                                <Text style={{ fontSize: 11, fontWeight: '700', color: '#334155', flex: 1 }} numberOfLines={1}>
+                                  {uploaded.fileName || `${reqDoc.key}_${uIdx + 1}.jpg`}
+                                </Text>
+                              </View>
+                              <View style={{ flexDirection: 'row', gap: 4 }}>
+                                <Pressable
+                                  style={{ padding: 6, backgroundColor: '#E0F2FE', borderRadius: 6 }}
+                                  onPress={() => previewPdf(uploaded.filePath)}
+                                >
+                                  <Ionicons name="eye-outline" size={14} color="#0369A1" />
+                                </Pressable>
+                                <Pressable
+                                  style={{ padding: 6, backgroundColor: '#FEE2E2', borderRadius: 6 }}
+                                  onPress={() => handleDeleteDoc(uploaded.id, reqDoc.key)}
+                                >
+                                  <Ionicons name="trash-outline" size={14} color="#B91C1C" />
+                                </Pressable>
+                              </View>
+                            </View>
+                          ))}
+                        </View>
+                      )}
                     </View>
                   );
                 })}
