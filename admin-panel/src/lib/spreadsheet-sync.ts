@@ -21,7 +21,7 @@ export async function syncSpreadsheetForBatch(batchName: string | null, customUp
     fs.mkdirSync(uploadDir, { recursive: true })
   }
 
-  const isAll = batchName === 'all_leads' || batchName === 'All Active Leads (Master)'
+  const isAll = batchName === 'all_leads' || batchName === 'leads' || batchName === 'All Active Leads (Master)'
   const isDirect = batchName === null || batchName === '' || batchName === 'direct_entry'
   
   const whereClause: any = { status: { not: 'Trashed' }, deletedAt: null }
@@ -102,7 +102,7 @@ export async function syncSpreadsheetForBatch(batchName: string | null, customUp
     rows.push(row)
   })
 
-  const cleanBatchName = isAll ? 'all_leads' : isDirect ? 'direct_entry' : String(batchName).trim().replace(/[^a-zA-Z0-9_-]/g, '_')
+  const cleanBatchName = isAll ? 'leads' : isDirect ? 'direct_entry' : String(batchName).trim().replace(/[^a-zA-Z0-9_-]/g, '_')
   const fileName = `import_${cleanBatchName}.xlsx`
   const fullPath = path.join(uploadDir, fileName)
 

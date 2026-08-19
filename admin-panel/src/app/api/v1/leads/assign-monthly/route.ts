@@ -16,30 +16,28 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const { importName, month, year, salesExecutiveIds } = body
 
-    if (!month || !year) {
-      return NextResponse.json({ error: 'Month and year are required' }, { status: 400 })
-    }
     if (!salesExecutiveIds || !Array.isArray(salesExecutiveIds) || salesExecutiveIds.length === 0) {
       return NextResponse.json({ error: 'At least one sales executive must be selected' }, { status: 400 })
     }
 
-    // Calculate date range for the target month
-    const monthStart = new Date(year, month - 1, 1)
-    const monthEnd = new Date(year, month, 0, 23, 59, 59, 999) // Last moment of last day
-
-    // Fetch unassigned leads for the target month
+    // Fetch unassigned leads
     const whereClause: any = {
       assignedTo: null,
       deletedAt: null,
       status: { not: 'Trashed' },
-      expiryDate: {
-        gte: monthStart,
-        lte: monthEnd
-      },
       OR: [
         { existingAgent: null },
         { existingAgent: { not: 'Agent' } }
       ]
+    }
+
+    if (month && year && Number(month) > 0) {
+      const monthStart = new Date(year, month - 1, 1)
+      const monthEnd = new Date(year, month, 0, 23, 59, 59, 999)
+      whereClause.expiryDate = {
+        gte: monthStart,
+        lte: monthEnd
+      }
     }
 
     // If importName is provided, filter by it

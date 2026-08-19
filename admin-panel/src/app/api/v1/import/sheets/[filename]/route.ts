@@ -60,11 +60,11 @@ export async function GET(
           }
         }
 
-        // Fallback for special batches like 'all_leads' or 'direct_entry'
+        // Fallback for special batches like 'all_leads', 'leads' or 'direct_entry'
         if (!foundMatch) {
-          if (batchName === 'all_leads' || batchName === 'direct_entry') {
+          if (batchName === 'all_leads' || batchName === 'leads' || batchName === 'direct_entry') {
             foundMatch = true
-            actualImportName = batchName
+            actualImportName = 'leads'
           }
         }
 

@@ -11,8 +11,12 @@ export async function GET(req: NextRequest) {
   if (error || !context) return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const url = new URL(req.url)
-  const month = parseInt(url.searchParams.get('month') || String(new Date().getMonth() + 1))
+  let month = parseInt(url.searchParams.get('month') || '0')
   const year = parseInt(url.searchParams.get('year') || String(new Date().getFullYear()))
+
+  if (month <= 0) {
+    month = new Date().getMonth() + 1
+  }
 
   try {
     // Fetch all active sales executives

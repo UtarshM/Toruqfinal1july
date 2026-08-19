@@ -382,10 +382,15 @@ export async function POST(req: NextRequest) {
       }
 
       // Simplified Agent Detection (only explicit column + known agents)
-      const isAgent = checkIsAgent(cleanContactNo || null, agentPhoneSet, rawAgent)
-      if (isAgent && cleanContactNo) {
-        agentPhoneSet.add(cleanContactNo)
-        const norm = normalizePhone(cleanContactNo)
+      let isAgent = checkIsAgent(cleanContactNo || null, agentPhoneSet, rawAgent)
+      let finalContactNo = cleanContactNo
+      if (cleanContactNo && (cleanContactNo.toLowerCase().includes('agent') || cleanContactNo.toLowerCase().includes('broker'))) {
+        isAgent = true
+        finalContactNo = ''
+      }
+      if (isAgent && finalContactNo) {
+        agentPhoneSet.add(finalContactNo)
+        const norm = normalizePhone(finalContactNo)
         if (norm) agentPhoneSet.add(norm)
       }
 
@@ -436,7 +441,7 @@ export async function POST(req: NextRequest) {
       validLeads.push({
         vehicleNo: vNo,
         clientName: cleanOwnerName,
-        clientPhone: cleanContactNo || null,
+        clientPhone: finalContactNo || null,
         clientEmail: rawEmail ? String(rawEmail).trim() : null,
         expiryDate: finalExpiryDate,
         registrationDate: parsedRegDate,

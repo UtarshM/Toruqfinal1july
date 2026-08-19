@@ -54,15 +54,8 @@ export async function GET(req: NextRequest) {
       }
     })
 
-    // Synchronize batch spreadsheet files only if active leads exist
-    for (const batch of dbBatches) {
-      if (!batch.importName) continue
-      const cleanBatchName = String(batch.importName).trim().replace(/[^a-zA-Z0-9_-]/g, '_')
-      const targetFile = path.join(uploadDir, `import_${cleanBatchName}.xlsx`)
-      if (shouldSync || !fs.existsSync(targetFile)) {
-        await syncSpreadsheetForBatch(batch.importName, uploadDir)
-      }
-    }
+    // Always synchronize the consolidated leads spreadsheet
+    await syncSpreadsheetForBatch('leads', uploadDir).catch(e => console.warn('[sheets] leads sync warning:', e))
 
     // Always regenerate "Policy Renewals" if renewals exist to guarantee 100% fresh live data
     if (totalRenewals > 0) {
@@ -106,8 +99,11 @@ export async function GET(req: NextRequest) {
       matchingBatchNames = [...new Set(leads.map(l => l.importName || 'direct_entry'))]
     }
 
-    // 2. Read all spreadsheet files from server storage
-    const fileNames = fs.readdirSync(uploadDir).filter(f => f.endsWith('.xlsx') || f.endsWith('.csv'))
+    // 2. Read only the master files from server storage
+    const fileNames = ['import_leads.xlsx']
+    if (totalRenewals > 0) {
+      fileNames.push('import_renewals.xlsx')
+    }
 
     const files = fileNames.map(fileName => {
       const filePath = path.join(uploadDir, fileName)
@@ -155,9 +151,12 @@ export async function GET(req: NextRequest) {
 
       if (fileName === 'import_renewals.xlsx') {
         batchName = 'Policy Renewals (Master)'
+      } else if (fileName === 'import_leads.xlsx') {
+        batchName = 'Imported Leads (Master)'
       }
 
       const matchingDbBatch = dbBatches.find(b => {
+        if (fileName === 'import_leads.xlsx') return true
         const cleanB = b.importName ? String(b.importName).trim().replace(/[^a-zA-Z0-9_-]/g, '_') : 'direct_entry'
         return fileName === `import_${cleanB}.xlsx` || fileName.includes(cleanB)
       })

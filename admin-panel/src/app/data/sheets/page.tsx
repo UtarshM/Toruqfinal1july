@@ -273,7 +273,7 @@ export default function ImportedSheetsPage() {
 
   // Assign leads for the selected month
   const handleAssignLeads = async () => {
-    if (!expiryMonthFilter || selectedExecIds.length === 0) return
+    if (selectedExecIds.length === 0) return
     setAssigning(true)
     setAssignResult(null)
     try {
@@ -281,7 +281,7 @@ export default function ImportedSheetsPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          importName: selectedFile?.batchName || null,
+          importName: selectedFile?.batchName === 'Imported Leads (Master)' ? null : selectedFile?.batchName || null,
           month: expiryMonthFilter,
           year: expiryYearFilter,
           salesExecutiveIds: selectedExecIds
@@ -1747,13 +1747,12 @@ export default function ImportedSheetsPage() {
                       </div>
 
                       {/* Executive Selection Panel */}
-                      {expiryMonthFilter > 0 && (
-                        <div className="bg-white rounded-2xl border border-blue-200 p-4 space-y-4">
-                          <div className="flex items-center justify-between">
-                            <h4 className="text-sm font-black text-slate-900 flex items-center gap-2">
-                              <UserCheck size={16} className="text-indigo-600" />
-                              Select Sales Executives for {MONTH_NAMES[expiryMonthFilter]} {expiryYearFilter}
-                            </h4>
+                      <div className="bg-white rounded-2xl border border-blue-200 p-4 space-y-4">
+                        <div className="flex items-center justify-between">
+                          <h4 className="text-sm font-black text-slate-900 flex items-center gap-2">
+                            <UserCheck size={16} className="text-indigo-600" />
+                            Select Sales Executives for {expiryMonthFilter > 0 ? `${MONTH_NAMES[expiryMonthFilter]} ${expiryYearFilter}` : 'All Months'}
+                          </h4>
                             {!execsLoading && (
                               <span className="text-[10px] font-bold text-slate-500">
                                 {selectedExecIds.length} of {availableExecs.length} selected
@@ -1884,8 +1883,7 @@ export default function ImportedSheetsPage() {
                             </div>
                           )}
                         </div>
-                      )}
-                    </div>
+                      </div>
 
                     {/* Scrollable Data Table */}
                     <div className="border border-slate-200 rounded-2xl overflow-x-auto max-h-[58vh] shadow-inner">
