@@ -105,6 +105,7 @@ export default function ImportedSheetsPage() {
   const [availableExecs, setAvailableExecs] = useState<any[]>([])
   const [selectedExecIds, setSelectedExecIds] = useState<string[]>([])
   const [execsLoading, setExecsLoading] = useState(false)
+  const [execDropdownOpen, setExecDropdownOpen] = useState(false)
   const [assigning, setAssigning] = useState(false)
   const [assignResult, setAssignResult] = useState<any>(null)
 
@@ -1496,48 +1497,68 @@ export default function ImportedSheetsPage() {
                           ) : availableExecs.length === 0 ? (
                             <p className="text-xs text-slate-500 italic py-3">No active sales executives found.</p>
                           ) : (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                              {availableExecs.map(exec => {
-                                const isSelected = selectedExecIds.includes(exec.id)
-                                return (
-                                  <button
-                                    key={exec.id}
-                                    onClick={() => {
-                                      setSelectedExecIds(prev =>
-                                        isSelected ? prev.filter(id => id !== exec.id) : [...prev, exec.id]
-                                      )
-                                    }}
-                                    className={`p-3 rounded-xl border-2 text-left transition-all cursor-pointer ${
-                                      isSelected
-                                        ? 'border-indigo-500 bg-indigo-50 shadow-md'
-                                        : 'border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm'
-                                    }`}
-                                  >
-                                    <div className="flex items-center justify-between mb-1">
-                                      <span className={`text-xs font-black ${
-                                        isSelected ? 'text-indigo-700' : 'text-slate-800'
-                                      }`}>
-                                        {exec.fullName}
-                                      </span>
-                                      <div className={`h-5 w-5 rounded-md flex items-center justify-center text-white ${
-                                        isSelected ? 'bg-indigo-600' : 'bg-slate-200'
-                                      }`}>
-                                        {isSelected && <Check size={12} />}
+                            <div className="relative min-h-[50px]">
+                              <button
+                                type="button"
+                                onClick={() => setExecDropdownOpen(!execDropdownOpen)}
+                                className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-800 flex items-center justify-between shadow-sm cursor-pointer hover:bg-slate-50 transition-all focus:ring-2 focus:ring-indigo-500/25 outline-none"
+                              >
+                                <span className="truncate max-w-[90%]">
+                                  {selectedExecIds.length === 0
+                                    ? 'Choose Sales Persons...'
+                                    : selectedExecIds.length === availableExecs.length
+                                    ? 'All Sales Persons Selected'
+                                    : `${selectedExecIds.length} Sales Persons Selected (${
+                                        availableExecs
+                                          .filter(e => selectedExecIds.includes(e.id))
+                                          .map(e => e.fullName.split(' ')[0])
+                                          .join(', ')
+                                      })`
+                                  }
+                                </span>
+                                <ChevronDown size={14} className={`text-slate-500 transition-transform shrink-0 ${execDropdownOpen ? 'rotate-180' : ''}`} />
+                              </button>
+
+                              {execDropdownOpen && (
+                                <div className="absolute z-[9999] left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-60 overflow-y-auto p-2 space-y-1">
+                                  {availableExecs.map(exec => {
+                                    const isSelected = selectedExecIds.includes(exec.id)
+                                    return (
+                                      <div
+                                        key={exec.id}
+                                        onClick={() => {
+                                          setSelectedExecIds(prev =>
+                                            isSelected ? prev.filter(id => id !== exec.id) : [...prev, exec.id]
+                                          )
+                                        }}
+                                        className="flex items-center justify-between p-2 hover:bg-slate-50 rounded-lg cursor-pointer transition-colors"
+                                      >
+                                        <div className="flex items-center gap-2.5">
+                                          <input
+                                            type="checkbox"
+                                            checked={isSelected}
+                                            onChange={() => {}} // Handled by parent wrapper div click
+                                            className="h-4 w-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500 pointer-events-none"
+                                          />
+                                          <div className="flex flex-col">
+                                            <span className="text-xs font-bold text-slate-800">{exec.fullName}</span>
+                                            <span className="text-[10px] font-semibold text-slate-400">{exec.roleName} • {exec.currentlyAssignedCount} assigned</span>
+                                          </div>
+                                        </div>
+                                        <div className="text-[10px] font-semibold">
+                                          {exec.isOnExtendedLeave ? (
+                                            <span className="px-2 py-0.5 bg-amber-50 text-amber-600 rounded-md font-bold">⚠️ On Leave ({exec.leaveDays} days)</span>
+                                          ) : exec.isCurrentlyOnLeave ? (
+                                            <span className="px-2 py-0.5 bg-orange-50 text-orange-500 rounded-md font-bold">🕐 Away</span>
+                                          ) : (
+                                            <span className="px-2 py-0.5 bg-emerald-50 text-emerald-600 rounded-md font-bold">✅ Active</span>
+                                          )}
+                                        </div>
                                       </div>
-                                    </div>
-                                    <div className="text-[10px] font-semibold text-slate-500 space-y-0.5">
-                                      <div>{exec.roleName} • {exec.currentlyAssignedCount} assigned</div>
-                                      {exec.isOnExtendedLeave ? (
-                                        <span className="text-amber-600 font-bold">⚠️ On Leave ({exec.leaveDays} days this month)</span>
-                                      ) : exec.isCurrentlyOnLeave ? (
-                                        <span className="text-orange-500 font-bold">🕐 Currently on leave (returns soon)</span>
-                                      ) : (
-                                        <span className="text-emerald-600 font-bold">✅ Available</span>
-                                      )}
-                                    </div>
-                                  </button>
-                                )
-                              })}
+                                    )
+                                  })}
+                                </div>
+                              )}
                             </div>
                           )}
 
