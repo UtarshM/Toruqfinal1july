@@ -31,12 +31,38 @@ export async function POST(
     const cf = (lead.customFields && typeof lead.customFields === 'object') ? (lead.customFields as any) : {}
     const submission = cf.policySubmission || { status: 'Draft', formData: {}, documents: [] }
 
-    const documents = (Array.isArray(bodyDocuments) && bodyDocuments.length > 0)
+    const rawDocuments = (Array.isArray(bodyDocuments) && bodyDocuments.length > 0)
       ? bodyDocuments
       : (submission.documents || [])
 
-    if (documents.length === 0) {
+    if (rawDocuments.length === 0) {
       return NextResponse.json({ error: 'Please upload at least one document before converting to single PDF' }, { status: 400 })
+    }
+
+    // Sort documents by category order so multi-uploads appear grouped together in the merged PDF
+    const categoryOrder = [
+      'IMP_DATE_SS',
+      'NCB_CONFIRMATION_SS',
+      'PAN_CARD',
+      'PREVIOUS_POLICY',
+      'QUOTATION',
+      'RC_BOOK',
+      'VEHICLE_PHOTO'
+    ]
+
+    const documents = [...rawDocuments].sort((a, b) => {
+      const aIdx = categoryOrder.indexOf(a.category)
+      const bIdx = categoryOrder.indexOf(b.category)
+      return aIdx - bIdx
+    })
+
+    const getDocCategoryIndex = (doc: any) => {
+      const categoryDocs = documents.filter(d => d.category === doc.category)
+      const idx = categoryDocs.findIndex(d => d.id === doc.id)
+      return {
+        current: idx + 1,
+        total: categoryDocs.length
+      }
     }
 
     const formData = bodyFormData || submission.formData || {}
@@ -78,12 +104,33 @@ export async function POST(
       }
 
       const isPdf = doc.fileName?.toLowerCase().endsWith('.pdf') || doc.fileType === 'application/pdf'
+      const catInfo = getDocCategoryIndex(doc)
 
       if (isPdf) {
         try {
           const externalPdf = await PDFDocument.load(fileBuffer)
           const copiedPages = await mergedPdf.copyPages(externalPdf, externalPdf.getPageIndices())
-          copiedPages.forEach(p => mergedPdf.addPage(p))
+          copiedPages.forEach((p, pageIdx) => {
+            // Draw category header banner on top of PDF page
+            p.drawRectangle({
+              x: 0,
+              y: p.getHeight() - 40,
+              width: p.getWidth(),
+              height: 40,
+              color: rgb(0.08, 0.12, 0.2)
+            })
+
+            const headerText = `${(doc.categoryLabel || doc.category).toUpperCase()} (File ${catInfo.current} of ${catInfo.total} - Page ${pageIdx + 1} of ${copiedPages.length})`
+            p.drawText(headerText, {
+              x: 25,
+              y: p.getHeight() - 25,
+              size: 10,
+              font: fontBold,
+              color: rgb(1, 1, 1)
+            })
+
+            mergedPdf.addPage(p)
+          })
         } catch (pdfErr) {
           console.error(`[compile-pdf] Error copying pages from PDF ${doc.fileName}:`, pdfErr)
         }
@@ -105,7 +152,8 @@ export async function POST(
             color: rgb(0.08, 0.12, 0.2)
           })
 
-          imgPage.drawText(`DOCUMENT ${dIdx + 1} OF ${documents.length}: ${(doc.categoryLabel || doc.category).toUpperCase()}`, {
+          const headerText = `${(doc.categoryLabel || doc.category).toUpperCase()} (File ${catInfo.current} of ${catInfo.total})`
+          imgPage.drawText(headerText, {
             x: 25,
             y: pSize.height - 25,
             size: 10,

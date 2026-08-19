@@ -131,7 +131,12 @@ export async function POST(
         uploadedAt: new Date().toISOString(),
         uploadedBy: context.userId
       }
-      updatedDocs = [...updatedDocs.filter((d: any) => d.category !== document.category), docEntry]
+      const otherDocs = updatedDocs.filter((d: any) => d.category !== document.category)
+      const categoryDocs = updatedDocs.filter((d: any) => d.category === document.category)
+      if (categoryDocs.length >= 15) {
+        return NextResponse.json({ error: `Cannot upload more than 15 files for ${document.categoryLabel || document.category}` }, { status: 400 })
+      }
+      updatedDocs = [...otherDocs, ...categoryDocs, docEntry]
     } else if (Array.isArray(documents)) {
       updatedDocs = documents
     }
