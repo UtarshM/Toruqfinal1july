@@ -59,9 +59,13 @@ export async function POST(
       history: []
     }
 
-    // Replace if this category already had a document, or append
-    const existingDocs = (submission.documents || []).filter((d: any) => d.category !== category)
-    const updatedDocuments = [...existingDocs, docEntry]
+    // Allow multiple files per category up to 15 files
+    const otherDocs = (submission.documents || []).filter((d: any) => d.category !== category)
+    const categoryDocs = (submission.documents || []).filter((d: any) => d.category === category)
+    if (categoryDocs.length >= 15) {
+      return NextResponse.json({ error: `Cannot upload more than 15 files for ${DOCUMENT_CATEGORIES[category]}` }, { status: 400 })
+    }
+    const updatedDocuments = [...otherDocs, ...categoryDocs, docEntry]
 
     const updatedSubmission = {
       ...submission,

@@ -305,7 +305,12 @@ export default function LeadPolicySubmissionModal({ leadId, lead, onClose, onUpd
     return (submission?.documents || []).find((d: any) => d.category === category)
   }
 
-  const uploadedCount = (submission?.documents || []).length
+  const getCategoryDocs = (category: string) => {
+    return (submission?.documents || []).filter((d: any) => d.category === category)
+  }
+
+  const uniqueUploadedCategories = new Set((submission?.documents || []).map((d: any) => d.category))
+  const uploadedCount = uniqueUploadedCategories.size
   const status = submission?.status || 'Draft'
 
   return (
@@ -781,14 +786,14 @@ export default function LeadPolicySubmissionModal({ leadId, lead, onClose, onUpd
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {REQUIRED_DOCUMENTS.map((reqDoc, idx) => {
-                  const attached = getDoc(reqDoc.key)
+                  const attachedFiles = getCategoryDocs(reqDoc.key)
                   const isUploading = uploadingCategory === reqDoc.key
 
                   return (
                     <div
                       key={reqDoc.key}
                       className={`p-4 rounded-2xl border transition-all flex flex-col justify-between space-y-3 ${
-                        attached
+                        attachedFiles.length > 0
                           ? 'bg-emerald-50/40 border-emerald-200 shadow-sm'
                           : 'bg-slate-50/70 border-slate-200/80 hover:border-slate-300'
                       }`}
@@ -798,9 +803,9 @@ export default function LeadPolicySubmissionModal({ leadId, lead, onClose, onUpd
                           <h5 className="text-xs font-black text-slate-900 truncate">
                             {reqDoc.label}
                           </h5>
-                          {attached ? (
+                          {attachedFiles.length > 0 ? (
                             <span className="px-2 py-0.5 bg-emerald-500 text-white rounded text-[10px] font-black flex items-center gap-1">
-                              <Check size={11} /> Attached
+                              <Check size={11} /> {attachedFiles.length} Attached
                             </span>
                           ) : (
                             <span className="px-2 py-0.5 bg-slate-200 text-slate-600 rounded text-[10px] font-bold">
@@ -813,40 +818,46 @@ export default function LeadPolicySubmissionModal({ leadId, lead, onClose, onUpd
                         </p>
                       </div>
 
-                      {attached ? (
-                        <div className="bg-white p-3 rounded-xl border border-emerald-100 flex items-center justify-between gap-2">
-                          <div className="min-w-0 flex items-center gap-2">
-                            <FileText size={16} className="text-emerald-600 shrink-0" />
-                            <div className="min-w-0">
-                              <p className="text-xs font-bold text-slate-800 truncate" title={attached.fileName}>
-                                {attached.fileName}
-                              </p>
-                              <span className="text-[10px] text-slate-400 block">
-                                {(attached.fileSize / 1024).toFixed(1)} KB • {new Date(attached.uploadedAt).toLocaleTimeString()}
-                              </span>
-                            </div>
-                          </div>
+                      {attachedFiles.length > 0 && (
+                        <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+                          {attachedFiles.map((attached: any) => (
+                            <div key={attached.id} className="bg-white p-2 rounded-xl border border-emerald-100 flex items-center justify-between gap-2">
+                              <div className="min-w-0 flex items-center gap-1.5">
+                                <FileText size={14} className="text-emerald-600 shrink-0" />
+                                <div className="min-w-0">
+                                  <p className="text-[11px] font-bold text-slate-800 truncate" title={attached.fileName}>
+                                    {attached.fileName}
+                                  </p>
+                                  <span className="text-[9px] text-slate-400 block leading-tight">
+                                    {(attached.fileSize / 1024).toFixed(0)} KB • {new Date(attached.uploadedAt).toLocaleTimeString()}
+                                  </span>
+                                </div>
+                              </div>
 
-                          <div className="flex items-center gap-1.5 shrink-0">
-                            <a
-                              href={attached.filePath}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-colors cursor-pointer"
-                              title="Preview document"
-                            >
-                              <Eye size={14} />
-                            </a>
-                            <button
-                              onClick={() => handleDeleteDoc(attached.id, reqDoc.key)}
-                              className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg transition-colors cursor-pointer"
-                              title="Delete document"
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          </div>
+                              <div className="flex items-center gap-1 shrink-0">
+                                <a
+                                  href={attached.filePath}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="p-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md transition-colors cursor-pointer"
+                                  title="Preview document"
+                                >
+                                  <Eye size={12} />
+                                </a>
+                                <button
+                                  onClick={() => handleDeleteDoc(attached.id, reqDoc.key)}
+                                  className="p-1 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-md transition-colors cursor-pointer"
+                                  title="Delete document"
+                                >
+                                  <Trash2 size={12} />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
                         </div>
-                      ) : (
+                      )}
+
+                      {attachedFiles.length < 15 && (
                         <div>
                           <input
                             type="file"
@@ -871,7 +882,7 @@ export default function LeadPolicySubmissionModal({ leadId, lead, onClose, onUpd
                             ) : (
                               <>
                                 <UploadCloud size={15} className="text-blue-600" />
-                                <span>Upload Screenshot / File</span>
+                                <span>{attachedFiles.length > 0 ? 'Upload Additional File' : 'Upload Screenshot / File'}</span>
                               </>
                             )}
                           </button>
