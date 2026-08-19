@@ -707,12 +707,12 @@ export default function ManagerDocumentsPage() {
                                 <CheckCircle2 size={13} className="text-emerald-600 shrink-0" />
                               </div>
                               <p className="text-xs font-bold text-slate-800 truncate">{doc.fileName}</p>
-                              {doc.fileUrl && (
+                              {(doc.filePath || doc.fileUrl) && (
                                 <a
-                                  href={doc.fileUrl}
+                                  href={doc.filePath || doc.fileUrl}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-600 hover:underline"
+                                  className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-600 hover:underline cursor-pointer"
                                 >
                                   <Eye size={11} />
                                   <span>Inspect File</span>
