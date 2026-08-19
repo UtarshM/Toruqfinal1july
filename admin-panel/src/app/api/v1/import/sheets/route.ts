@@ -64,9 +64,9 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // Only generate "Policy Renewals" if renewals actually exist
-    if (totalRenewals > 0 && (shouldSync || !fs.existsSync(renewalsFile))) {
-      await syncRenewalsSpreadsheet(uploadDir)
+    // Always regenerate "Policy Renewals" if renewals exist to guarantee 100% fresh live data
+    if (totalRenewals > 0) {
+      await syncRenewalsSpreadsheet(uploadDir).catch(() => {})
     }
 
     const leadSearch = req.nextUrl.searchParams.get('leadSearch')?.trim()

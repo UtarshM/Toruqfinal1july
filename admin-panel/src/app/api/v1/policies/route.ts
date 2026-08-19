@@ -154,7 +154,8 @@ export async function POST(req: NextRequest) {
           policyStartDate: new Date(body.start_date),
           policyEndDate: new Date(body.end_date),
           renewalStatus: 'Active',
-          createdBySalesId: lead?.assignedTo || context.userId
+          createdBySalesId: lead?.assignedTo || context.userId,
+          documents: body.issuedPolicyPdfUrl ? [body.issuedPolicyPdfUrl] : []
         }
       })
     } catch (renewalErr) {

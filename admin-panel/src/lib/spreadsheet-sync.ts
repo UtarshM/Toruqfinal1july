@@ -143,7 +143,12 @@ export async function syncRenewalsSpreadsheet(customUploadDir?: string) {
   const renewals = await prisma.renewalRecord.findMany({
     include: {
       assignee: true,
-      lead: true,
+      createdBy: true,
+      lead: {
+        include: {
+          assignee: true
+        }
+      },
       policy: true
     },
     orderBy: { policyEndDate: 'asc' }
@@ -160,6 +165,8 @@ export async function syncRenewalsSpreadsheet(customUploadDir?: string) {
     'Policy Expiry Date',
     'Policy Start Date',
     'Renewal Status',
+    'Sales Person',
+    'Policy PDF',
     'Assigned To',
     'Assigned Month',
     'Assigned Year',
@@ -171,6 +178,15 @@ export async function syncRenewalsSpreadsheet(customUploadDir?: string) {
   const rows: any[][] = [headers]
 
   renewals.forEach(r => {
+    // Robustly extract the PDF URL
+    const leadCf = r.lead?.customFields as any
+    const pdfUrl = (Array.isArray(r.documents) && r.documents[0]) || 
+                   leadCf?.policySubmission?.issuedPolicyPdfUrl || 
+                   '';
+
+    // Robustly extract original salesperson (creator or lead assignee)
+    const salesPerson = r.createdBy?.fullName || r.lead?.assignee?.fullName || 'Unassigned'
+
     rows.push([
       r.clientName || '',
       r.clientPhone || '',
@@ -182,6 +198,8 @@ export async function syncRenewalsSpreadsheet(customUploadDir?: string) {
       formatDate(r.policyEndDate),
       formatDate(r.policyStartDate),
       r.renewalStatus || 'Active',
+      salesPerson,
+      pdfUrl,
       r.assignee?.fullName || 'Unassigned',
       r.assignedMonth || '',
       r.assignedYear || '',
