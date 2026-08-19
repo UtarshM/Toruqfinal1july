@@ -1575,8 +1575,8 @@ export default function LeadsPage() {
                               <DetailItem label="Mo No. 2" value={getLeadColumnValue(detailedLead, 'phone2')} isCopyable />
                               <DetailItem label="Gross Vehicle Weight (GVW)" value={detailedLead.gvw || 'N/A'} />
                               <DetailItem label="City / VIA" value={getLeadColumnValue(detailedLead, 'via')} />
-                              <DetailItem label="Lead Expiry Date (From Sheet)" value={detailedLead.expiryDate ? new Date(detailedLead.expiryDate).toLocaleDateString() : 'N/A'} />
-                              <DetailItem label="Lead Imported Date" value={new Date(detailedLead.createdAt).toLocaleDateString()} />
+                              <DetailItem label="Previous Policy Expiry Date" value={detailedLead.expiryDate ? new Date(detailedLead.expiryDate).toLocaleDateString() : 'N/A'} />
+                              <DetailItem label="Created On" value={new Date(detailedLead.createdAt).toLocaleDateString()} />
                             </div>
                           </div>
 
