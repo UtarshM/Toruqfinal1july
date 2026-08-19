@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View, Text, StyleSheet, FlatList, Pressable, RefreshControl,
-  TextInput, Modal, ScrollView, ActivityIndicator, Alert, Platform, Share
+  TextInput, Modal, ScrollView, ActivityIndicator, Alert, Platform, Share, Linking
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -51,6 +51,11 @@ export default function ImportedSheetsScreen() {
   const [search, setSearch] = useState('');
   const [agentFilter, setAgentFilter] = useState<'all' | 'has_agent'>('all');
 
+  // Page active tab state
+  const [activeTab, setActiveTab] = useState<'files' | 'renewals'>('files');
+  const [expiryMonthFilter, setExpiryMonthFilter] = useState<number>(0);
+  const [expiryYearFilter, setExpiryYearFilter] = useState<number>(new Date().getFullYear());
+
   // Preview modal state
   const [selectedFile, setSelectedFile] = useState<SpreadsheetFile | null>(null);
   const [previewData, setPreviewData] = useState<SheetPreviewData | null>(null);
@@ -84,8 +89,28 @@ export default function ImportedSheetsScreen() {
     setRefreshing(false);
   };
 
+  // Auto-sync renewals master when switching tabs
+  useEffect(() => {
+    if (activeTab === 'renewals') {
+      const renewalsFile = files.find(f => f.fileName === 'import_renewals.xlsx');
+      if (renewalsFile) {
+        handleOpenPreview(renewalsFile);
+      }
+    }
+  }, [activeTab, files]);
+
+  // Reset states when switching tabs
+  useEffect(() => {
+    if (activeTab === 'files') {
+      setSelectedFile(null);
+      setPreviewData(null);
+    }
+  }, [activeTab]);
+
   const handleOpenPreview = async (file: SpreadsheetFile) => {
-    setSelectedFile(file);
+    if (file.fileName !== 'import_renewals.xlsx') {
+      setSelectedFile(file);
+    }
     setPreviewLoading(true);
     setPreviewSearch('');
     setPreviewAgentOnly(false);
@@ -127,6 +152,7 @@ export default function ImportedSheetsScreen() {
 
   const filteredFiles = useMemo(() => {
     return files.filter(f => {
+      if (f.fileName === 'import_renewals.xlsx') return false;
       if (search.trim()) {
         const term = search.toLowerCase().trim();
         const matchesName = f.batchName.toLowerCase().includes(term) || f.fileName.toLowerCase().includes(term);
@@ -150,6 +176,25 @@ export default function ImportedSheetsScreen() {
       });
     }
 
+    if (activeTab === 'renewals' && expiryMonthFilter > 0) {
+      const expiryDateColIdx = previewData.headers.findIndex(h => 
+        h.toLowerCase().includes('expiry') || h.toLowerCase().includes('end')
+      );
+      if (expiryDateColIdx !== -1) {
+        rows = rows.filter(r => {
+          const val = String(r[expiryDateColIdx] || '').trim();
+          if (!val || val === '—') return false;
+          try {
+            const d = new Date(val);
+            if (isNaN(d.getTime())) return false;
+            return (d.getMonth() + 1) === expiryMonthFilter && d.getFullYear() === expiryYearFilter;
+          } catch {
+            return false;
+          }
+        });
+      }
+    }
+
     if (previewSearch.trim()) {
       const term = previewSearch.toLowerCase().trim();
       rows = rows.filter(r =>
@@ -158,7 +203,7 @@ export default function ImportedSheetsScreen() {
     }
 
     return rows;
-  }, [previewData, previewAgentOnly, previewSearch]);
+  }, [previewData, previewAgentOnly, previewSearch, activeTab, expiryMonthFilter, expiryYearFilter]);
 
   if (!isAdminOrManager) {
     return (
@@ -194,128 +239,291 @@ export default function ImportedSheetsScreen() {
         </Pressable>
       </View>
 
-      {/* Search and Filters */}
-      <View style={styles.searchSection}>
-        <View style={styles.searchBox}>
-          <Ionicons name="search" size={18} color={Colors.textMuted} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search spreadsheet batch name..."
-            placeholderTextColor={Colors.textLight}
-            value={search}
-            onChangeText={setSearch}
-          />
-          {search.length > 0 && (
-            <Pressable onPress={() => setSearch('')}>
-              <Ionicons name="close-circle" size={18} color={Colors.textLight} />
-            </Pressable>
-          )}
-        </View>
-
-        <View style={styles.filterRow}>
-          <Pressable
-            style={[styles.filterChip, agentFilter === 'all' && styles.filterChipActive]}
-            onPress={() => setAgentFilter('all')}
-          >
-            <Text style={[styles.filterChipText, agentFilter === 'all' && styles.filterChipTextActive]}>
-              All Sheets ({files.length})
-            </Text>
-          </Pressable>
-
-          <Pressable
-            style={[styles.filterChip, agentFilter === 'has_agent' && styles.filterChipActive]}
-            onPress={() => setAgentFilter('has_agent')}
-          >
-            <Ionicons name="alert-circle" size={14} color={agentFilter === 'has_agent' ? '#FFFFFF' : '#D97706'} style={{ marginRight: 4 }} />
-            <Text style={[styles.filterChipText, agentFilter === 'has_agent' && styles.filterChipTextActive]}>
-              With Detected Agents
-            </Text>
-          </Pressable>
-        </View>
+      {/* Navigation Tabs */}
+      <View style={styles.tabsContainer}>
+        <Pressable
+          style={[styles.tabButton, activeTab === 'files' && styles.tabButtonActive]}
+          onPress={() => setActiveTab('files')}
+        >
+          <Text style={[styles.tabButtonText, activeTab === 'files' && styles.tabButtonTextActive]}>
+            📂 SPREADSHEETS ({files.length - (files.some(f => f.fileName === 'import_renewals.xlsx') ? 1 : 0)})
+          </Text>
+        </Pressable>
+        <Pressable
+          style={[styles.tabButton, activeTab === 'renewals' && styles.tabButtonActive]}
+          onPress={() => setActiveTab('renewals')}
+        >
+          <Text style={[styles.tabButtonText, activeTab === 'renewals' && styles.tabButtonTextActive]}>
+            🔄 RENEWALS MASTER ({files.find(f => f.fileName === 'import_renewals.xlsx')?.totalRows || 0})
+          </Text>
+        </Pressable>
       </View>
 
-      {/* Spreadsheets List */}
-      <FlatList
-        data={filteredFiles}
-        keyExtractor={item => item.fileName}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
-        contentContainerStyle={styles.listContainer}
-        ListEmptyComponent={
-          <View style={styles.emptyState}>
-            {loading ? (
-              <ActivityIndicator size="large" color={Colors.primary} />
-            ) : (
-              <>
-                <Ionicons name="document-text-outline" size={48} color={Colors.textLight} />
-                <Text style={styles.emptyTitle}>No spreadsheets found</Text>
-                <Text style={styles.emptyText}>Upload leads from the Import Leads screen to generate batch sheets.</Text>
-              </>
-            )}
-          </View>
-        }
-        renderItem={({ item }) => (
-          <Pressable
-            style={({ pressed }) => [styles.sheetCard, pressed && { opacity: 0.9 }]}
-            onPress={() => handleOpenPreview(item)}
-          >
-            <View style={styles.cardHeader}>
-              <View style={styles.iconWrap}>
-                <Ionicons name="grid-outline" size={22} color={Colors.primary} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.batchName} numberOfLines={1}>{item.batchName}</Text>
-                <Text style={styles.fileNameText} numberOfLines={1}>{item.fileName}</Text>
-              </View>
-              {item.agentCount > 0 ? (
-                <View style={styles.agentBadge}>
-                  <Ionicons name="alert-circle" size={12} color="#B45309" style={{ marginRight: 3 }} />
-                  <Text style={styles.agentBadgeText}>{item.agentCount} Agent{item.agentCount > 1 ? 's' : ''}</Text>
-                </View>
-              ) : (
-                <View style={styles.cleanBadge}>
-                  <Text style={styles.cleanBadgeText}>Direct Leads</Text>
-                </View>
+      {/* TABS CONTENT */}
+      {activeTab === 'files' && (
+        <>
+          {/* Search and Filters */}
+          <View style={styles.searchSection}>
+            <View style={styles.searchBox}>
+              <Ionicons name="search" size={18} color={Colors.textMuted} />
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Search spreadsheet batch name..."
+                placeholderTextColor={Colors.textLight}
+                value={search}
+                onChangeText={setSearch}
+              />
+              {search.length > 0 && (
+                <Pressable onPress={() => setSearch('')}>
+                  <Ionicons name="close-circle" size={18} color={Colors.textLight} />
+                </Pressable>
               )}
             </View>
 
-            <View style={styles.cardDetails}>
-              <View style={styles.detailCol}>
-                <Text style={styles.detailLabel}>TOTAL ROWS</Text>
-                <Text style={styles.detailValue}>{item.totalRows.toLocaleString()}</Text>
-              </View>
-              <View style={styles.detailCol}>
-                <Text style={styles.detailLabel}>IMPORTED DATE</Text>
-                <Text style={styles.detailValue}>
-                  {item.importedAt ? new Date(item.importedAt).toLocaleDateString('en-IN') : 'Direct Entry'}
-                </Text>
-              </View>
-              <View style={styles.detailCol}>
-                <Text style={styles.detailLabel}>DAY</Text>
-                <Text style={styles.detailValue}>{item.dayOfWeek || '—'}</Text>
-              </View>
-            </View>
-
-            <View style={styles.cardActions}>
+            <View style={styles.filterRow}>
               <Pressable
-                style={styles.previewBtn}
+                style={[styles.filterChip, agentFilter === 'all' && styles.filterChipActive]}
+                onPress={() => setAgentFilter('all')}
+              >
+                <Text style={[styles.filterChipText, agentFilter === 'all' && styles.filterChipTextActive]}>
+                  All Sheets ({filteredFiles.length})
+                </Text>
+              </Pressable>
+
+              <Pressable
+                style={[styles.filterChip, agentFilter === 'has_agent' && styles.filterChipActive]}
+                onPress={() => setAgentFilter('has_agent')}
+              >
+                <Ionicons name="alert-circle" size={14} color={agentFilter === 'has_agent' ? '#FFFFFF' : '#D97706'} style={{ marginRight: 4 }} />
+                <Text style={[styles.filterChipText, agentFilter === 'has_agent' && styles.filterChipTextActive]}>
+                  With Detected Agents
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+
+          {/* Spreadsheets List */}
+          <FlatList
+            data={filteredFiles}
+            keyExtractor={item => item.fileName}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
+            contentContainerStyle={styles.listContainer}
+            ListEmptyComponent={
+              <View style={styles.emptyState}>
+                {loading ? (
+                  <ActivityIndicator size="large" color={Colors.primary} />
+                ) : (
+                  <>
+                    <Ionicons name="document-text-outline" size={48} color={Colors.textLight} />
+                    <Text style={styles.emptyTitle}>No spreadsheets found</Text>
+                    <Text style={styles.emptyText}>Upload leads from the Import Leads screen to generate batch sheets.</Text>
+                  </>
+                )}
+              </View>
+            }
+            renderItem={({ item }) => (
+              <Pressable
+                style={({ pressed }) => [styles.sheetCard, pressed && { opacity: 0.9 }]}
                 onPress={() => handleOpenPreview(item)}
               >
-                <Ionicons name="eye-outline" size={16} color={Colors.primary} />
-                <Text style={styles.previewBtnText}>View Spreadsheet</Text>
-              </Pressable>
+                <View style={styles.cardHeader}>
+                  <View style={styles.iconWrap}>
+                    <Ionicons name="grid-outline" size={22} color={Colors.primary} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.batchName} numberOfLines={1}>{item.batchName}</Text>
+                    <Text style={styles.fileNameText} numberOfLines={1}>{item.fileName}</Text>
+                  </View>
+                  {item.agentCount > 0 ? (
+                    <View style={styles.agentBadge}>
+                      <Ionicons name="alert-circle" size={12} color="#B45309" style={{ marginRight: 3 }} />
+                      <Text style={styles.agentBadgeText}>{item.agentCount} Agent{item.agentCount > 1 ? 's' : ''}</Text>
+                    </View>
+                  ) : (
+                    <View style={styles.cleanBadge}>
+                      <Text style={styles.cleanBadgeText}>Direct Leads</Text>
+                    </View>
+                  )}
+                </View>
 
-              <Pressable
-                style={styles.shareBtn}
-                onPress={() => handleDownloadAndShare(item)}
-                disabled={downloading}
-              >
-                <Ionicons name="share-social-outline" size={16} color="#16A34A" />
-                <Text style={styles.shareBtnText}>Share Excel</Text>
+                <View style={styles.cardDetails}>
+                  <View style={styles.detailCol}>
+                    <Text style={styles.detailLabel}>TOTAL ROWS</Text>
+                    <Text style={styles.detailValue}>{item.totalRows.toLocaleString()}</Text>
+                  </View>
+                  <View style={styles.detailCol}>
+                    <Text style={styles.detailLabel}>IMPORTED DATE</Text>
+                    <Text style={styles.detailValue}>
+                      {item.importedAt ? new Date(item.importedAt).toLocaleDateString('en-IN') : 'Direct Entry'}
+                    </Text>
+                  </View>
+                  <View style={styles.detailCol}>
+                    <Text style={styles.detailLabel}>DAY</Text>
+                    <Text style={styles.detailValue}>{item.dayOfWeek || '—'}</Text>
+                  </View>
+                </View>
+
+                <View style={styles.cardActions}>
+                  <Pressable
+                    style={styles.previewBtn}
+                    onPress={() => handleOpenPreview(item)}
+                  >
+                    <Ionicons name="eye-outline" size={16} color={Colors.primary} />
+                    <Text style={styles.previewBtnText}>View Spreadsheet</Text>
+                  </Pressable>
+
+                  <Pressable
+                    style={styles.shareBtn}
+                    onPress={() => handleDownloadAndShare(item)}
+                    disabled={downloading}
+                  >
+                    <Ionicons name="share-social-outline" size={16} color="#16A34A" />
+                    <Text style={styles.shareBtnText}>Share Excel</Text>
+                  </Pressable>
+                </View>
               </Pressable>
+            )}
+          />
+        </>
+      )}
+
+      {activeTab === 'renewals' && (
+        <View style={{ flex: 1 }}>
+          {/* Search bar inside tab */}
+          <View style={styles.renewalsSearchSection}>
+            <View style={styles.modalSearchBox}>
+              <Ionicons name="search" size={16} color={Colors.textMuted} />
+              <TextInput
+                style={styles.modalSearchInput}
+                placeholder="Search renewals (name, vehicle, policy)..."
+                placeholderTextColor={Colors.textLight}
+                value={previewSearch}
+                onChangeText={setPreviewSearch}
+              />
+              {previewSearch.length > 0 && (
+                <Pressable onPress={() => setPreviewSearch('')}>
+                  <Ionicons name="close-circle" size={16} color={Colors.textLight} />
+                </Pressable>
+              )}
             </View>
-          </Pressable>
-        )}
-      />
+          </View>
+
+          {/* Expiry filter horizontal scrollbars */}
+          <View style={styles.filterSection}>
+            <Text style={styles.filterSectionTitle}>FILTER BY EXPIRY MONTH:</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.scrollFilters}>
+              {['ALL', 'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'].map((m, idx) => (
+                <Pressable
+                  key={idx}
+                  style={[styles.smallFilterChip, expiryMonthFilter === idx && styles.smallFilterChipActive]}
+                  onPress={() => setExpiryMonthFilter(idx)}
+                >
+                  <Text style={[styles.smallFilterChipText, expiryMonthFilter === idx && styles.smallFilterChipTextActive]}>
+                    {m}
+                  </Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+
+            <Text style={[styles.filterSectionTitle, { marginTop: 6 }]}>FILTER BY EXPIRY YEAR:</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.scrollFilters}>
+              {[2024, 2025, 2026, 2027, 2028, 2029, 2030].map(y => (
+                <Pressable
+                  key={y}
+                  style={[styles.smallFilterChip, expiryYearFilter === y && styles.smallFilterChipActive]}
+                  onPress={() => setExpiryYearFilter(y)}
+                >
+                  <Text style={[styles.smallFilterChipText, expiryYearFilter === y && styles.smallFilterChipTextActive]}>
+                    {y}
+                  </Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </View>
+
+          {/* Inline Data Table */}
+          {previewLoading ? (
+            <View style={styles.previewLoader}>
+              <ActivityIndicator size="large" color={Colors.primary} />
+              <Text style={styles.previewLoaderText}>Loading renewals master...</Text>
+            </View>
+          ) : (
+            <View style={{ flex: 1, backgroundColor: '#FFFFFF' }}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={true} style={{ flex: 1 }}>
+                <ScrollView showsVerticalScrollIndicator={true} style={{ flex: 1 }}>
+                  <View style={styles.table}>
+                    {/* Table Header */}
+                    <View style={styles.tableHeaderRow}>
+                      <View style={[styles.tableHeaderCell, { width: 50 }]}>
+                        <Text style={styles.tableHeaderText}>#</Text>
+                      </View>
+                      {(previewData?.headers || []).map((h, i) => (
+                        <View key={i} style={[styles.tableHeaderCell, { width: 140 }]}>
+                          <Text style={styles.tableHeaderText} numberOfLines={1}>{h}</Text>
+                        </View>
+                      ))}
+                    </View>
+
+                    {/* Table Body Rows */}
+                    {filteredPreviewRows.length === 0 ? (
+                      <View style={styles.emptyTable}>
+                        <Text style={styles.emptyTableText}>No renewals matches found</Text>
+                      </View>
+                    ) : (
+                      filteredPreviewRows.map((row, rIdx) => (
+                        <View key={rIdx} style={styles.tableRow}>
+                          <View style={[styles.tableCell, { width: 50 }]}>
+                            <Text style={[styles.tableCellText, { color: Colors.textMuted }]}>{rIdx + 1}</Text>
+                          </View>
+                          {row.map((cell: any, cIdx: number) => {
+                            const valStr = cell !== null && cell !== undefined ? String(cell) : '';
+                            const isLink = valStr.startsWith('http');
+                            return (
+                              <View key={cIdx} style={[styles.tableCell, { width: 140 }]}>
+                                {isLink ? (
+                                  <Pressable
+                                    style={styles.pdfLinkBtn}
+                                    onPress={() => Linking.openURL(valStr).catch(() => Alert.alert('Error', 'Cannot open URL'))}
+                                  >
+                                    <Ionicons name="document-outline" size={12} color="#0284C7" />
+                                    <Text style={styles.pdfLinkText} numberOfLines={1}>View PDF</Text>
+                                  </Pressable>
+                                ) : (
+                                  <Text style={styles.tableCellText} numberOfLines={2}>
+                                    {valStr || '—'}
+                                  </Text>
+                                )}
+                              </View>
+                            );
+                          })}
+                        </View>
+                      ))
+                    )}
+                  </View>
+                </ScrollView>
+              </ScrollView>
+              {/* Row Count Badge Footer */}
+              <View style={styles.tabTableFooter}>
+                <Text style={styles.tabTableFooterText}>
+                  Showing {filteredPreviewRows.length} of {previewData?.rows?.length || 0} active policies
+                </Text>
+                {previewData?.downloadUrl && (
+                  <Pressable
+                    style={styles.inlineDownloadBtn}
+                    onPress={() => {
+                      const fileObj = files.find(f => f.fileName === 'import_renewals.xlsx')
+                      if (fileObj) handleDownloadAndShare(fileObj)
+                    }}
+                  >
+                    <Ionicons name="cloud-download-outline" size={14} color="#FFFFFF" style={{ marginRight: 4 }} />
+                    <Text style={styles.inlineDownloadBtnText}>Download XLSX</Text>
+                  </Pressable>
+                )}
+              </View>
+            </View>
+          )}
+        </View>
+      )}
 
       {/* Spreadsheet Preview Fullscreen Modal */}
       <Modal
@@ -412,15 +620,25 @@ export default function ImportedSheetsScreen() {
                           </View>
                           {row.map((cell: any, cIdx: number) => {
                             const isAgentCell = cIdx === previewData?.agentColIdx && String(cell || '').toLowerCase().trim() === 'agent';
+                            const valStr = cell !== null && cell !== undefined ? String(cell) : '';
+                            const isLink = valStr.startsWith('http');
                             return (
                               <View key={cIdx} style={[styles.tableCell, { width: 140 }, isAgent && styles.agentTableCell]}>
                                 {isAgentCell ? (
                                   <View style={styles.agentPill}>
                                     <Text style={styles.agentPillText}>AGENT 🚨</Text>
                                   </View>
+                                ) : isLink ? (
+                                  <Pressable
+                                    style={styles.pdfLinkBtn}
+                                    onPress={() => Linking.openURL(valStr).catch(() => Alert.alert('Error', 'Cannot open URL'))}
+                                  >
+                                    <Ionicons name="document-outline" size={12} color="#0284C7" />
+                                    <Text style={styles.pdfLinkText} numberOfLines={1}>View PDF</Text>
+                                  </Pressable>
                                 ) : (
                                   <Text style={styles.tableCellText} numberOfLines={2}>
-                                    {cell !== null && cell !== undefined ? String(cell) : '—'}
+                                    {valStr || '—'}
                                   </Text>
                                 )}
                               </View>
@@ -706,4 +924,126 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.md,
   },
   footerCloseBtnText: { fontSize: 12, fontWeight: '700', color: '#FFFFFF' },
+
+  // Navigation Tabs Styles
+  tabsContainer: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: Spacing.md,
+  },
+  tabButton: {
+    paddingVertical: 12,
+    marginRight: Spacing.md,
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+  },
+  tabButtonActive: {
+    borderBottomColor: Colors.text,
+  },
+  tabButtonText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: Colors.textLight,
+    letterSpacing: 0.5,
+  },
+  tabButtonTextActive: {
+    color: Colors.text,
+  },
+
+  // Renewals inline view styles
+  renewalsSearchSection: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  filterSection: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+    backgroundColor: '#F8FAFC',
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  filterSectionTitle: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: Colors.textLight,
+    letterSpacing: 0.5,
+    marginTop: 4,
+  },
+  scrollFilters: {
+    flexDirection: 'row',
+    gap: 6,
+    paddingVertical: 4,
+  },
+  smallFilterChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: BorderRadius.sm,
+    backgroundColor: '#E2E8F0',
+    marginRight: 6,
+  },
+  smallFilterChipActive: {
+    backgroundColor: Colors.primary,
+  },
+  smallFilterChipText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: Colors.textMuted,
+  },
+  smallFilterChipTextActive: {
+    color: '#FFFFFF',
+  },
+
+  // PDF Link Styles
+  pdfLinkBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    backgroundColor: '#E0F2FE',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: BorderRadius.sm,
+    borderWidth: 1,
+    borderColor: '#BAE6FD',
+  },
+  pdfLinkText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#0284C7',
+  },
+
+  // Inline Table Footer
+  tabTableFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
+    backgroundColor: '#FFFFFF',
+  },
+  tabTableFooterText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.textMuted,
+  },
+  inlineDownloadBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#10B981',
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 6,
+    borderRadius: BorderRadius.md,
+  },
+  inlineDownloadBtnText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
 });
