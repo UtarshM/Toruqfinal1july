@@ -1466,22 +1466,15 @@ export default function ImportedSheetsPage() {
 
                         {expiryMonthFilter > 0 && (
                           <div className="flex items-center gap-2 ml-auto">
-                            <span className="px-3 py-1 bg-blue-600 text-white text-[10px] font-black rounded-lg">
+                            <span className="px-3 py-1 bg-indigo-600 text-white text-xs font-black rounded-lg shadow-sm">
                               {filteredPreviewRows.length} leads in {MONTH_NAMES[expiryMonthFilter]} {expiryYearFilter}
                             </span>
-                            <button
-                              onClick={() => setShowAssignPanel(!showAssignPanel)}
-                              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition-all flex items-center gap-2 cursor-pointer shadow-md"
-                            >
-                              <Users size={14} />
-                              {showAssignPanel ? 'Hide Assignment Panel' : 'Assign to Sales Executives'}
-                            </button>
                           </div>
                         )}
                       </div>
 
                       {/* Executive Selection Panel */}
-                      {showAssignPanel && expiryMonthFilter > 0 && (
+                      {expiryMonthFilter > 0 && (
                         <div className="bg-white rounded-2xl border border-blue-200 p-4 space-y-4">
                           <div className="flex items-center justify-between">
                             <h4 className="text-sm font-black text-slate-900 flex items-center gap-2">
