@@ -23,141 +23,245 @@ export async function GET(
     const { filename } = await params
     const safeFileName = path.basename(filename)
 
-    const uploadDir = getUploadDir()
-    const filePath = path.join(uploadDir, safeFileName)
-
     // Extract batch name
     const batchName = safeFileName
       .replace(/^import_/, '')
       .replace(/\.(xlsx|csv)$/, '')
 
-    if (!fs.existsSync(filePath)) {
-      // Regenerate file from PostgreSQL on-the-fly if missing in ephemeral storage
-      if (batchName === 'renewals') {
-        const { syncRenewalsSpreadsheet } = await import('@/lib/spreadsheet-sync')
-        await syncRenewalsSpreadsheet(uploadDir).catch(() => {})
-      } else {
-        // Find all distinct active import batches from database
-        const dbBatches = await prisma.lead.groupBy({
-          by: ['importName'],
-          where: {
-            status: { not: 'Trashed' },
-            deletedAt: null
-          }
-        })
-
-        let actualImportName = batchName
-        let foundMatch = false
-
-        // Check for exact sanitized match
-        for (const batch of dbBatches) {
-          if (!batch.importName) continue
-          const clean = String(batch.importName).trim().replace(/[^a-zA-Z0-9_-]/g, '_')
-          if (clean === batchName) {
-            actualImportName = batch.importName
-            foundMatch = true
-            break
-          }
-        }
-
-        // Fallback for special batches like 'all_leads', 'leads' or 'direct_entry'
-        if (!foundMatch) {
-          if (batchName === 'all_leads' || batchName === 'leads' || batchName === 'direct_entry') {
-            foundMatch = true
-            actualImportName = 'leads'
-          }
-        }
-
-        if (foundMatch) {
-          const { syncSpreadsheetForBatch } = await import('@/lib/spreadsheet-sync')
-          await syncSpreadsheetForBatch(actualImportName, uploadDir).catch(() => {})
-        }
-      }
-    }
-
-    if (!fs.existsSync(filePath)) {
-      return NextResponse.json({ error: 'Spreadsheet file not found' }, { status: 404 })
-    }
-
-    const fileBuffer = fs.readFileSync(filePath)
-    const wb = XLSX.read(fileBuffer, { type: 'buffer' })
-    const sheetName = wb.SheetNames[0] || 'Leads'
-    const rawRows: any[][] = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1, defval: '' })
-
-    if (!rawRows || rawRows.length === 0) {
-      return NextResponse.json({
-        fileName: safeFileName,
-        headers: [],
-        rows: [],
-        agentRowsCount: 0,
-        downloadUrl: `/api/v1/import/sheets/download?file=${safeFileName}`
-      })
-    }
-
-    const headers = rawRows[0].map(h => String(h || ''))
-    const dataRows = rawRows.slice(1).filter(r => r && r.some(c => c !== undefined && c !== null && String(c).trim() !== ''))
-
-    let agentColIdx = headers.findIndex(h => h.toLowerCase().trim() === 'agent')
-    let agentRowsCount = 0
-
-    if (agentColIdx !== -1) {
-      dataRows.forEach(row => {
-        const val = String(row[agentColIdx] || '').toLowerCase().trim()
-        if (val === 'agent') agentRowsCount++
-      })
-    }
-
-    // Support server-side pagination via ?page=1&limit=50. Default to paginated if ?all=true is not passed.
     const url = new URL(req.url)
     const pageParam = url.searchParams.get('page')
     const limitParam = url.searchParams.get('limit')
     const allParam = url.searchParams.get('all')
     const searchParam = url.searchParams.get('search')?.toLowerCase().trim() || ''
 
-    // If search is provided, filter rows server-side
-    let filteredRows = dataRows
-    if (searchParam) {
-      filteredRows = dataRows.filter(r =>
-        r.some(c => String(c || '').toLowerCase().includes(searchParam))
-      )
+    const shouldPaginate = pageParam || allParam !== 'true'
+    const page = Math.max(1, parseInt(pageParam || '1') || 1)
+    const limit = Math.min(200, Math.max(10, parseInt(limitParam || '100') || 100))
+
+    const formatDate = (date: any) => {
+      if (!date) return '—'
+      try {
+        const d = new Date(date)
+        if (isNaN(d.getTime())) return '—'
+        return d.toLocaleDateString('en-IN')
+      } catch {
+        return '—'
+      }
     }
 
-    const shouldPaginate = pageParam || allParam !== 'true'
+    if (batchName === 'renewals') {
+      const renewals = await prisma.renewalRecord.findMany({
+        include: {
+          assignee: true,
+          createdBy: true,
+          lead: {
+            include: {
+              assignee: true
+            }
+          },
+          policy: true
+        },
+        orderBy: { policyEndDate: 'asc' }
+      })
 
-    if (shouldPaginate) {
-      const page = Math.max(1, parseInt(pageParam || '1') || 1)
-      const limit = Math.min(200, Math.max(10, parseInt(limitParam || '100') || 100))
-      const totalRows = filteredRows.length
-      const totalPages = Math.ceil(totalRows / limit)
-      const start = (page - 1) * limit
-      const paginatedRows = filteredRows.slice(start, start + limit)
+      const headers = [
+        'Client Name', 'Phone Number', 'Vehicle No', 'Policy Number', 'Provider / Insurer',
+        'Policy Type', 'Premium Amount', 'Policy Expiry Date', 'Policy Start Date',
+        'Renewal Status', 'Sales Person', 'Policy PDF', 'Assigned To', 'Assigned Month',
+        'Assigned Year', 'Renewed Date', 'Refused Date', 'Created At'
+      ]
+
+      let dataRows = renewals.map(r => {
+        const leadCf = r.lead?.customFields as any
+        const pdfUrl = (Array.isArray(r.documents) && r.documents[0]) || 
+                       leadCf?.policySubmission?.issuedPolicyPdfUrl || 
+                       '';
+        const salesPerson = r.createdBy?.fullName || r.lead?.assignee?.fullName || 'Unassigned'
+        return [
+          r.clientName || '',
+          r.clientPhone || '',
+          r.vehicleNo || '',
+          r.policyNumber || r.policy?.policyNumber || '',
+          r.provider || r.policy?.provider || '',
+          r.policyType || r.policy?.type || '',
+          r.premiumAmount ? Number(r.premiumAmount) : '',
+          formatDate(r.policyEndDate),
+          formatDate(r.policyStartDate),
+          r.renewalStatus || 'Active',
+          salesPerson,
+          pdfUrl,
+          r.assignee?.fullName || 'Unassigned',
+          r.assignedMonth ? Number(r.assignedMonth) : '',
+          r.assignedYear ? Number(r.assignedYear) : '',
+          formatDate(r.renewedAt),
+          formatDate(r.refusedAt),
+          formatDate(r.createdAt)
+        ]
+      })
+
+      if (searchParam) {
+        dataRows = dataRows.filter(r =>
+          r.some(c => String(c || '').toLowerCase().includes(searchParam))
+        )
+      }
+
+      if (shouldPaginate) {
+        const totalRows = dataRows.length
+        const totalPages = Math.ceil(totalRows / limit)
+        const start = (page - 1) * limit
+        const paginatedRows = dataRows.slice(start, start + limit)
+
+        return NextResponse.json({
+          fileName: safeFileName,
+          downloadUrl: `/api/v1/import/sheets/download?file=${safeFileName}`,
+          headers,
+          rows: paginatedRows,
+          agentColIdx: -1,
+          agentRowsCount: 0,
+          totalRows,
+          totalPages,
+          page,
+          limit
+        })
+      }
 
       return NextResponse.json({
         fileName: safeFileName,
         downloadUrl: `/api/v1/import/sheets/download?file=${safeFileName}`,
         headers,
-        rows: paginatedRows,
-        agentColIdx,
-        agentRowsCount,
-        totalRows,
-        totalPages,
-        page,
-        limit
+        rows: dataRows,
+        agentColIdx: -1,
+        agentRowsCount: 0,
+        totalRows: dataRows.length
       })
     }
+
+    // Default leads mode
+    const whereClause: any = { status: { not: 'Trashed' }, deletedAt: null }
+    
+    if (batchName !== 'leads' && batchName !== 'all_leads' && batchName !== 'direct_entry') {
+      const dbBatches = await prisma.lead.groupBy({
+        by: ['importName'],
+        where: { status: { not: 'Trashed' }, deletedAt: null }
+      })
+      let actualImportName = batchName
+      for (const b of dbBatches) {
+        if (!b.importName) continue
+        const clean = String(b.importName).trim().replace(/[^a-zA-Z0-9_-]/g, '_')
+        if (clean === batchName) {
+          actualImportName = b.importName
+          whereClause.importName = actualImportName
+          break
+        }
+      }
+    } else if (batchName === 'direct_entry') {
+      whereClause.importName = null
+    }
+
+    if (searchParam) {
+      whereClause.OR = [
+        { clientName: { contains: searchParam, mode: 'insensitive' } },
+        { clientPhone: { contains: searchParam, mode: 'insensitive' } },
+        { vehicleNo: { contains: searchParam, mode: 'insensitive' } },
+        { city: { contains: searchParam, mode: 'insensitive' } },
+        { importName: { contains: searchParam, mode: 'insensitive' } }
+      ]
+    }
+
+    let totalRows = 0
+    let leadsList = []
+
+    if (shouldPaginate) {
+      const [count, leads] = await Promise.all([
+        prisma.lead.count({ where: whereClause }),
+        prisma.lead.findMany({
+          where: whereClause,
+          include: { assignee: true },
+          orderBy: { createdAt: 'desc' },
+          skip: (page - 1) * limit,
+          take: limit
+        })
+      ])
+      totalRows = count
+      leadsList = leads
+    } else {
+      const leads = await prisma.lead.findMany({
+        where: whereClause,
+        include: { assignee: true },
+        orderBy: { createdAt: 'desc' }
+      })
+      totalRows = leads.length
+      leadsList = leads
+    }
+
+    const standardHeaders = [
+      'Client Name', 'Phone Number', 'Mo No. 2', 'REG NO / Vehicle No', 'Policy Expiry Date',
+      'Registration Date', 'GVW', 'City', 'Address', 'Agent', 'Lead Status', 'Assigned To', 'Import Batch'
+    ]
+
+    const customKeys = new Set<string>()
+    leadsList.forEach(l => {
+      const cf = (l.customFields && typeof l.customFields === 'object') ? (l.customFields as any) : {}
+      Object.keys(cf).forEach(k => {
+        if (!['phone2', 'mobile2', 'phone', 'contact'].includes(k.toLowerCase())) {
+          customKeys.add(k)
+        }
+      })
+    })
+    const customKeyList = Array.from(customKeys)
+    const headers = [...standardHeaders, ...customKeyList]
+
+    const rows = leadsList.map((l) => {
+      const cf = (l.customFields && typeof l.customFields === 'object') ? (l.customFields as any) : {}
+      const phone2 = cf.phone2 || cf.mobile2 || cf['mo no 2'] || cf['Mo No 2'] || (l.clientEmail && /^[0-9\s+-]{7,15}$/.test(l.clientEmail.trim()) ? l.clientEmail : '')
+      const isAgentLead = l.existingAgent === 'Agent' || (l.existingAgent && String(l.existingAgent).toLowerCase().includes('agent'))
+
+      const row = [
+        l.clientName || '',
+        l.clientPhone || '',
+        phone2 || '',
+        l.vehicleNo || '',
+        formatDate(l.expiryDate),
+        formatDate(l.registrationDate),
+        l.gvw || '',
+        l.city || '',
+        l.address || '',
+        isAgentLead ? 'agent' : (l.existingAgent || ''),
+        l.status || 'New',
+        l.assignee?.fullName || (isAgentLead ? 'Pending Admin Approval' : 'Unassigned'),
+        l.importName || 'Direct Entry'
+      ]
+
+      customKeyList.forEach(k => {
+        row.push(cf[k] !== undefined && cf[k] !== null ? String(cf[k]) : '')
+      })
+
+      return row
+    })
+
+    const agentColIdx = headers.findIndex(h => h.toLowerCase().trim() === 'agent')
+    const agentRowsCount = await prisma.lead.count({
+      where: {
+        ...whereClause,
+        existingAgent: 'Agent'
+      }
+    })
 
     return NextResponse.json({
       fileName: safeFileName,
       downloadUrl: `/api/v1/import/sheets/download?file=${safeFileName}`,
       headers,
-      rows: dataRows,
+      rows,
       agentColIdx,
       agentRowsCount,
-      totalRows: dataRows.length
+      totalRows,
+      totalPages: shouldPaginate ? Math.ceil(totalRows / limit) : 1,
+      page: shouldPaginate ? page : 1,
+      limit: shouldPaginate ? limit : totalRows
     })
   } catch (err: any) {
     console.error('[sheets-preview] Error:', err)
-    return NextResponse.json({ error: 'Failed to parse spreadsheet file', details: err?.message }, { status: 500 })
+    return NextResponse.json({ error: 'Failed to query spreadsheet leads', details: err?.message }, { status: 500 })
   }
 }
 
