@@ -26,6 +26,34 @@ export async function GET(
     const uploadDir = getUploadDir()
     const filePath = path.join(uploadDir, safeFileName)
 
+    // Extract batch name
+    const batchName = safeFileName
+      .replace(/^import_/, '')
+      .replace(/_\d+\.(xlsx|csv)$/, '')
+      .replace(/\.(xlsx|csv)$/, '')
+
+    if (!fs.existsSync(filePath)) {
+      // Regenerate file from PostgreSQL on-the-fly if missing in ephemeral storage
+      if (batchName === 'renewals') {
+        const { syncRenewalsSpreadsheet } = await import('@/lib/spreadsheet-sync')
+        await syncRenewalsSpreadsheet(uploadDir).catch(() => {})
+      } else {
+        const cleanBatch = batchName.replace(/_/g, ' ')
+        const count = await prisma.lead.count({
+          where: {
+            OR: [
+              { importName: batchName },
+              { importName: cleanBatch }
+            ]
+          }
+        })
+        if (count > 0) {
+          const { syncSpreadsheetForBatch } = await import('@/lib/spreadsheet-sync')
+          await syncSpreadsheetForBatch(batchName, uploadDir).catch(() => {})
+        }
+      }
+    }
+
     if (!fs.existsSync(filePath)) {
       return NextResponse.json({ error: 'Spreadsheet file not found' }, { status: 404 })
     }
