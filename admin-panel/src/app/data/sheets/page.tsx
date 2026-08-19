@@ -652,10 +652,7 @@ export default function ImportedSheetsPage() {
           {/* Card 2: Renewals Master Sheet */}
           <button
             onClick={() => {
-              const renewalsFile = files.find(f => f.fileName === 'import_renewals.xlsx')
-              if (renewalsFile) {
-                handleOpenPreview(renewalsFile)
-              }
+              window.location.href = '/renewals'
             }}
             className="p-4 rounded-2xl border border-slate-100 bg-white hover:border-indigo-200 hover:shadow-md hover:bg-indigo-50/20 text-left transition-all cursor-pointer flex items-center justify-between group"
           >
@@ -669,7 +666,7 @@ export default function ImportedSheetsPage() {
                 {files.find(f => f.fileName === 'import_renewals.xlsx')?.totalRows || 0}
               </h2>
               <p className="text-[10px] font-semibold text-indigo-600 mt-0.5 font-bold">
-                Click to preview renewals
+                Click to manage renewals page
               </p>
             </div>
             <div className="h-10 w-10 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center group-hover:bg-indigo-600 group-hover:text-white transition-all shadow-sm shrink-0">
@@ -1263,10 +1260,16 @@ export default function ImportedSheetsPage() {
 
                   <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
                     <button
-                      onClick={() => handleOpenPreview(file, leadSearch)}
+                      onClick={() => {
+                        if (file.fileName === 'import_renewals.xlsx') {
+                          window.location.href = '/renewals'
+                        } else {
+                          handleOpenPreview(file, leadSearch)
+                        }
+                      }}
                       className="flex-1 py-2 px-3 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
                     >
-                      <Eye size={14} /> Preview Sheet
+                      <Eye size={14} /> {file.fileName === 'import_renewals.xlsx' ? 'Manage Renewals' : 'Preview Sheet'}
                     </button>
                     <a
                       href={file.downloadUrl}
