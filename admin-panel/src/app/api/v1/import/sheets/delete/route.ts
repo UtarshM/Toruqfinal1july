@@ -41,7 +41,6 @@ export async function POST(req: NextRequest) {
 
       const batchName = safeFileName
         .replace(/^import_/, '')
-        .replace(/_\d+\.(xlsx|csv)$/, '')
         .replace(/\.(xlsx|csv)$/, '')
 
       if (deleteLeads) {

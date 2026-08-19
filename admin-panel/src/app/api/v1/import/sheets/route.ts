@@ -150,7 +150,6 @@ export async function GET(req: NextRequest) {
       // Friendly batch name
       let batchName = fileName
         .replace(/^import_/, '')
-        .replace(/_\d+\.(xlsx|csv)$/, '')
         .replace(/\.(xlsx|csv)$/, '')
         .replace(/_/g, ' ')
 

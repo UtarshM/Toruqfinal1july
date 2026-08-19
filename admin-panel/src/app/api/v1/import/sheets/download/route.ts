@@ -28,7 +28,6 @@ export async function GET(req: NextRequest) {
     // Extract batch name
     const batchName = safeFileName
       .replace(/^import_/, '')
-      .replace(/_\d+\.(xlsx|csv)$/, '')
       .replace(/\.(xlsx|csv)$/, '')
 
     if (!fs.existsSync(filePath)) {
