@@ -266,6 +266,71 @@ export default function ManagerDocumentsPage() {
     }
   }
 
+  const renderSubmissionDetailsPreview = (item: PolicySubmissionItem) => {
+    const sub = item.submission
+    return (
+      <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/60 max-h-[70vh] overflow-y-auto space-y-4">
+        <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-wider border-b pb-1">
+          Submission Details (26 Fields)
+        </h4>
+        
+        <div className="space-y-3 text-xs">
+          {/* Client & Vehicle */}
+          <div className="space-y-1 bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs">
+            <h6 className="text-[9px] font-black text-slate-400 uppercase">Vehicle & Client Info</h6>
+            <div className="flex justify-between"><span className="text-slate-500">Client Name:</span> <span className="font-bold text-slate-900">{item.clientName}</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">Reg No:</span> <span className="font-mono font-bold text-slate-900">{sub.formData?.regNo || item.vehicleNo || 'N/A'}</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">Mobile No 1:</span> <span className="font-bold text-slate-900">{sub.formData?.mobileNo1 || item.clientPhone || 'N/A'}</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">Mobile No 2:</span> <span className="font-bold text-slate-900">{sub.formData?.mobileNo2 || 'N/A'}</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">Customer Type:</span> <span className="font-bold text-slate-900 capitalize">{sub.formData?.customerType || 'N/A'}</span></div>
+          </div>
+
+          {/* Policy Params */}
+          <div className="space-y-1 bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs">
+            <h6 className="text-[9px] font-black text-slate-400 uppercase">Policy Parameters</h6>
+            <div className="flex justify-between"><span className="text-slate-500">Policy Type:</span> <span className="font-bold text-slate-900">{sub.formData?.policyType || 'N/A'}</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">Category:</span> <span className="font-bold text-slate-900">{sub.formData?.customerCategory || 'N/A'}</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">Expiry Date:</span> <span className="font-bold text-slate-900">{sub.formData?.expDate || 'N/A'}</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">NCB Status:</span> <span className="font-bold text-slate-900">{sub.formData?.ncb || 'N/A'}</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">HP Details:</span> <span className="font-bold text-slate-900">{sub.formData?.hpDetails || 'N/A'}</span></div>
+          </div>
+
+          {/* Rates */}
+          <div className="space-y-1 bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs">
+            <h6 className="text-[9px] font-black text-slate-400 uppercase">Rates & Premium</h6>
+            <div className="flex justify-between"><span className="text-slate-500">Quoted Rate:</span> <span className="font-bold text-slate-900">{sub.formData?.rate || 'N/A'}</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">Rate Confirm Screenshot:</span> <span className="font-bold text-slate-900">{sub.formData?.rateConfirmationSS || 'N/A'}</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">Premium From Customer:</span> <span className="font-bold text-emerald-700">₹{sub.formData?.rsFromCustomer || 'N/A'}</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">Payment Mode:</span> <span className="font-bold text-slate-900 capitalize">{sub.formData?.paymentMode || 'N/A'}</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">IDV Breakup:</span> <span className="font-bold text-slate-900">{sub.formData?.idvBreakup || 'N/A'}</span></div>
+          </div>
+
+          {/* Checklist */}
+          <div className="space-y-1 bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs">
+            <h6 className="text-[9px] font-black text-slate-400 uppercase">Checklist & Compliance</h6>
+            <div className="flex justify-between"><span className="text-slate-500">NCB Confirmation:</span> <span className="font-bold text-slate-900">{sub.formData?.ncbConfirmation || 'N/A'}</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">IMP Date Message SS:</span> <span className="font-bold text-slate-900">{sub.formData?.impDateMsgSS || 'N/A'}</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">Vehicle Photo Matched:</span> <span className="font-bold text-slate-900">{sub.formData?.vehiclePhoto || 'N/A'}</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">Body Type Matched:</span> <span className="font-bold text-slate-900">{sub.formData?.bodyTypeMatched || 'N/A'}</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">Google Form:</span> <span className="font-bold text-slate-900">{sub.formData?.googleFormSubmitted || 'N/A'}</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">No Jack Cover SS:</span> <span className="font-bold text-slate-900">{sub.formData?.noJackCoverConfirmationSS || 'N/A'}</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">Inspection:</span> <span className="font-bold text-slate-900">{sub.formData?.inspectionStatus || 'N/A'}</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">mParivahan RC Status:</span> <span className="font-bold text-slate-900">{sub.formData?.mparivahanRcStatus || 'N/A'}</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">Amt Due Date Msg SS:</span> <span className="font-bold text-slate-900">{sub.formData?.amountDueDateMsgSS || 'N/A'}</span></div>
+          </div>
+
+          {/* Notes */}
+          <div className="space-y-1 bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs">
+            <h6 className="text-[9px] font-black text-slate-400 uppercase">Notes & Remarks</h6>
+            <div className="flex flex-col"><span className="text-slate-500">New Client Name (If changed):</span> <span className="font-bold text-slate-900">{sub.formData?.newName || 'N/A'}</span></div>
+            <div className="flex flex-col mt-1"><span className="text-slate-500">Description:</span> <span className="font-bold text-slate-900">{sub.formData?.description || 'N/A'}</span></div>
+            <div className="flex flex-col mt-1"><span className="text-slate-500">Other Works Required:</span> <span className="font-bold text-slate-900">{sub.formData?.otherWorks || 'N/A'}</span></div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   // Master Sheet Export Modal State
   const [showExportModal, setShowExportModal] = useState(false)
   const [exportMode, setExportMode] = useState<'month' | 'range' | 'single' | 'all'>('month')
@@ -819,68 +884,80 @@ export default function ManagerDocumentsPage() {
       {/* MODAL 1: APPROVE DOCUMENTS */}
       {approveModalLead && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white rounded-3xl w-full max-w-md overflow-hidden shadow-2xl p-6">
-            <div className="w-12 h-12 rounded-2xl bg-emerald-50 border border-emerald-100 text-emerald-600 flex items-center justify-center mx-auto mb-4">
-              <CheckCircle2 size={24} />
+          <div className="bg-white rounded-3xl w-full max-w-4xl overflow-hidden shadow-2xl p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+            
+            {/* Left Column: Action */}
+            <div className="flex flex-col justify-center">
+              <div className="w-12 h-12 rounded-2xl bg-emerald-50 border border-emerald-100 text-emerald-600 flex items-center justify-center mx-auto mb-4">
+                <CheckCircle2 size={24} />
+              </div>
+
+              <h3 className="text-lg font-black text-center text-slate-900">
+                Approve Documents for {approveModalLead.clientName}?
+              </h3>
+              <p className="text-xs text-center text-slate-500 mt-2">
+                Vehicle: <span className="font-mono font-bold text-slate-800">{approveModalLead.vehicleNo}</span>. This approves all 7 verified documents. You can download the bundle and share it with the insurer.
+              </p>
+
+              <div className="mt-4 p-3 bg-slate-50 rounded-2xl border border-slate-100">
+                <label className="flex items-center gap-2.5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={visibleToSalesPerson}
+                    onChange={e => setVisibleToSalesPerson(e.target.checked)}
+                    className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer accent-blue-600"
+                  />
+                  <span className="text-xs font-bold text-slate-700">
+                    Allow Sales Executive ({approveModalLead.assignee?.fullName || 'Sales'}) to view approved status
+                  </span>
+                </label>
+              </div>
+
+              <div className="flex gap-3 mt-6">
+                <button
+                  type="button"
+                  disabled={actionLoading}
+                  onClick={() => setApproveModalLead(null)}
+                  className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={actionLoading}
+                  onClick={handleConfirmApproveDocuments}
+                  className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-emerald-600/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  {actionLoading ? (
+                    <>
+                      <RefreshCw size={14} className="animate-spin" />
+                      <span>Approving...</span>
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 size={14} />
+                      <span>Approve Documents</span>
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
 
-            <h3 className="text-lg font-black text-center text-slate-900">
-              Approve Documents for {approveModalLead.clientName}?
-            </h3>
-            <p className="text-xs text-center text-slate-500 mt-2">
-              Vehicle: <span className="font-mono font-bold text-slate-800">{approveModalLead.vehicleNo}</span>. This approves all 7 verified documents. You can download the bundle and share it with the insurer.
-            </p>
-
-            <div className="mt-4 p-3 bg-slate-50 rounded-2xl border border-slate-100">
-              <label className="flex items-center gap-2.5 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={visibleToSalesPerson}
-                  onChange={e => setVisibleToSalesPerson(e.target.checked)}
-                  className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer accent-blue-600"
-                />
-                <span className="text-xs font-bold text-slate-700">
-                  Allow Sales Executive ({approveModalLead.assignee?.fullName || 'Sales'}) to view approved status
-                </span>
-              </label>
+            {/* Right Column: Preview */}
+            <div className="border-t md:border-t-0 md:border-l border-slate-100 pt-6 md:pt-0 md:pl-6">
+              {renderSubmissionDetailsPreview(approveModalLead)}
             </div>
 
-            <div className="flex gap-3 mt-6">
-              <button
-                type="button"
-                disabled={actionLoading}
-                onClick={() => setApproveModalLead(null)}
-                className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={actionLoading}
-                onClick={handleConfirmApproveDocuments}
-                className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-emerald-600/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-              >
-                {actionLoading ? (
-                  <>
-                    <RefreshCw size={14} className="animate-spin" />
-                    <span>Approving...</span>
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle2 size={14} />
-                    <span>Approve Documents</span>
-                  </>
-                )}
-              </button>
-            </div>
           </div>
         </div>
       )}
 
+
+
       {/* MODAL 2: UPLOAD ISSUED POLICY PDF */}
       {uploadPolicyModalLead && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl p-6">
+          <div className="bg-white rounded-3xl w-full max-w-5xl overflow-hidden shadow-2xl p-6">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
               <div>
                 <h3 className="font-black text-slate-900 text-base">Upload Issued Policy PDF</h3>
@@ -893,7 +970,9 @@ export default function ManagerDocumentsPage() {
               </button>
             </div>
 
-            <form onSubmit={handleSubmitIssuedPolicy} className="space-y-4">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-4">
+              {/* Left Column: Form */}
+              <form onSubmit={handleSubmitIssuedPolicy} className="space-y-4">
               {/* File Uploader */}
               <div>
                 <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">
@@ -1062,14 +1141,21 @@ export default function ManagerDocumentsPage() {
                 </button>
               </div>
             </form>
+
+            {/* Right Column: Preview */}
+            <div className="border-t lg:border-t-0 lg:border-l border-slate-100 pt-6 lg:pt-0 lg:pl-6">
+              {renderSubmissionDetailsPreview(uploadPolicyModalLead)}
+            </div>
+
           </div>
         </div>
-      )}
+      </div>
+    )}
 
       {/* MODAL 3: REVERT */}
       {revertModalLead && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white rounded-3xl w-full max-w-md overflow-hidden shadow-2xl p-6">
+          <div className="bg-white rounded-3xl w-full max-w-4xl overflow-hidden shadow-2xl p-6">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
               <h3 className="font-black text-slate-900 text-base">Revert Submission</h3>
               <button onClick={() => setRevertModalLead(null)} className="p-1.5 text-slate-400 hover:text-slate-600 rounded-xl">
@@ -1077,42 +1163,50 @@ export default function ManagerDocumentsPage() {
               </button>
             </div>
 
-            <div className="space-y-4">
-              <p className="text-xs text-slate-600 font-medium">
-                Return documents for <strong className="text-slate-900">{revertModalLead.clientName}</strong> ({revertModalLead.vehicleNo}) to the sales executive for corrections.
-              </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
+              {/* Left Column: Form */}
+              <div className="space-y-4 flex flex-col justify-center">
+                <p className="text-xs text-slate-600 font-medium">
+                  Return documents for <strong className="text-slate-900">{revertModalLead.clientName}</strong> ({revertModalLead.vehicleNo}) to the sales executive for corrections.
+                </p>
 
-              <div>
-                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">
-                  Reason for Reversion *
-                </label>
-                <textarea
-                  rows={3}
-                  required
-                  placeholder="e.g. RC book photo is blurred, please re-upload clear image..."
-                  value={revertReason}
-                  onChange={e => setRevertReason(e.target.value)}
-                  className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold outline-none resize-none"
-                />
+                <div>
+                  <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">
+                    Reason for Reversion *
+                  </label>
+                  <textarea
+                    rows={3}
+                    required
+                    placeholder="e.g. RC book photo is blurred, please re-upload clear image..."
+                    value={revertReason}
+                    onChange={e => setRevertReason(e.target.value)}
+                    className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold outline-none resize-none"
+                  />
+                </div>
+
+                <div className="flex gap-3 pt-2">
+                  <button
+                    type="button"
+                    disabled={actionLoading}
+                    onClick={() => setRevertModalLead(null)}
+                    className="flex-1 py-2.5 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-200"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={actionLoading}
+                    onClick={handleConfirmRevert}
+                    className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-all shadow-md"
+                  >
+                    {actionLoading ? 'Reverting...' : 'Confirm Revert'}
+                  </button>
+                </div>
               </div>
 
-              <div className="flex gap-3 pt-2">
-                <button
-                  type="button"
-                  disabled={actionLoading}
-                  onClick={() => setRevertModalLead(null)}
-                  className="flex-1 py-2.5 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-200"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  disabled={actionLoading}
-                  onClick={handleConfirmRevert}
-                  className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-all shadow-md"
-                >
-                  {actionLoading ? 'Reverting...' : 'Confirm Revert'}
-                </button>
+              {/* Right Column: Preview */}
+              <div className="border-t md:border-t-0 md:border-l border-slate-100 pt-6 md:pt-0 md:pl-6">
+                {renderSubmissionDetailsPreview(revertModalLead)}
               </div>
             </div>
           </div>
