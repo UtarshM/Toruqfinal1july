@@ -70,14 +70,20 @@ export default function NotificationsScreen() {
   };
 
   const handlePressNotif = async (item: Notification) => {
-    if (!item.isRead) {
-      await markRead(item.id);
+    console.log('[Notification Clicked] ID:', item.id, 'Type:', item.entityType, 'EntityID:', item.entityId);
+    try {
+      if (!item.isRead) {
+        await api.patch(`/notifications/${item.id}`, {});
+        load();
+      }
+    } catch (err) {
+      console.warn('Failed to mark read', err);
     }
     if (item.entityType === 'lead' && item.entityId) {
-      router.push({
-        pathname: '/(protected)/lead/[id]',
-        params: { id: item.entityId, showPolicyModal: 'true' }
-      } as any);
+      console.log('Navigating to lead with policy modal:', item.entityId);
+      router.push(`/(protected)/lead/${item.entityId}?showPolicyModal=true` as any);
+    } else {
+      console.log('No lead redirection logic for type:', item.entityType);
     }
   };
 
