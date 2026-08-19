@@ -64,6 +64,14 @@ export default function ImportedSheetsScreen() {
   const [previewAgentOnly, setPreviewAgentOnly] = useState(false);
   const [downloading, setDownloading] = useState(false);
 
+  // Pagination state for modal preview
+  const [modalRows, setModalRows] = useState<any[][]>([]);
+  const [modalPage, setModalPage] = useState(1);
+  const [modalTotalRows, setModalTotalRows] = useState(0);
+  const [modalTotalPages, setModalTotalPages] = useState(1);
+  const [modalLoadingMore, setModalLoadingMore] = useState(false);
+  const searchTimeoutRef = React.useRef<any>(null);
+
   const fetchFiles = useCallback(async (sync = false) => {
     try {
       setLoading(true);
@@ -114,15 +122,85 @@ export default function ImportedSheetsScreen() {
     setPreviewLoading(true);
     setPreviewSearch('');
     setPreviewAgentOnly(false);
+    setModalRows([]);
+    setModalPage(1);
+    setModalTotalRows(0);
+    setModalTotalPages(1);
     try {
-      const res = await api.get<SheetPreviewData>(`/import/sheets/${encodeURIComponent(file.fileName)}`);
-      setPreviewData(res);
+      // For non-renewal files on mobile, use paginated API
+      if (file.fileName !== 'import_renewals.xlsx') {
+        const res = await api.get<any>(`/import/sheets/${encodeURIComponent(file.fileName)}?page=1&limit=50`);
+        setPreviewData({
+          fileName: res.fileName,
+          downloadUrl: res.downloadUrl,
+          headers: res.headers || [],
+          rows: [], // Don't store all rows in previewData for paginated mode
+          agentColIdx: res.agentColIdx ?? -1,
+          agentRowsCount: res.agentRowsCount ?? 0,
+          totalRows: res.totalRows ?? 0,
+        });
+        setModalRows(res.rows || []);
+        setModalPage(res.page || 1);
+        setModalTotalRows(res.totalRows || 0);
+        setModalTotalPages(res.totalPages || 1);
+      } else {
+        const res = await api.get<SheetPreviewData>(`/import/sheets/${encodeURIComponent(file.fileName)}`);
+        setPreviewData(res);
+        setModalRows(res.rows || []);
+        setModalTotalRows(res.totalRows || res.rows?.length || 0);
+        setModalTotalPages(1);
+      }
     } catch (err: any) {
       Alert.alert('Preview Error', err.message || 'Failed to load spreadsheet details.');
     } finally {
       setPreviewLoading(false);
     }
   };
+
+  // Load more rows (next page) for modal preview
+  const loadMoreModalRows = useCallback(async () => {
+    if (!selectedFile || modalLoadingMore || modalPage >= modalTotalPages) return;
+    setModalLoadingMore(true);
+    try {
+      const nextPage = modalPage + 1;
+      const searchQ = previewSearch.trim() ? `&search=${encodeURIComponent(previewSearch.trim())}` : '';
+      const res = await api.get<any>(
+        `/import/sheets/${encodeURIComponent(selectedFile.fileName)}?page=${nextPage}&limit=50${searchQ}`
+      );
+      setModalRows(prev => [...prev, ...(res.rows || [])]);
+      setModalPage(nextPage);
+      setModalTotalPages(res.totalPages || 1);
+      setModalTotalRows(res.totalRows || 0);
+    } catch (err: any) {
+      console.warn('Failed to load more rows:', err);
+    } finally {
+      setModalLoadingMore(false);
+    }
+  }, [selectedFile, modalPage, modalTotalPages, modalLoadingMore, previewSearch]);
+
+  // Debounced server-side search for modal
+  const handleModalSearchChange = useCallback((text: string) => {
+    setPreviewSearch(text);
+    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+    if (!selectedFile || selectedFile.fileName === 'import_renewals.xlsx') return;
+    searchTimeoutRef.current = setTimeout(async () => {
+      setPreviewLoading(true);
+      try {
+        const searchQ = text.trim() ? `&search=${encodeURIComponent(text.trim())}` : '';
+        const res = await api.get<any>(
+          `/import/sheets/${encodeURIComponent(selectedFile.fileName)}?page=1&limit=50${searchQ}`
+        );
+        setModalRows(res.rows || []);
+        setModalPage(1);
+        setModalTotalRows(res.totalRows || 0);
+        setModalTotalPages(res.totalPages || 1);
+      } catch (err: any) {
+        console.warn('Server search failed:', err);
+      } finally {
+        setPreviewLoading(false);
+      }
+    }, 500);
+  }, [selectedFile]);
 
   const handleDownloadAndShare = async (file: SpreadsheetFile) => {
     setDownloading(true);
@@ -165,45 +243,59 @@ export default function ImportedSheetsScreen() {
     });
   }, [files, search, agentFilter]);
 
+  // For modal preview (leads), use paginated modalRows. For renewals tab, use previewData.rows.
   const filteredPreviewRows = useMemo(() => {
-    if (!previewData?.rows) return [];
-    let rows = previewData.rows;
+    // Renewals tab uses previewData.rows (loaded fully)
+    if (activeTab === 'renewals') {
+      if (!previewData?.rows) return [];
+      let rows = previewData.rows;
 
-    if (previewAgentOnly && previewData.agentColIdx !== -1) {
+      if (previewAgentOnly && previewData.agentColIdx !== -1) {
+        rows = rows.filter(r => {
+          const val = String(r[previewData.agentColIdx] || '').toLowerCase().trim();
+          return val === 'agent' || val.includes('agent');
+        });
+      }
+
+      if (expiryMonthFilter > 0) {
+        const expiryDateColIdx = previewData.headers.findIndex(h => 
+          h.toLowerCase().includes('expiry') || h.toLowerCase().includes('end')
+        );
+        if (expiryDateColIdx !== -1) {
+          rows = rows.filter(r => {
+            const val = String(r[expiryDateColIdx] || '').trim();
+            if (!val || val === '—') return false;
+            try {
+              const d = new Date(val);
+              if (isNaN(d.getTime())) return false;
+              return (d.getMonth() + 1) === expiryMonthFilter && d.getFullYear() === expiryYearFilter;
+            } catch {
+              return false;
+            }
+          });
+        }
+      }
+
+      if (previewSearch.trim()) {
+        const term = previewSearch.toLowerCase().trim();
+        rows = rows.filter(r =>
+          r.some(cell => String(cell || '').toLowerCase().includes(term))
+        );
+      }
+
+      return rows;
+    }
+
+    // For modal preview (leads), rows are already paginated and search is server-side
+    let rows = modalRows;
+    if (previewAgentOnly && previewData?.agentColIdx !== undefined && previewData.agentColIdx !== -1) {
       rows = rows.filter(r => {
         const val = String(r[previewData.agentColIdx] || '').toLowerCase().trim();
         return val === 'agent' || val.includes('agent');
       });
     }
-
-    if (activeTab === 'renewals' && expiryMonthFilter > 0) {
-      const expiryDateColIdx = previewData.headers.findIndex(h => 
-        h.toLowerCase().includes('expiry') || h.toLowerCase().includes('end')
-      );
-      if (expiryDateColIdx !== -1) {
-        rows = rows.filter(r => {
-          const val = String(r[expiryDateColIdx] || '').trim();
-          if (!val || val === '—') return false;
-          try {
-            const d = new Date(val);
-            if (isNaN(d.getTime())) return false;
-            return (d.getMonth() + 1) === expiryMonthFilter && d.getFullYear() === expiryYearFilter;
-          } catch {
-            return false;
-          }
-        });
-      }
-    }
-
-    if (previewSearch.trim()) {
-      const term = previewSearch.toLowerCase().trim();
-      rows = rows.filter(r =>
-        r.some(cell => String(cell || '').toLowerCase().includes(term))
-      );
-    }
-
     return rows;
-  }, [previewData, previewAgentOnly, previewSearch, activeTab, expiryMonthFilter, expiryYearFilter]);
+  }, [previewData, modalRows, previewAgentOnly, previewSearch, activeTab, expiryMonthFilter, expiryYearFilter]);
 
   if (!isAdminOrManager) {
     return (
@@ -558,10 +650,10 @@ export default function ImportedSheetsScreen() {
                 placeholder="Search row values..."
                 placeholderTextColor={Colors.textLight}
                 value={previewSearch}
-                onChangeText={setPreviewSearch}
+                onChangeText={handleModalSearchChange}
               />
               {previewSearch.length > 0 && (
-                <Pressable onPress={() => setPreviewSearch('')}>
+                <Pressable onPress={() => handleModalSearchChange('')}>
                   <Ionicons name="close-circle" size={16} color={Colors.textLight} />
                 </Pressable>
               )}
@@ -580,83 +672,109 @@ export default function ImportedSheetsScreen() {
             )}
           </View>
 
-          {/* Table Container */}
-          {previewLoading ? (
+          {/* Table Container — uses FlatList for virtualized rendering */}
+          {previewLoading && filteredPreviewRows.length === 0 ? (
             <View style={styles.previewLoader}>
               <ActivityIndicator size="large" color={Colors.primary} />
-              <Text style={styles.previewLoaderText}>Rendering spreadsheet table...</Text>
+              <Text style={styles.previewLoaderText}>Loading spreadsheet...</Text>
             </View>
           ) : (
             <ScrollView horizontal showsHorizontalScrollIndicator={true} style={{ flex: 1 }}>
-              <ScrollView showsVerticalScrollIndicator={true} style={{ flex: 1 }}>
-                <View style={styles.table}>
-                  {/* Table Header */}
-                  <View style={styles.tableHeaderRow}>
-                    <View style={[styles.tableHeaderCell, { width: 50 }]}>
-                      <Text style={styles.tableHeaderText}>#</Text>
-                    </View>
-                    {(previewData?.headers || []).map((h, i) => (
-                      <View key={i} style={[styles.tableHeaderCell, { width: 140 }]}>
-                        <Text style={styles.tableHeaderText} numberOfLines={1}>{h}</Text>
-                      </View>
-                    ))}
+              <View style={{ flex: 1, width: 50 + ((previewData?.headers || []).length * 140) }}>
+                {/* Sticky Table Header */}
+                <View style={styles.tableHeaderRow}>
+                  <View style={[styles.tableHeaderCell, { width: 50 }]}>
+                    <Text style={styles.tableHeaderText}>#</Text>
                   </View>
+                  {(previewData?.headers || []).map((h, i) => (
+                    <View key={i} style={[styles.tableHeaderCell, { width: 140 }]}>
+                      <Text style={styles.tableHeaderText} numberOfLines={1}>{h}</Text>
+                    </View>
+                  ))}
+                </View>
 
-                  {/* Table Body Rows */}
-                  {filteredPreviewRows.length === 0 ? (
+                {/* Virtualized Row List */}
+                <FlatList
+                  data={filteredPreviewRows}
+                  keyExtractor={(_, index) => String(index)}
+                  initialNumToRender={20}
+                  maxToRenderPerBatch={15}
+                  windowSize={5}
+                  removeClippedSubviews={true}
+                  onEndReached={() => {
+                    if (modalPage < modalTotalPages && !modalLoadingMore) {
+                      loadMoreModalRows();
+                    }
+                  }}
+                  onEndReachedThreshold={0.5}
+                  ListEmptyComponent={
                     <View style={styles.emptyTable}>
                       <Text style={styles.emptyTableText}>No matching rows found in spreadsheet</Text>
                     </View>
-                  ) : (
-                    filteredPreviewRows.map((row, rIdx) => {
-                      const isAgent = previewData?.agentColIdx !== undefined &&
-                        previewData.agentColIdx !== -1 &&
-                        String(row[previewData.agentColIdx] || '').toLowerCase().trim() === 'agent';
+                  }
+                  ListFooterComponent={
+                    modalLoadingMore ? (
+                      <View style={{ paddingVertical: 16, alignItems: 'center' }}>
+                        <ActivityIndicator size="small" color={Colors.primary} />
+                        <Text style={{ fontSize: 11, color: Colors.textMuted, marginTop: 4, fontWeight: '600' }}>Loading more rows...</Text>
+                      </View>
+                    ) : modalPage < modalTotalPages ? (
+                      <Pressable
+                        onPress={loadMoreModalRows}
+                        style={{ paddingVertical: 14, alignItems: 'center', backgroundColor: '#F0F4FF', marginTop: 2, borderRadius: 8 }}
+                      >
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: Colors.primary }}>Load More Rows</Text>
+                      </Pressable>
+                    ) : null
+                  }
+                  renderItem={({ item: row, index: rIdx }) => {
+                    const isAgent = previewData?.agentColIdx !== undefined &&
+                      previewData.agentColIdx !== -1 &&
+                      String(row[previewData.agentColIdx] || '').toLowerCase().trim() === 'agent';
 
-                      return (
-                        <View key={rIdx} style={[styles.tableRow, isAgent && styles.agentTableRow]}>
-                          <View style={[styles.tableCell, { width: 50 }, isAgent && styles.agentTableCell]}>
-                            <Text style={[styles.tableCellText, { color: Colors.textMuted }]}>{rIdx + 1}</Text>
-                          </View>
-                          {row.map((cell: any, cIdx: number) => {
-                            const isAgentCell = cIdx === previewData?.agentColIdx && String(cell || '').toLowerCase().trim() === 'agent';
-                            const valStr = cell !== null && cell !== undefined ? String(cell) : '';
-                            const isLink = valStr.startsWith('http');
-                            return (
-                              <View key={cIdx} style={[styles.tableCell, { width: 140 }, isAgent && styles.agentTableCell]}>
-                                {isAgentCell ? (
-                                  <View style={styles.agentPill}>
-                                    <Text style={styles.agentPillText}>AGENT 🚨</Text>
-                                  </View>
-                                ) : isLink ? (
-                                  <Pressable
-                                    style={styles.pdfLinkBtn}
-                                    onPress={() => Linking.openURL(valStr).catch(() => Alert.alert('Error', 'Cannot open URL'))}
-                                  >
-                                    <Ionicons name="document-outline" size={12} color="#0284C7" />
-                                    <Text style={styles.pdfLinkText} numberOfLines={1}>View PDF</Text>
-                                  </Pressable>
-                                ) : (
-                                  <Text style={styles.tableCellText} numberOfLines={2}>
-                                    {valStr || '—'}
-                                  </Text>
-                                )}
-                              </View>
-                            );
-                          })}
+                    return (
+                      <View style={[styles.tableRow, isAgent && styles.agentTableRow]}>
+                        <View style={[styles.tableCell, { width: 50 }, isAgent && styles.agentTableCell]}>
+                          <Text style={[styles.tableCellText, { color: Colors.textMuted }]}>{rIdx + 1}</Text>
                         </View>
-                      );
-                    })
-                  )}
-                </View>
-              </ScrollView>
+                        {row.map((cell: any, cIdx: number) => {
+                          const isAgentCell = cIdx === previewData?.agentColIdx && String(cell || '').toLowerCase().trim() === 'agent';
+                          const valStr = cell !== null && cell !== undefined ? String(cell) : '';
+                          const isLink = valStr.startsWith('http');
+                          return (
+                            <View key={cIdx} style={[styles.tableCell, { width: 140 }, isAgent && styles.agentTableCell]}>
+                              {isAgentCell ? (
+                                <View style={styles.agentPill}>
+                                  <Text style={styles.agentPillText}>AGENT 🚨</Text>
+                                </View>
+                              ) : isLink ? (
+                                <Pressable
+                                  style={styles.pdfLinkBtn}
+                                  onPress={() => Linking.openURL(valStr).catch(() => Alert.alert('Error', 'Cannot open URL'))}
+                                >
+                                  <Ionicons name="document-outline" size={12} color="#0284C7" />
+                                  <Text style={styles.pdfLinkText} numberOfLines={1}>View PDF</Text>
+                                </Pressable>
+                              ) : (
+                                <Text style={styles.tableCellText} numberOfLines={2}>
+                                  {valStr || '—'}
+                                </Text>
+                              )}
+                            </View>
+                          );
+                        })}
+                      </View>
+                    );
+                  }}
+                />
+              </View>
             </ScrollView>
           )}
 
           {/* Modal Footer */}
           <View style={styles.modalFooter}>
             <Text style={styles.footerRowCount}>
-              Showing {filteredPreviewRows.length} of {previewData?.rows?.length || 0} rows
+              Showing {filteredPreviewRows.length} of {modalTotalRows || previewData?.totalRows || 0} rows
             </Text>
             <Pressable
               style={styles.footerCloseBtn}

@@ -107,6 +107,42 @@ export async function GET(
       })
     }
 
+    // Support server-side pagination via ?page=1&limit=50
+    const url = new URL(req.url)
+    const pageParam = url.searchParams.get('page')
+    const limitParam = url.searchParams.get('limit')
+    const searchParam = url.searchParams.get('search')?.toLowerCase().trim() || ''
+
+    // If search is provided, filter rows server-side
+    let filteredRows = dataRows
+    if (searchParam) {
+      filteredRows = dataRows.filter(r =>
+        r.some(c => String(c || '').toLowerCase().includes(searchParam))
+      )
+    }
+
+    if (pageParam) {
+      const page = Math.max(1, parseInt(pageParam) || 1)
+      const limit = Math.min(200, Math.max(10, parseInt(limitParam || '50') || 50))
+      const totalRows = filteredRows.length
+      const totalPages = Math.ceil(totalRows / limit)
+      const start = (page - 1) * limit
+      const paginatedRows = filteredRows.slice(start, start + limit)
+
+      return NextResponse.json({
+        fileName: safeFileName,
+        downloadUrl: `/api/v1/import/sheets/download?file=${safeFileName}`,
+        headers,
+        rows: paginatedRows,
+        agentColIdx,
+        agentRowsCount,
+        totalRows,
+        totalPages,
+        page,
+        limit
+      })
+    }
+
     return NextResponse.json({
       fileName: safeFileName,
       downloadUrl: `/api/v1/import/sheets/download?file=${safeFileName}`,
