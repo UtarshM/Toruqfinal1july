@@ -131,6 +131,36 @@ export async function POST(req: NextRequest) {
         endDate: new Date(body.end_date)
       }
     })
+
+    // Auto-create RenewalRecord for the renewal lifecycle
+    try {
+      const lead = body.lead_id ? await prisma.lead.findUnique({
+        where: { id: body.lead_id },
+        select: { clientName: true, clientPhone: true, clientEmail: true, vehicleNo: true, assignedTo: true }
+      }) : null
+
+      await prisma.renewalRecord.create({
+        data: {
+          leadId: body.lead_id || null,
+          policyId: policy.id,
+          vehicleNo: lead?.vehicleNo || null,
+          clientName: lead?.clientName || body.client_name || 'Unknown',
+          clientPhone: lead?.clientPhone || body.client_phone || null,
+          clientEmail: lead?.clientEmail || null,
+          policyNumber: body.policy_number || null,
+          provider: body.provider || null,
+          policyType: body.type || null,
+          premiumAmount: body.premium_amount || null,
+          policyStartDate: new Date(body.start_date),
+          policyEndDate: new Date(body.end_date),
+          renewalStatus: 'Active',
+          createdBySalesId: lead?.assignedTo || context.userId
+        }
+      })
+    } catch (renewalErr) {
+      console.warn('[policy POST] Failed to create renewal record:', renewalErr)
+    }
+
     return NextResponse.json(policy)
   } catch (error) {
     console.error('Policy POST Error:', error)

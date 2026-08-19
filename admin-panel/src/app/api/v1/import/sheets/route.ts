@@ -15,113 +15,7 @@ function formatDate(date: any): string {
   }
 }
 
-async function syncSpreadsheetForBatch(batchName: string | null, uploadDir: string) {
-  const isAll = batchName === 'all_leads'
-  const isDirect = batchName === null || batchName === '' || batchName === 'direct_entry'
-  
-  const whereClause: any = { status: { not: 'Trashed' } }
-  if (!isAll) {
-    if (isDirect) {
-      whereClause.importName = null
-    } else {
-      whereClause.importName = batchName
-    }
-  }
-
-  const leads = await prisma.lead.findMany({
-    where: whereClause,
-    include: { assignee: true },
-    orderBy: { createdAt: 'desc' }
-  })
-
-  if (leads.length === 0) return null
-
-  // Collect all unique custom fields keys across leads in this batch
-  const customKeys = new Set<string>()
-  leads.forEach(l => {
-    if (l.customFields && typeof l.customFields === 'object') {
-      Object.keys(l.customFields).forEach(k => {
-        if (k !== 'importFilePath') customKeys.add(k)
-      })
-    }
-  })
-
-  const standardHeaders = [
-    'Client Name',
-    'Phone Number',
-    'Mo No. 2',
-    'REG NO / Vehicle No',
-    'Policy Expiry Date',
-    'Registration Date',
-    'GVW',
-    'City',
-    'Address',
-    'Agent',
-    'Lead Status',
-    'Assigned To',
-    'Import Batch'
-  ]
-
-  const customKeyList = Array.from(customKeys).filter(k => !['phone2', 'mobile2'].includes(k))
-  const allHeaders = [...standardHeaders, ...customKeyList]
-  const rows: any[][] = [allHeaders]
-
-  leads.forEach(l => {
-    const cf = (l.customFields && typeof l.customFields === 'object') ? (l.customFields as any) : {}
-    const phone2 = cf.phone2 || cf.mobile2 || (l.clientEmail && /^[0-9\s+-]{7,15}$/.test(l.clientEmail.trim()) ? l.clientEmail : '')
-
-    const row = [
-      l.clientName || '',
-      l.clientPhone || '',
-      phone2 || '',
-      l.vehicleNo || '',
-      formatDate(l.expiryDate),
-      formatDate(l.registrationDate),
-      l.gvw || '',
-      l.city || '',
-      l.address || '',
-      l.existingAgent === 'Agent' ? 'agent' : (l.existingAgent || ''),
-      l.status || 'New',
-      l.assignee?.fullName || 'Unassigned',
-      l.importName || 'Direct Entry'
-    ]
-
-    customKeyList.forEach(k => {
-      row.push(cf[k] !== undefined && cf[k] !== null ? String(cf[k]) : '')
-    })
-
-    rows.push(row)
-  })
-
-  const cleanBatchName = isAll ? 'all_leads' : isDirect ? 'direct_entry' : String(batchName).trim().replace(/[^a-zA-Z0-9_-]/g, '_')
-  const fileName = `import_${cleanBatchName}.xlsx`
-  const fullPath = path.join(uploadDir, fileName)
-
-  try {
-    const ws = XLSX.utils.aoa_to_sheet(rows)
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, 'Leads')
-    
-    try {
-      XLSX.writeFile(wb, fullPath)
-    } catch (writeErr: any) {
-      const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' })
-      const tempPath = `${fullPath}.tmp`
-      fs.writeFileSync(tempPath, buf)
-      try {
-        fs.renameSync(tempPath, fullPath)
-      } catch {}
-    }
-  } catch (err) {
-    console.warn(`[syncSpreadsheetForBatch] Skipped updating locked file ${fileName}:`, err)
-  }
-
-  return {
-    fileName,
-    totalRows: leads.length,
-    agentCount: leads.filter(l => l.existingAgent === 'Agent').length
-  }
-}
+import { syncSpreadsheetForBatch } from '@/lib/spreadsheet-sync'
 
 export async function GET(req: NextRequest) {
   const { context, error } = await validateAuth(req)
@@ -295,5 +189,90 @@ export async function GET(req: NextRequest) {
   } catch (err: any) {
     console.error('[sheets] Error:', err)
     return NextResponse.json({ error: 'Internal Server Error', details: err?.message }, { status: 500 })
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  const { context, error } = await validateAuth(req, 'leads.delete')
+  if (error || !context) return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const roleUpper = (context.role || '').toUpperCase()
+  const isAdmin = roleUpper.includes('ADMIN') || roleUpper.includes('SUPER')
+  if (!isAdmin) {
+    return NextResponse.json({ error: 'Forbidden: Only Admins can delete spreadsheets' }, { status: 403 })
+  }
+
+  try {
+    const body = await req.json().catch(() => ({}))
+    const fileNames: string[] = body.fileNames || []
+    const deleteLeads: boolean = body.deleteLeads !== false
+
+    if (!Array.isArray(fileNames) || fileNames.length === 0) {
+      return NextResponse.json({ error: 'No file names provided for deletion' }, { status: 400 })
+    }
+
+    const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'imports')
+    let totalDeletedFiles = 0
+    let totalDeletedLeads = 0
+
+    for (const rawName of fileNames) {
+      const safeFileName = path.basename(rawName)
+      if (safeFileName === 'import_all_leads.xlsx') continue
+
+      const filePath = path.join(uploadDir, safeFileName)
+
+      // Extract batch name
+      const batchName = safeFileName
+        .replace(/^import_/, '')
+        .replace(/_\d+\.(xlsx|csv)$/, '')
+        .replace(/\.(xlsx|csv)$/, '')
+
+      if (deleteLeads && batchName && batchName !== 'all_leads') {
+        const leads = await prisma.lead.findMany({
+          where: {
+            OR: [
+              { importName: batchName },
+              { importName: batchName.replace(/_/g, '-') },
+              { importName: batchName.replace(/-/g, '_') }
+            ]
+          },
+          select: { id: true }
+        })
+
+        const leadIds = leads.map(l => l.id)
+        if (leadIds.length > 0) {
+          await prisma.leadAssignment.deleteMany({ where: { leadId: { in: leadIds } } }).catch(() => {})
+          await prisma.leadStatusHistory.deleteMany({ where: { leadId: { in: leadIds } } }).catch(() => {})
+          await prisma.leadWhatsAppLog.deleteMany({ where: { leadId: { in: leadIds } } }).catch(() => {})
+          await prisma.call.deleteMany({ where: { leadId: { in: leadIds } } }).catch(() => {})
+          await prisma.followUp.deleteMany({ where: { leadId: { in: leadIds } } }).catch(() => {})
+          await prisma.activityLog.deleteMany({ where: { entityId: { in: leadIds } } }).catch(() => {})
+
+          const delResult = await prisma.lead.deleteMany({
+            where: { id: { in: leadIds } }
+          })
+          totalDeletedLeads += delResult.count
+        }
+      }
+
+      if (fs.existsSync(filePath)) {
+        try {
+          fs.unlinkSync(filePath)
+          totalDeletedFiles++
+        } catch (err: any) {
+          console.warn('[sheets bulk DELETE] Failed to unlink file:', err)
+        }
+      }
+    }
+
+    return NextResponse.json({
+      success: true,
+      deletedFilesCount: totalDeletedFiles,
+      deletedLeadsCount: totalDeletedLeads,
+      message: `${totalDeletedFiles} spreadsheet(s) and ${totalDeletedLeads} associated lead(s) deleted successfully.`
+    })
+  } catch (err: any) {
+    console.error('[sheets bulk DELETE] Error:', err)
+    return NextResponse.json({ error: err.message || 'Bulk deletion failed' }, { status: 500 })
   }
 }

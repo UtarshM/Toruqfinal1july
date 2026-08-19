@@ -1,0 +1,709 @@
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import {
+  View, Text, StyleSheet, FlatList, Pressable, RefreshControl,
+  TextInput, Modal, ScrollView, ActivityIndicator, Alert, Platform, Share
+} from 'react-native';
+import { useRouter, useFocusEffect } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import { api, BASE_URL } from '../../src/utils/api';
+import { Colors, Spacing, FontSize, BorderRadius } from '../../src/utils/theme';
+import Sidebar from '../../src/components/Sidebar';
+import AppFooter from '../../src/components/AppFooter';
+import { useAuth } from '../../src/context/AuthContext';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
+
+interface SpreadsheetFile {
+  fileName: string;
+  batchName: string;
+  sizeBytes: number;
+  importedAt?: string;
+  updatedAt: string;
+  dayOfWeek?: string;
+  dateOnly?: string;
+  totalRows: number;
+  agentCount: number;
+  headers: string[];
+  downloadUrl: string;
+}
+
+interface SheetPreviewData {
+  fileName: string;
+  downloadUrl: string;
+  headers: string[];
+  rows: any[][];
+  agentColIdx: number;
+  agentRowsCount: number;
+  totalRows?: number;
+}
+
+export default function ImportedSheetsScreen() {
+  const router = useRouter();
+  const { user } = useAuth();
+  const roleUpper = (typeof (user?.role as any) === 'object' ? (user?.role as any)?.name : user?.role)?.toUpperCase() || '';
+  const isAdminOrManager = roleUpper.includes('ADMIN') || roleUpper.includes('SUPER') || roleUpper === 'MANAGER';
+
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [files, setFiles] = useState<SpreadsheetFile[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [search, setSearch] = useState('');
+  const [agentFilter, setAgentFilter] = useState<'all' | 'has_agent'>('all');
+
+  // Preview modal state
+  const [selectedFile, setSelectedFile] = useState<SpreadsheetFile | null>(null);
+  const [previewData, setPreviewData] = useState<SheetPreviewData | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewSearch, setPreviewSearch] = useState('');
+  const [previewAgentOnly, setPreviewAgentOnly] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+
+  const fetchFiles = useCallback(async (sync = false) => {
+    try {
+      setLoading(true);
+      const url = sync ? '/import/sheets?sync=true' : '/import/sheets';
+      const data = await api.get<any>(url);
+      setFiles(data?.files || []);
+    } catch (err: any) {
+      console.warn('Failed to load spreadsheets:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchFiles();
+    }, [fetchFiles])
+  );
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await fetchFiles(true);
+    setRefreshing(false);
+  };
+
+  const handleOpenPreview = async (file: SpreadsheetFile) => {
+    setSelectedFile(file);
+    setPreviewLoading(true);
+    setPreviewSearch('');
+    setPreviewAgentOnly(false);
+    try {
+      const res = await api.get<SheetPreviewData>(`/import/sheets/${encodeURIComponent(file.fileName)}`);
+      setPreviewData(res);
+    } catch (err: any) {
+      Alert.alert('Preview Error', err.message || 'Failed to load spreadsheet details.');
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  const handleDownloadAndShare = async (file: SpreadsheetFile) => {
+    setDownloading(true);
+    try {
+      const downloadUrl = file.downloadUrl.startsWith('http')
+        ? file.downloadUrl
+        : `${BASE_URL}${file.downloadUrl}`;
+
+      const localUri = `${FileSystem.documentDirectory}${file.fileName}`;
+      const { uri } = await FileSystem.downloadAsync(downloadUrl, localUri);
+
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(uri, {
+          mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          dialogTitle: `Share ${file.batchName} Spreadsheet`,
+          UTI: 'com.microsoft.excel.xlsx'
+        });
+      } else {
+        Alert.alert('Download Complete', `File saved to ${uri}`);
+      }
+    } catch (err: any) {
+      Alert.alert('Share Failed', err.message || 'Could not download or share spreadsheet.');
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  const filteredFiles = useMemo(() => {
+    return files.filter(f => {
+      if (search.trim()) {
+        const term = search.toLowerCase().trim();
+        const matchesName = f.batchName.toLowerCase().includes(term) || f.fileName.toLowerCase().includes(term);
+        if (!matchesName) return false;
+      }
+      if (agentFilter === 'has_agent' && f.agentCount === 0) {
+        return false;
+      }
+      return true;
+    });
+  }, [files, search, agentFilter]);
+
+  const filteredPreviewRows = useMemo(() => {
+    if (!previewData?.rows) return [];
+    let rows = previewData.rows;
+
+    if (previewAgentOnly && previewData.agentColIdx !== -1) {
+      rows = rows.filter(r => {
+        const val = String(r[previewData.agentColIdx] || '').toLowerCase().trim();
+        return val === 'agent' || val.includes('agent');
+      });
+    }
+
+    if (previewSearch.trim()) {
+      const term = previewSearch.toLowerCase().trim();
+      rows = rows.filter(r =>
+        r.some(cell => String(cell || '').toLowerCase().includes(term))
+      );
+    }
+
+    return rows;
+  }, [previewData, previewAgentOnly, previewSearch]);
+
+  if (!isAdminOrManager) {
+    return (
+      <SafeAreaView style={styles.safe} edges={['top']}>
+        <Sidebar visible={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+        <View style={styles.header}>
+          <Pressable onPress={() => setSidebarOpen(true)} style={styles.menuBtn}>
+            <Ionicons name="menu-outline" size={26} color={Colors.text} />
+          </Pressable>
+          <Text style={styles.title}>Spreadsheets</Text>
+        </View>
+        <View style={styles.restrictedContainer}>
+          <Ionicons name="lock-closed-outline" size={56} color={Colors.error} style={{ marginBottom: 12 }} />
+          <Text style={styles.restrictedTitle}>Access Restricted</Text>
+          <Text style={styles.restrictedDesc}>Spreadsheet data is exclusively accessible to Administrators and Managers.</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  return (
+    <SafeAreaView style={styles.safe} edges={['top']}>
+      <Sidebar visible={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+
+      {/* Top Header */}
+      <View style={styles.header}>
+        <Pressable onPress={() => setSidebarOpen(true)} style={styles.menuBtn}>
+          <Ionicons name="menu-outline" size={26} color={Colors.text} />
+        </Pressable>
+        <Text style={styles.title}>Imported Spreadsheets</Text>
+        <Pressable style={styles.syncBtn} onPress={() => fetchFiles(true)}>
+          <Ionicons name="sync" size={20} color={Colors.primary} />
+        </Pressable>
+      </View>
+
+      {/* Search and Filters */}
+      <View style={styles.searchSection}>
+        <View style={styles.searchBox}>
+          <Ionicons name="search" size={18} color={Colors.textMuted} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search spreadsheet batch name..."
+            placeholderTextColor={Colors.textLight}
+            value={search}
+            onChangeText={setSearch}
+          />
+          {search.length > 0 && (
+            <Pressable onPress={() => setSearch('')}>
+              <Ionicons name="close-circle" size={18} color={Colors.textLight} />
+            </Pressable>
+          )}
+        </View>
+
+        <View style={styles.filterRow}>
+          <Pressable
+            style={[styles.filterChip, agentFilter === 'all' && styles.filterChipActive]}
+            onPress={() => setAgentFilter('all')}
+          >
+            <Text style={[styles.filterChipText, agentFilter === 'all' && styles.filterChipTextActive]}>
+              All Sheets ({files.length})
+            </Text>
+          </Pressable>
+
+          <Pressable
+            style={[styles.filterChip, agentFilter === 'has_agent' && styles.filterChipActive]}
+            onPress={() => setAgentFilter('has_agent')}
+          >
+            <Ionicons name="alert-circle" size={14} color={agentFilter === 'has_agent' ? '#FFFFFF' : '#D97706'} style={{ marginRight: 4 }} />
+            <Text style={[styles.filterChipText, agentFilter === 'has_agent' && styles.filterChipTextActive]}>
+              With Detected Agents
+            </Text>
+          </Pressable>
+        </View>
+      </View>
+
+      {/* Spreadsheets List */}
+      <FlatList
+        data={filteredFiles}
+        keyExtractor={item => item.fileName}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
+        contentContainerStyle={styles.listContainer}
+        ListEmptyComponent={
+          <View style={styles.emptyState}>
+            {loading ? (
+              <ActivityIndicator size="large" color={Colors.primary} />
+            ) : (
+              <>
+                <Ionicons name="document-text-outline" size={48} color={Colors.textLight} />
+                <Text style={styles.emptyTitle}>No spreadsheets found</Text>
+                <Text style={styles.emptyText}>Upload leads from the Import Leads screen to generate batch sheets.</Text>
+              </>
+            )}
+          </View>
+        }
+        renderItem={({ item }) => (
+          <Pressable
+            style={({ pressed }) => [styles.sheetCard, pressed && { opacity: 0.9 }]}
+            onPress={() => handleOpenPreview(item)}
+          >
+            <View style={styles.cardHeader}>
+              <View style={styles.iconWrap}>
+                <Ionicons name="grid-outline" size={22} color={Colors.primary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.batchName} numberOfLines={1}>{item.batchName}</Text>
+                <Text style={styles.fileNameText} numberOfLines={1}>{item.fileName}</Text>
+              </View>
+              {item.agentCount > 0 ? (
+                <View style={styles.agentBadge}>
+                  <Ionicons name="alert-circle" size={12} color="#B45309" style={{ marginRight: 3 }} />
+                  <Text style={styles.agentBadgeText}>{item.agentCount} Agent{item.agentCount > 1 ? 's' : ''}</Text>
+                </View>
+              ) : (
+                <View style={styles.cleanBadge}>
+                  <Text style={styles.cleanBadgeText}>Direct Leads</Text>
+                </View>
+              )}
+            </View>
+
+            <View style={styles.cardDetails}>
+              <View style={styles.detailCol}>
+                <Text style={styles.detailLabel}>TOTAL ROWS</Text>
+                <Text style={styles.detailValue}>{item.totalRows.toLocaleString()}</Text>
+              </View>
+              <View style={styles.detailCol}>
+                <Text style={styles.detailLabel}>IMPORTED DATE</Text>
+                <Text style={styles.detailValue}>
+                  {item.importedAt ? new Date(item.importedAt).toLocaleDateString('en-IN') : 'Direct Entry'}
+                </Text>
+              </View>
+              <View style={styles.detailCol}>
+                <Text style={styles.detailLabel}>DAY</Text>
+                <Text style={styles.detailValue}>{item.dayOfWeek || '—'}</Text>
+              </View>
+            </View>
+
+            <View style={styles.cardActions}>
+              <Pressable
+                style={styles.previewBtn}
+                onPress={() => handleOpenPreview(item)}
+              >
+                <Ionicons name="eye-outline" size={16} color={Colors.primary} />
+                <Text style={styles.previewBtnText}>View Spreadsheet</Text>
+              </Pressable>
+
+              <Pressable
+                style={styles.shareBtn}
+                onPress={() => handleDownloadAndShare(item)}
+                disabled={downloading}
+              >
+                <Ionicons name="share-social-outline" size={16} color="#16A34A" />
+                <Text style={styles.shareBtnText}>Share Excel</Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        )}
+      />
+
+      {/* Spreadsheet Preview Fullscreen Modal */}
+      <Modal
+        visible={!!selectedFile}
+        animationType="slide"
+        onRequestClose={() => setSelectedFile(null)}
+      >
+        <SafeAreaView style={styles.modalSafe} edges={['top', 'bottom']}>
+          {/* Modal Header */}
+          <View style={styles.modalHeader}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.modalTitle} numberOfLines={1}>{selectedFile?.batchName}</Text>
+              <Text style={styles.modalSub}>{selectedFile?.totalRows} Total Rows • {selectedFile?.agentCount || 0} Agents</Text>
+            </View>
+            <Pressable
+              style={styles.modalShareIcon}
+              onPress={() => selectedFile && handleDownloadAndShare(selectedFile)}
+            >
+              <Ionicons name="cloud-download-outline" size={22} color={Colors.primary} />
+            </Pressable>
+            <Pressable onPress={() => setSelectedFile(null)} style={styles.modalCloseBtn}>
+              <Ionicons name="close" size={26} color={Colors.text} />
+            </Pressable>
+          </View>
+
+          {/* Modal Filter Controls */}
+          <View style={styles.modalFilterRow}>
+            <View style={styles.modalSearchBox}>
+              <Ionicons name="search" size={16} color={Colors.textMuted} />
+              <TextInput
+                style={styles.modalSearchInput}
+                placeholder="Search row values..."
+                placeholderTextColor={Colors.textLight}
+                value={previewSearch}
+                onChangeText={setPreviewSearch}
+              />
+              {previewSearch.length > 0 && (
+                <Pressable onPress={() => setPreviewSearch('')}>
+                  <Ionicons name="close-circle" size={16} color={Colors.textLight} />
+                </Pressable>
+              )}
+            </View>
+
+            {selectedFile && selectedFile.agentCount > 0 && (
+              <Pressable
+                style={[styles.agentToggleBtn, previewAgentOnly && styles.agentToggleBtnActive]}
+                onPress={() => setPreviewAgentOnly(!previewAgentOnly)}
+              >
+                <Ionicons name="alert-circle" size={14} color={previewAgentOnly ? '#FFFFFF' : '#B45309'} style={{ marginRight: 4 }} />
+                <Text style={[styles.agentToggleBtnText, previewAgentOnly && styles.agentToggleBtnTextActive]}>
+                  {previewAgentOnly ? 'Show All' : 'Only Agents'}
+                </Text>
+              </Pressable>
+            )}
+          </View>
+
+          {/* Table Container */}
+          {previewLoading ? (
+            <View style={styles.previewLoader}>
+              <ActivityIndicator size="large" color={Colors.primary} />
+              <Text style={styles.previewLoaderText}>Rendering spreadsheet table...</Text>
+            </View>
+          ) : (
+            <ScrollView horizontal showsHorizontalScrollIndicator={true} style={{ flex: 1 }}>
+              <ScrollView showsVerticalScrollIndicator={true} style={{ flex: 1 }}>
+                <View style={styles.table}>
+                  {/* Table Header */}
+                  <View style={styles.tableHeaderRow}>
+                    <View style={[styles.tableHeaderCell, { width: 50 }]}>
+                      <Text style={styles.tableHeaderText}>#</Text>
+                    </View>
+                    {(previewData?.headers || []).map((h, i) => (
+                      <View key={i} style={[styles.tableHeaderCell, { width: 140 }]}>
+                        <Text style={styles.tableHeaderText} numberOfLines={1}>{h}</Text>
+                      </View>
+                    ))}
+                  </View>
+
+                  {/* Table Body Rows */}
+                  {filteredPreviewRows.length === 0 ? (
+                    <View style={styles.emptyTable}>
+                      <Text style={styles.emptyTableText}>No matching rows found in spreadsheet</Text>
+                    </View>
+                  ) : (
+                    filteredPreviewRows.map((row, rIdx) => {
+                      const isAgent = previewData?.agentColIdx !== undefined &&
+                        previewData.agentColIdx !== -1 &&
+                        String(row[previewData.agentColIdx] || '').toLowerCase().trim() === 'agent';
+
+                      return (
+                        <View key={rIdx} style={[styles.tableRow, isAgent && styles.agentTableRow]}>
+                          <View style={[styles.tableCell, { width: 50 }, isAgent && styles.agentTableCell]}>
+                            <Text style={[styles.tableCellText, { color: Colors.textMuted }]}>{rIdx + 1}</Text>
+                          </View>
+                          {row.map((cell: any, cIdx: number) => {
+                            const isAgentCell = cIdx === previewData?.agentColIdx && String(cell || '').toLowerCase().trim() === 'agent';
+                            return (
+                              <View key={cIdx} style={[styles.tableCell, { width: 140 }, isAgent && styles.agentTableCell]}>
+                                {isAgentCell ? (
+                                  <View style={styles.agentPill}>
+                                    <Text style={styles.agentPillText}>AGENT 🚨</Text>
+                                  </View>
+                                ) : (
+                                  <Text style={styles.tableCellText} numberOfLines={2}>
+                                    {cell !== null && cell !== undefined ? String(cell) : '—'}
+                                  </Text>
+                                )}
+                              </View>
+                            );
+                          })}
+                        </View>
+                      );
+                    })
+                  )}
+                </View>
+              </ScrollView>
+            </ScrollView>
+          )}
+
+          {/* Modal Footer */}
+          <View style={styles.modalFooter}>
+            <Text style={styles.footerRowCount}>
+              Showing {filteredPreviewRows.length} of {previewData?.rows?.length || 0} rows
+            </Text>
+            <Pressable
+              style={styles.footerCloseBtn}
+              onPress={() => setSelectedFile(null)}
+            >
+              <Text style={styles.footerCloseBtnText}>Close View</Text>
+            </Pressable>
+          </View>
+        </SafeAreaView>
+      </Modal>
+
+      <AppFooter />
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: Colors.background },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  menuBtn: { padding: Spacing.xs },
+  title: { fontSize: FontSize.lg, fontWeight: '800', color: Colors.text },
+  syncBtn: { padding: Spacing.xs },
+  restrictedContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
+  restrictedTitle: { fontSize: 18, fontWeight: '700', color: Colors.text, marginBottom: 6 },
+  restrictedDesc: { fontSize: 13, color: Colors.textMuted, textAlign: 'center' },
+
+  searchSection: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+    gap: Spacing.xs,
+  },
+  searchBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: Spacing.sm,
+    height: 40,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  searchInput: { flex: 1, fontSize: 13, color: Colors.text, marginLeft: Spacing.xs },
+  filterRow: { flexDirection: 'row', gap: Spacing.xs, marginTop: 4 },
+  filterChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 6,
+    borderRadius: BorderRadius.full,
+    backgroundColor: '#F1F5F9',
+  },
+  filterChipActive: { backgroundColor: Colors.primary },
+  filterChipText: { fontSize: 12, fontWeight: '700', color: Colors.textMuted },
+  filterChipTextActive: { color: '#FFFFFF' },
+
+  listContainer: { padding: Spacing.md, gap: Spacing.md, paddingBottom: 100 },
+  emptyState: { alignItems: 'center', justifyContent: 'center', paddingVertical: 60, gap: Spacing.xs },
+  emptyTitle: { fontSize: 16, fontWeight: '700', color: Colors.text },
+  emptyText: { fontSize: 12, color: Colors.textMuted, textAlign: 'center', paddingHorizontal: 30 },
+
+  sheetCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 6,
+    elevation: 2,
+    gap: Spacing.sm,
+  },
+  cardHeader: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  iconWrap: {
+    width: 42,
+    height: 42,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  batchName: { fontSize: 15, fontWeight: '800', color: Colors.text },
+  fileNameText: { fontSize: 11, color: Colors.textMuted },
+  agentBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+  },
+  agentBadgeText: { fontSize: 11, fontWeight: '800', color: '#B45309' },
+  cleanBadge: {
+    backgroundColor: '#F0FDF4',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  cleanBadgeText: { fontSize: 11, fontWeight: '700', color: '#16A34A' },
+
+  cardDetails: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    backgroundColor: '#F8FAFC',
+    borderRadius: BorderRadius.md,
+    padding: Spacing.sm,
+  },
+  detailCol: { alignItems: 'center' },
+  detailLabel: { fontSize: 9, fontWeight: '800', color: Colors.textLight, letterSpacing: 0.5 },
+  detailValue: { fontSize: 13, fontWeight: '700', color: Colors.text, marginTop: 2 },
+
+  cardActions: { flexDirection: 'row', gap: Spacing.sm, marginTop: 4 },
+  previewBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: Colors.primaryLight,
+    paddingVertical: 10,
+    borderRadius: BorderRadius.md,
+  },
+  previewBtnText: { fontSize: 12, fontWeight: '700', color: Colors.primary },
+  shareBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: '#DCFCE7',
+    paddingVertical: 10,
+    borderRadius: BorderRadius.md,
+  },
+  shareBtnText: { fontSize: 12, fontWeight: '700', color: '#16A34A' },
+
+  // Modal Styles
+  modalSafe: { flex: 1, backgroundColor: '#FFFFFF' },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  modalTitle: { fontSize: 16, fontWeight: '800', color: Colors.text },
+  modalSub: { fontSize: 11, color: Colors.textMuted },
+  modalShareIcon: { padding: Spacing.xs, marginRight: Spacing.xs },
+  modalCloseBtn: { padding: Spacing.xs },
+
+  modalFilterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+    gap: Spacing.xs,
+    backgroundColor: '#F8FAFC',
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  modalSearchBox: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: Spacing.xs,
+    height: 36,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  modalSearchInput: { flex: 1, fontSize: 12, color: Colors.text, marginLeft: 4 },
+  agentToggleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.sm,
+    height: 36,
+    borderRadius: BorderRadius.md,
+    backgroundColor: '#FEF3C7',
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+  },
+  agentToggleBtnActive: { backgroundColor: '#D97706', borderColor: '#B45309' },
+  agentToggleBtnText: { fontSize: 11, fontWeight: '800', color: '#B45309' },
+  agentToggleBtnTextActive: { color: '#FFFFFF' },
+
+  previewLoader: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: Spacing.sm },
+  previewLoaderText: { fontSize: 13, color: Colors.textMuted },
+
+  table: { borderRightWidth: 1, borderRightColor: Colors.border },
+  tableHeaderRow: {
+    flexDirection: 'row',
+    backgroundColor: '#F1F5F9',
+    borderBottomWidth: 2,
+    borderBottomColor: Colors.border,
+  },
+  tableHeaderCell: {
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 10,
+    borderRightWidth: 1,
+    borderRightColor: Colors.border,
+    justifyContent: 'center',
+  },
+  tableHeaderText: { fontSize: 11, fontWeight: '800', color: Colors.textMuted, textTransform: 'uppercase' },
+
+  tableRow: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+    backgroundColor: '#FFFFFF',
+  },
+  agentTableRow: { backgroundColor: '#FFFBEB' },
+  tableCell: {
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 8,
+    borderRightWidth: 1,
+    borderRightColor: Colors.border,
+    justifyContent: 'center',
+  },
+  agentTableCell: { backgroundColor: '#FFFBEB' },
+  tableCellText: { fontSize: 11, color: Colors.text },
+  agentPill: {
+    backgroundColor: '#F59E0B',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    alignSelf: 'flex-start',
+  },
+  agentPillText: { fontSize: 9, fontWeight: '900', color: '#FFFFFF' },
+
+  emptyTable: { padding: 40, alignItems: 'center' },
+  emptyTableText: { fontSize: 13, color: Colors.textMuted },
+
+  modalFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
+    backgroundColor: '#FFFFFF',
+  },
+  footerRowCount: { fontSize: 12, fontWeight: '700', color: Colors.textMuted },
+  footerCloseBtn: {
+    backgroundColor: Colors.primary,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 8,
+    borderRadius: BorderRadius.md,
+  },
+  footerCloseBtnText: { fontSize: 12, fontWeight: '700', color: '#FFFFFF' },
+});

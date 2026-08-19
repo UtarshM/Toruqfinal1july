@@ -352,7 +352,31 @@ export async function POST(req: NextRequest) {
           })
         }
       }
-
+      // 2.5 Auto-create RenewalRecord for renewal lifecycle
+      if (policyRecord) {
+        try {
+          await prisma.renewalRecord.create({
+            data: {
+              leadId,
+              policyId: policyRecord.id,
+              vehicleNo: lead.vehicleNo || null,
+              clientName: lead.clientName || 'Unknown',
+              clientPhone: lead.clientPhone || null,
+              clientEmail: lead.clientEmail || null,
+              policyNumber: finalPolicyNo,
+              provider: finalProvider,
+              policyType: finalType,
+              premiumAmount: rawTotalPrem,
+              policyStartDate: policyStartDate,
+              policyEndDate: policyEndDate,
+              renewalStatus: 'Active',
+              createdBySalesId: lead.assignedTo || context.userId
+            }
+          })
+        } catch (renewalErr) {
+          console.warn('[submissions] Failed to create renewal record:', renewalErr)
+        }
+      }
       // 3. Update Lead CustomFields to Policy_Issued
       const historyEntry = {
         action: 'POLICY_ISSUED_UPLOADED',

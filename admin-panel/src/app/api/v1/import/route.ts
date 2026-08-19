@@ -52,6 +52,9 @@ import path from 'path'
 import fs from 'fs'
 import * as XLSX from 'xlsx'
 
+import { notifyRole } from '@/lib/notify'
+import { syncSpreadsheetForBatch } from '@/lib/spreadsheet-sync'
+
 function normalizePhone(phone: any): string {
   if (!phone) return ''
   const digits = String(phone).replace(/\D/g, '')
@@ -62,12 +65,12 @@ function checkIsAgent(item: any, phone: string | null, agentPhoneSet: Set<string
   if (phone) {
     const cleanP = phone.trim()
     const normP = normalizePhone(phone)
-    if (agentPhoneSet.has(cleanP) || (normP && agentPhoneSet.has(normP))) {
+    if (agentPhoneSet.has(cleanP) || (normP && normP.length >= 10 && agentPhoneSet.has(normP))) {
       return true
     }
   }
 
-  // Check explicit existingAgent property or explicit boolean fields
+  // Check explicit agent column or cells on THIS row
   for (const [k, v] of Object.entries(item)) {
     if (v === null || v === undefined) continue
     const keyLower = k.toLowerCase().trim()
@@ -76,14 +79,38 @@ function checkIsAgent(item: any, phone: string | null, agentPhoneSet: Set<string
 
     const valLower = valStr.toLowerCase()
 
-    // 1. If key is an explicit agent flag column and value is affirmative (yes/true/1/agent/broker)
-    if (['existingagent', 'isagent', 'is_agent', 'agent', 'agent?', 'agent_status'].includes(keyLower)) {
-      // Do not treat pure phone numbers as an agent flag
+    const isAgentCol = (
+      keyLower === 'agent' ||
+      keyLower === 'broker' ||
+      keyLower.includes('agent') ||
+      keyLower.includes('broker') ||
+      ['existingagent', 'isagent', 'is_agent', 'agent?', 'agent_status', 'agent number', 'agent no'].includes(keyLower)
+    )
+
+    if (isAgentCol) {
       const digitsOnly = valStr.replace(/\D/g, '')
-      if (digitsOnly.length >= 10 && valStr === digitsOnly) {
-        continue
+      if (digitsOnly.length < 10 || valStr !== digitsOnly) {
+        if (
+          valLower.includes('agent') ||
+          valLower.includes('broker') ||
+          ['yes', 'true', '1', 'y', 'direct agent'].includes(valLower)
+        ) {
+          return true
+        }
       }
-      if (['yes', 'true', '1', 'y', 'agent', 'broker', 'direct agent'].includes(valLower)) {
+      if (valLower.includes('agent') || valLower.includes('broker')) {
+        return true
+      }
+    } else {
+      if (
+        valLower === 'agent' ||
+        valLower === 'agent number' ||
+        valLower === 'broker' ||
+        valLower === 'direct agent' ||
+        valLower.startsWith('agent -') ||
+        valLower.startsWith('agent:') ||
+        valLower.startsWith('broker:')
+      ) {
         return true
       }
     }
@@ -314,11 +341,79 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Create pending approval requests & notify Admins if agents were detected
+    const cleanBatchName = batchName !== 'default_batch' ? batchName : 'batch'
+    const agentLeads = await prisma.lead.findMany({
+      where: {
+        importName: batchName !== 'default_batch' ? batchName : null,
+        existingAgent: 'Agent',
+        status: { not: 'Trashed' },
+        deletedAt: null
+      },
+      select: { id: true, clientName: true, clientPhone: true, vehicleNo: true }
+    })
+
+    if (agentLeads.length > 0) {
+      for (const agLead of agentLeads) {
+        const existingReq = await prisma.dataChangeRequest.findFirst({
+          where: {
+            entityType: 'Lead',
+            entityId: agLead.id,
+            field: 'existingAgent',
+            status: 'pending'
+          }
+        })
+        if (!existingReq) {
+          await prisma.dataChangeRequest.create({
+            data: {
+              requestedBy: context!.userId,
+              entityType: 'Lead',
+              entityId: agLead.id,
+              field: 'existingAgent',
+              oldValue: 'Unassigned',
+              newValue: 'Agent',
+              reason: `Detected Agent in import "${cleanBatchName}" (Contact: ${agLead.clientPhone || agLead.vehicleNo})`,
+              status: 'pending'
+            }
+          }).catch(err => console.warn('[import POST] Failed to create approval request:', err))
+        }
+      }
+
+      await notifyRole('Admin', {
+        title: `🚨 ${agentLeads.length} Agent Leads Detected in "${cleanBatchName}"`,
+        body: `${agentLeads.length} contact(s) detected as Agent/Broker. Held in Pending Approval for Admin review.`,
+        type: 'warning',
+        entityType: 'agent_approval',
+        data: {
+          importName: cleanBatchName,
+          agentCount: agentLeads.length,
+          leads: agentLeads.slice(0, 5)
+        }
+      }).catch(() => {})
+
+      await notifyRole('Super Admin', {
+        title: `🚨 ${agentLeads.length} Agent Leads Detected in "${cleanBatchName}"`,
+        body: `${agentLeads.length} contact(s) detected as Agent/Broker. Held in Pending Approval for Admin review.`,
+        type: 'warning',
+        entityType: 'agent_approval',
+        data: {
+          importName: cleanBatchName,
+          agentCount: agentLeads.length,
+          leads: agentLeads.slice(0, 5)
+        }
+      }).catch(() => {})
+    }
+
+    // Direct sheet sync
+    await syncSpreadsheetForBatch(batchName !== 'default_batch' ? batchName : null, uploadDir).catch(e => console.warn('[import] Batch sync warning:', e))
+    await syncSpreadsheetForBatch('all_leads', uploadDir).catch(e => console.warn('[import] Master sync warning:', e))
+
     return NextResponse.json({
       success: true,
       message: `Successfully processed ${leads.length} leads.`,
       importedCount,
-      updatedCount
+      updatedCount,
+      agentCount: agentLeads.length
     })
   } catch (err: any) {
     console.error('Lead Import POST Error:', err)

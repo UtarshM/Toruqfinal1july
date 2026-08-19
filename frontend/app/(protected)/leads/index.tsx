@@ -1,5 +1,5 @@
-import React, { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, Pressable, TextInput, RefreshControl, Linking, Platform, StatusBar, Alert, ScrollView } from 'react-native';
+import React, { useState, useCallback, useMemo } from 'react';
+import { View, Text, StyleSheet, FlatList, Pressable, TextInput, RefreshControl, Linking, Platform, StatusBar, Alert, ScrollView, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { api } from '../../../src/utils/api';
@@ -27,6 +27,16 @@ export default function LeadsScreen() {
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [deleting, setDeleting] = useState(false);
+
+  // Month-wise filter
+  const [selectedMonth, setSelectedMonth] = useState<number>(0); // 0 = All Months
+  const MONTH_LABELS = ['All', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+  // WhatsApp draft preview modal
+  const [waModalVisible, setWaModalVisible] = useState(false);
+  const [waMessage, setWaMessage] = useState('');
+  const [waPhone, setWaPhone] = useState('');
+  const [waLeadId, setWaLeadId] = useState('');
 
   const fetchImports = async () => {
     try {
@@ -84,46 +94,84 @@ export default function LeadsScreen() {
 
   const handleWhatsApp = async (leadId: string, phone: string, name: string, vehicle: string, expiry: string) => {
     if (phone) {
-      // Log activity to backend independently
-      try {
-        await api.post(`/leads/${leadId}/whatsapp`, {});
-      } catch (err) {
-        console.warn('Failed to log WhatsApp activity:', err);
-      }
+      const msg = `Hello ${name || 'Customer'},\nYour vehicle ${vehicle || ''} insurance expires on ${expiry || 'soon'}.\nRenew today with Torque Auto Advisor.`;
+      setWaMessage(msg);
+      setWaLeadId(leadId);
 
-      try {
-        const msg = `Hello ${name || 'Customer'},\nYour vehicle ${vehicle || ''} insurance expires on ${expiry || 'soon'}.\nRenew today with Torque Auto Advisor.`;
-        
-        let cleanPhone = phone.replace(/\D/g, '');
-        if (cleanPhone.startsWith('0')) {
-          cleanPhone = cleanPhone.substring(1);
-        }
-        if (!(cleanPhone.length === 12 && cleanPhone.startsWith('91'))) {
-          if (cleanPhone.length === 10) {
-            cleanPhone = '91' + cleanPhone;
-          }
-        }
-
-        const whatsappUrl = `whatsapp://send?phone=${cleanPhone}&text=${encodeURIComponent(msg)}`;
-        try {
-          await Linking.openURL(whatsappUrl);
-        } catch (e) {
-          const webUrl = `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(msg)}`;
-          await Linking.openURL(webUrl).catch(() => {
-            Alert.alert('Error', 'Could not open WhatsApp. Please check if the app is installed.');
-          });
-        }
-      } catch (err) {
-        console.warn('WhatsApp launch error:', err);
+      let cleanPhone = phone.replace(/\D/g, '');
+      if (cleanPhone.startsWith('0')) cleanPhone = cleanPhone.substring(1);
+      if (!(cleanPhone.length === 12 && cleanPhone.startsWith('91'))) {
+        if (cleanPhone.length === 10) cleanPhone = '91' + cleanPhone;
       }
+      setWaPhone(cleanPhone);
+      setWaModalVisible(true);
     }
   };
 
-  const filteredItems = items.filter(l =>
-    l.clientName?.toLowerCase().includes(search.toLowerCase()) ||
-    l.clientPhone?.includes(search) ||
-    l.vehicleNo?.toLowerCase().includes(search.toLowerCase())
-  );
+  const sendWhatsAppFromModal = async () => {
+    setWaModalVisible(false);
+    // Log activity
+    try {
+      await api.post(`/leads/${waLeadId}/whatsapp`, {});
+    } catch (err) {
+      console.warn('Failed to log WhatsApp activity:', err);
+    }
+    // Open WhatsApp
+    try {
+      const whatsappUrl = `whatsapp://send?phone=${waPhone}&text=${encodeURIComponent(waMessage)}`;
+      try {
+        await Linking.openURL(whatsappUrl);
+      } catch (e) {
+        const webUrl = `https://api.whatsapp.com/send?phone=${waPhone}&text=${encodeURIComponent(waMessage)}`;
+        await Linking.openURL(webUrl).catch(() => {
+          Alert.alert('Error', 'Could not open WhatsApp. Please check if the app is installed.');
+        });
+      }
+    } catch (err) {
+      console.warn('WhatsApp launch error:', err);
+    }
+  };
+
+  // Month-wise + search filtering
+  const filteredItems = useMemo(() => {
+    let result = items;
+
+    // Filter by month
+    if (selectedMonth > 0) {
+      result = result.filter(l => {
+        if (!l.expiryDate) return false;
+        const d = new Date(l.expiryDate);
+        return !isNaN(d.getTime()) && (d.getMonth() + 1) === selectedMonth;
+      });
+    }
+
+    // Filter by search
+    if (search.trim()) {
+      const term = search.toLowerCase();
+      result = result.filter(l =>
+        l.clientName?.toLowerCase().includes(term) ||
+        l.clientPhone?.includes(search) ||
+        l.vehicleNo?.toLowerCase().includes(term)
+      );
+    }
+
+    return result;
+  }, [items, selectedMonth, search]);
+
+  // Compute month counts for badge display
+  const monthCounts = useMemo(() => {
+    const counts: Record<number, number> = {};
+    items.forEach(l => {
+      if (l.expiryDate) {
+        const d = new Date(l.expiryDate);
+        if (!isNaN(d.getTime())) {
+          const m = d.getMonth() + 1;
+          counts[m] = (counts[m] || 0) + 1;
+        }
+      }
+    });
+    return counts;
+  }, [items]);
 
   const handleExport = () => {
     if (filteredItems.length === 0) {
@@ -272,6 +320,32 @@ export default function LeadsScreen() {
           </ScrollView>
         </View>
       )}
+
+      {/* Month-wise Filter Chips */}
+      <View style={styles.filterBar}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScroll}>
+          {MONTH_LABELS.map((label, idx) => {
+            const count = idx === 0 ? items.length : (monthCounts[idx] || 0);
+            const isActive = selectedMonth === idx;
+            return (
+              <Pressable
+                key={idx}
+                style={[styles.monthChip, isActive && styles.monthChipActive]}
+                onPress={() => setSelectedMonth(idx)}
+              >
+                <Text style={[styles.monthChipText, isActive && styles.monthChipTextActive]}>
+                  {label}
+                </Text>
+                {count > 0 && (
+                  <View style={[styles.monthBadge, isActive && styles.monthBadgeActive]}>
+                    <Text style={[styles.monthBadgeText, isActive && styles.monthBadgeTextActive]}>{count}</Text>
+                  </View>
+                )}
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      </View>
 
       {/* List */}
       <FlatList
@@ -449,6 +523,46 @@ export default function LeadsScreen() {
 
       {/* Sticky Footer */}
       {!selectionMode && <AppFooter active="leads" />}
+
+      {/* WhatsApp Draft Preview Modal */}
+      <Modal
+        visible={waModalVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setWaModalVisible(false)}
+      >
+        <View style={styles.waModalOverlay}>
+          <View style={styles.waModalContent}>
+            <View style={styles.waModalHeader}>
+              <Ionicons name="logo-whatsapp" size={22} color="#25D366" />
+              <Text style={styles.waModalTitle}>WhatsApp Message Preview</Text>
+              <Pressable onPress={() => setWaModalVisible(false)}>
+                <Ionicons name="close" size={22} color={Colors.textMuted} />
+              </Pressable>
+            </View>
+            <Text style={styles.waModalHint}>Edit the message below before sending:</Text>
+            <TextInput
+              style={styles.waModalInput}
+              value={waMessage}
+              onChangeText={setWaMessage}
+              multiline
+              numberOfLines={6}
+              textAlignVertical="top"
+              placeholder="Type your WhatsApp message..."
+              placeholderTextColor={Colors.textLight}
+            />
+            <View style={styles.waModalActions}>
+              <Pressable style={styles.waModalCancelBtn} onPress={() => setWaModalVisible(false)}>
+                <Text style={styles.waModalCancelText}>Cancel</Text>
+              </Pressable>
+              <Pressable style={styles.waModalSendBtn} onPress={sendWhatsAppFromModal}>
+                <Ionicons name="send" size={16} color="#FFFFFF" />
+                <Text style={styles.waModalSendText}>Send via WhatsApp</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -607,6 +721,123 @@ const styles = StyleSheet.create({
   },
   deleteBtnText: {
     fontSize: FontSize.md,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  // Month-wise filter chips
+  monthChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    backgroundColor: '#F1F5F9',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    gap: 4,
+  },
+  monthChipActive: {
+    backgroundColor: '#4F46E5',
+    borderColor: '#4F46E5',
+  },
+  monthChipText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#64748B',
+  },
+  monthChipTextActive: {
+    color: '#FFFFFF',
+  },
+  monthBadge: {
+    backgroundColor: '#E2E8F0',
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+  },
+  monthBadgeActive: {
+    backgroundColor: 'rgba(255,255,255,0.3)',
+  },
+  monthBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#475569',
+  },
+  monthBadgeTextActive: {
+    color: '#FFFFFF',
+  },
+  // WhatsApp Modal
+  waModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  waModalContent: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 20,
+    paddingBottom: 32,
+  },
+  waModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
+  waModalTitle: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#1E293B',
+  },
+  waModalHint: {
+    fontSize: 12,
+    color: '#64748B',
+    marginBottom: 8,
+  },
+  waModalInput: {
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    padding: 12,
+    fontSize: 14,
+    color: '#1E293B',
+    minHeight: 120,
+    marginBottom: 16,
+  },
+  waModalActions: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  waModalCancelBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  waModalCancelText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#64748B',
+  },
+  waModalSendBtn: {
+    flex: 2,
+    flexDirection: 'row',
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: '#25D366',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  waModalSendText: {
+    fontSize: 14,
     fontWeight: '700',
     color: '#FFFFFF',
   },

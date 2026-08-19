@@ -13,11 +13,14 @@ export async function POST(
 
   try {
     const body = await req.json()
-    const { status, notes, followupDate } = body
+    const { status, notes, customNotes, followupDate, newExpiryDate } = body
 
-    if (!status) {
-      return NextResponse.json({ error: 'Status is required' }, { status: 400 })
+    if (!status && !customNotes) {
+      return NextResponse.json({ error: 'Status or custom notes are required' }, { status: 400 })
     }
+
+    const finalStatus = status || 'Other / Custom Note'
+    const combinedNotes = [notes, customNotes].filter(Boolean).join('\n') || null
 
     const oldLead = await prisma.lead.findUnique({
       where: { id: leadId },
@@ -29,15 +32,25 @@ export async function POST(
     }
 
     await prisma.$transaction(async (tx) => {
-      await tx.lead.update({ where: { id: leadId }, data: { status } })
+      const updateData: any = { status: finalStatus }
+      if (newExpiryDate) {
+        try {
+          const parsedExp = new Date(newExpiryDate)
+          if (!isNaN(parsedExp.getTime())) {
+            updateData.expiryDate = parsedExp
+          }
+        } catch {}
+      }
+
+      await tx.lead.update({ where: { id: leadId }, data: updateData })
 
       await tx.leadStatusHistory.create({
         data: {
           leadId,
           userId,
           oldStatus: oldLead.status,
-          newStatus: status,
-          notes: notes || null
+          newStatus: finalStatus,
+          notes: combinedNotes
         }
       })
 
@@ -45,8 +58,8 @@ export async function POST(
         data: {
           leadId,
           userId,
-          outcome: status,
-          notes: notes || null,
+          outcome: finalStatus,
+          notes: combinedNotes,
           type: 'outbound'
         }
       })
@@ -57,7 +70,7 @@ export async function POST(
             leadId,
             assignedTo: userId,
             scheduledAt: new Date(followupDate),
-            notes: notes || null,
+            notes: combinedNotes,
             status: 'pending'
           }
         })

@@ -117,8 +117,12 @@ export async function POST(
       history: []
     }
 
-    // Replace if this category already had a doc, or append if new
-    const existingDocs = (submission.documents || []).filter((d: any) => d.category !== category)
+    // Append to existing docs for this category (max 15 per category)
+    const existingDocs: any[] = submission.documents || []
+    const docsInCategory = existingDocs.filter((d: any) => d.category === category)
+    if (docsInCategory.length >= 15) {
+      return NextResponse.json({ error: `Maximum 15 documents allowed per category. This category already has ${docsInCategory.length}.` }, { status: 400 })
+    }
     const updatedDocuments = [...existingDocs, docEntry]
 
     const updatedSubmission = {
@@ -172,14 +176,27 @@ export async function DELETE(
     const cf = (lead.customFields && typeof lead.customFields === 'object') ? (lead.customFields as any) : {}
     const submission = cf.policySubmission || { documents: [] }
 
-    const removedDoc = (submission.documents || []).find((d: any) => d.id === docId || d.category === category)
-    const updatedDocuments = (submission.documents || []).filter((d: any) => d.id !== docId && d.category !== category)
+    let removedDocs: any[] = []
+    let updatedDocuments: any[]
+    if (docId) {
+      // Remove specific document by ID only
+      removedDocs = (submission.documents || []).filter((d: any) => d.id === docId)
+      updatedDocuments = (submission.documents || []).filter((d: any) => d.id !== docId)
+    } else if (category) {
+      // Remove ALL docs in category (fallback)
+      removedDocs = (submission.documents || []).filter((d: any) => d.category === category)
+      updatedDocuments = (submission.documents || []).filter((d: any) => d.category !== category)
+    } else {
+      updatedDocuments = submission.documents || []
+    }
 
-    // Remove file from Supabase Storage
-    if (removedDoc?.storagePath) {
-      try {
-        await supabaseAdmin.storage.from('documents').remove([removedDoc.storagePath])
-      } catch {}
+    // Remove files from Supabase Storage
+    for (const removedDoc of removedDocs) {
+      if (removedDoc?.storagePath) {
+        try {
+          await supabaseAdmin.storage.from('documents').remove([removedDoc.storagePath])
+        } catch {}
+      }
     }
 
     const updatedSubmission = {

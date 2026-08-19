@@ -1,647 +1,440 @@
-"use client"
+'use client'
 
-import React, { useState, useEffect } from 'react'
+import { useEffect, useState, useMemo, useCallback } from 'react'
 import AdminLayout from '@/components/layout/AdminLayout'
 import { fetchApi } from '@/lib/api'
 import { useAuth } from '@/context/AuthContext'
-import Link from 'next/link'
 import {
-  RefreshCw, Calendar, Clock, AlertTriangle, CheckCircle2,
-  Search, Filter, Download, Phone, MessageCircle, Shield,
-  User, Car, ArrowUpRight, FileText, ChevronRight, X, Edit3, Sparkles
+  RefreshCw, Search, X, CalendarDays, Users, UserCheck, Check,
+  FileText, ChevronLeft, ChevronRight, Filter, AlertCircle, CheckCircle
 } from 'lucide-react'
 
-interface RenewalItem {
-  id: string
-  policyNumber: string
-  provider: string
-  type: string
-  premiumAmount: number
-  issueDate: string
-  expiryDate: string | null
-  daysRemaining: number
-  urgencyCategory: string
-  renewalStatus: string
-  renewalNotes: string
-  renewalFollowUpDate: string | null
-  leadId: string | null
-  clientName: string
-  clientPhone: string
-  clientEmail: string
-  vehicleNo: string
-  gvw: string
-  salesPersonName: string
-  salesPersonId: string | null
-  compiledPdfUrl: string | null
-  documentsCount: number
+const MONTH_NAMES = ['All Months', 'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December']
+
+const STATUS_COLORS: Record<string, { bg: string; text: string; border: string }> = {
+  Active: { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200' },
+  PendingRenewal: { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200' },
+  Renewed: { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200' },
+  Refused: { bg: 'bg-rose-50', text: 'text-rose-700', border: 'border-rose-200' },
+  RemovedToLeads: { bg: 'bg-slate-50', text: 'text-slate-600', border: 'border-slate-200' },
 }
 
-const RENEWAL_STAGES = [
-  'Pending Contact',
-  'Follow-up In Progress',
-  'Quotation Sent',
-  'Renewed',
-  'Lost'
-]
-
 export default function RenewalsPage() {
-  const { user } = useAuth()
-  const roleName = (typeof user?.role === 'string' ? user.role : user?.role?.name || '').toUpperCase()
-  const isManagerOrAdmin = roleName.includes('MANAGER') || roleName.includes('ADMIN') || roleName.includes('SUPER')
+  const { user, isLoading: authLoading } = useAuth()
+  const roleUpper = (typeof (user?.role as any) === 'object' ? (user?.role as any)?.name : user?.role)?.toUpperCase() || ''
+  const isAdmin = roleUpper.includes('ADMIN') || roleUpper.includes('SUPER')
 
-  const [renewals, setRenewals] = useState<RenewalItem[]>([])
-  const [summary, setSummary] = useState<any>({
-    totalRenewals: 0,
-    expiringThisMonth: 0,
-    expiring30Days: 0,
-    overdueCount: 0,
-    renewedCount: 0,
-    totalVolume: 0
-  })
+  const [renewals, setRenewals] = useState<any[]>([])
+  const [stats, setStats] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
-
-  // Filter States
-  const [selectedMonth, setSelectedMonth] = useState<string>('')
-  const [urgencyFilter, setUrgencyFilter] = useState<string>('all')
-  const [statusFilter, setStatusFilter] = useState<string>('all')
+  const [total, setTotal] = useState(0)
+  const [page, setPage] = useState(1)
   const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState('')
+  const [monthFilter, setMonthFilter] = useState(0)
+  const [yearFilter, setYearFilter] = useState(new Date().getFullYear())
 
-  // Notes Modal State
-  const [notesTarget, setNotesTarget] = useState<RenewalItem | null>(null)
-  const [modalNotes, setModalNotes] = useState('')
-  const [modalFollowUpDate, setModalFollowUpDate] = useState('')
-  const [isSavingNotes, setIsSavingNotes] = useState(false)
+  // Auto-assign modal
+  const [showAutoAssign, setShowAutoAssign] = useState(false)
+  const [autoAssignMonth, setAutoAssignMonth] = useState(0)
+  const [autoAssignYear, setAutoAssignYear] = useState(new Date().getFullYear())
+  const [availableExecs, setAvailableExecs] = useState<any[]>([])
+  const [selectedExecIds, setSelectedExecIds] = useState<string[]>([])
+  const [execsLoading, setExecsLoading] = useState(false)
+  const [assigning, setAssigning] = useState(false)
+  const [assignResult, setAssignResult] = useState<any>(null)
 
-  const fetchRenewals = async () => {
+  const fetchRenewals = useCallback(async () => {
     setLoading(true)
     try {
       const params = new URLSearchParams()
-      if (selectedMonth) params.append('month', selectedMonth)
-      if (urgencyFilter !== 'all') params.append('urgency', urgencyFilter)
-      if (statusFilter !== 'all') params.append('status', statusFilter)
-      if (search.trim()) params.append('search', search.trim())
+      params.set('page', String(page))
+      params.set('limit', '50')
+      if (statusFilter) params.set('status', statusFilter)
+      if (monthFilter > 0) {
+        params.set('month', String(monthFilter))
+        params.set('year', String(yearFilter))
+      }
+      if (search.trim()) params.set('search', search.trim())
 
       const res = await fetchApi(`/api/v1/renewals?${params.toString()}`)
-      setRenewals(res?.items || [])
-      if (res?.summary) setSummary(res.summary)
+      setRenewals(res?.renewals || [])
+      setStats(res?.stats || {})
+      setTotal(res?.total || 0)
     } catch (err) {
       console.error('Failed to fetch renewals:', err)
     } finally {
       setLoading(false)
     }
-  }
+  }, [page, statusFilter, monthFilter, yearFilter, search])
 
-  useEffect(() => {
-    fetchRenewals()
-  }, [selectedMonth, urgencyFilter, statusFilter])
+  useEffect(() => { fetchRenewals() }, [fetchRenewals])
 
-  // Debounced search
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      fetchRenewals()
-    }, 300)
-    return () => clearTimeout(timer)
-  }, [search])
-
-  // Update Status directly from row
-  const handleUpdateStatus = async (item: RenewalItem, newStatus: string) => {
+  const fetchExecsForAutoAssign = async (month: number, year: number) => {
+    setExecsLoading(true)
     try {
-      await fetchApi('/api/v1/renewals', {
-        method: 'PATCH',
-        body: JSON.stringify({
-          leadId: item.leadId,
-          renewalStatus: newStatus
-        })
-      })
-
-      // Update state locally
-      setRenewals(prev => prev.map(r => r.id === item.id ? { ...r, renewalStatus: newStatus } : r))
-      if (newStatus === 'Renewed') {
-        setSummary((prev: any) => ({ ...prev, renewedCount: prev.renewedCount + 1 }))
-      }
-    } catch (err: any) {
-      alert(err.message || 'Failed to update renewal status')
-    }
-  }
-
-  // Open Notes Modal
-  const handleOpenNotesModal = (item: RenewalItem) => {
-    setNotesTarget(item)
-    setModalNotes(item.renewalNotes || '')
-    setModalFollowUpDate(item.renewalFollowUpDate || '')
-  }
-
-  // Save Notes
-  const handleSaveNotes = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!notesTarget || !notesTarget.leadId) return
-
-    setIsSavingNotes(true)
-    try {
-      await fetchApi('/api/v1/renewals', {
-        method: 'PATCH',
-        body: JSON.stringify({
-          leadId: notesTarget.leadId,
-          renewalNotes: modalNotes,
-          renewalFollowUpDate: modalFollowUpDate
-        })
-      })
-
-      setRenewals(prev => prev.map(r => r.id === notesTarget.id ? {
-        ...r,
-        renewalNotes: modalNotes,
-        renewalFollowUpDate: modalFollowUpDate
-      } : r))
-
-      setNotesTarget(null)
-    } catch (err: any) {
-      alert(err.message || 'Failed to save renewal notes')
+      const res = await fetchApi(`/api/v1/leads/available-executives?month=${month}&year=${year}`)
+      setAvailableExecs(res?.executives || [])
+      const available = (res?.executives || []).filter((e: any) => !e.isOnExtendedLeave)
+      setSelectedExecIds(available.map((e: any) => e.id))
+    } catch (err) {
+      console.error('Failed to fetch executives:', err)
     } finally {
-      setIsSavingNotes(false)
+      setExecsLoading(false)
     }
   }
 
-  // WhatsApp 1-Click Reminder
-  const handleSendWhatsApp = (item: RenewalItem) => {
-    if (!item.clientPhone) return
-    const cleanPhone = item.clientPhone.replace(/\D/g, '')
-    const expiryStr = item.expiryDate ? new Date(item.expiryDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : 'soon'
-    const msg = `Hi ${item.clientName},\n\nThis is a renewal reminder from *Torque Auto Advisor* regarding your vehicle *${item.vehicleNo}* (Policy: ${item.policyNumber}).\n\nYour 1-year policy is expiring on *${expiryStr}*. We have your verified records archived and can renew your policy with maximum NCB discount!\n\nPlease let us know if you'd like us to share the renewal quotes.\n\nBest regards,\n${item.salesPersonName} | Torque Auto Advisor`
-
-    const url = `https://wa.me/${cleanPhone.length === 10 ? '91' + cleanPhone : cleanPhone}?text=${encodeURIComponent(msg)}`
-    window.open(url, '_blank')
-  }
-
-  // Export Monthly Renewal List to CSV
-  const exportMonthlyCSV = () => {
-    if (!renewals.length) {
-      alert('No renewal records found to export.')
-      return
+  const handleAutoAssign = async () => {
+    if (!autoAssignMonth || selectedExecIds.length === 0) return
+    setAssigning(true)
+    setAssignResult(null)
+    try {
+      const res = await fetchApi('/api/v1/renewals/auto-assign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          month: autoAssignMonth,
+          year: autoAssignYear,
+          salesExecutiveIds: selectedExecIds
+        })
+      })
+      setAssignResult(res)
+      if (res?.success) fetchRenewals()
+    } catch (err: any) {
+      setAssignResult({ error: err.message || 'Auto-assignment failed' })
+    } finally {
+      setAssigning(false)
     }
-
-    const headers = [
-      'Policy Number', 'Client Name', 'Client Phone', 'Vehicle Number', 'GVW',
-      'Insurance Provider', 'Policy Type', 'Previous Premium (INR)', 'Policy Issue Date',
-      '1-Year Expiry Date', 'Days Until Expiry', 'Renewal Status', 'Sales Executive', 'Renewal Notes'
-    ]
-
-    const rows = renewals.map(r => [
-      `"${r.policyNumber}"`,
-      `"${r.clientName}"`,
-      `"${r.clientPhone}"`,
-      `"${r.vehicleNo}"`,
-      `"${r.gvw || ''}"`,
-      `"${r.provider}"`,
-      `"${r.type}"`,
-      r.premiumAmount,
-      r.issueDate ? new Date(r.issueDate).toLocaleDateString() : '',
-      r.expiryDate ? new Date(r.expiryDate).toLocaleDateString() : '',
-      r.daysRemaining,
-      `"${r.renewalStatus}"`,
-      `"${r.salesPersonName}"`,
-      `"${(r.renewalNotes || '').replace(/"/g, '""')}"`
-    ].join(','))
-
-    const csvContent = [headers.join(','), ...rows].join('\n')
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.setAttribute('download', `torque_renewals_${selectedMonth || 'all_active_cohorts'}.csv`)
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
   }
+
+  const handleStatusChange = async (id: string, newStatus: string) => {
+    try {
+      await fetchApi(`/api/v1/renewals/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ renewalStatus: newStatus })
+      })
+      fetchRenewals()
+    } catch (err) {
+      console.error('Failed to update status:', err)
+    }
+  }
+
+  const formatDate = (d: string | Date | null) => {
+    if (!d) return '—'
+    try { return new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) } catch { return '—' }
+  }
+
+  const totalPages = Math.ceil(total / 50) || 1
 
   return (
     <AdminLayout>
-      {/* Top Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="px-2.5 py-0.5 bg-indigo-50 text-indigo-700 text-[10px] font-black uppercase tracking-wider rounded-lg border border-indigo-200">
-              1-Year Lifecycle Pipeline
-            </span>
-            <span className="px-2.5 py-0.5 bg-emerald-50 text-emerald-700 text-[10px] font-black uppercase tracking-wider rounded-lg border border-emerald-200">
-              Permanent 7-Doc Archive
-            </span>
+      <div className="space-y-6">
+        {/* Header */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="px-2.5 py-0.5 bg-indigo-50 text-indigo-700 text-[10px] font-black uppercase tracking-wider rounded-lg border border-indigo-200">
+                Renewal Lifecycle
+              </span>
+            </div>
+            <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-slate-900">
+              Renewals CSV
+            </h1>
+            <p className="text-xs sm:text-sm text-slate-500 font-medium mt-1">
+              Track policy renewals, assign to renewal personnel, and manage the lifecycle.
+            </p>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-slate-900">
-            Policy Renewals Management
-          </h1>
-          <p className="text-xs sm:text-sm text-slate-500 font-medium mt-1">
-            Track 1-year approved policies due for renewal, sorted with soonest expiry first. Access all archived documents instantly.
-          </p>
-        </div>
 
-        <div className="flex flex-wrap items-center gap-3">
-          <button
-            onClick={exportMonthlyCSV}
-            className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-2xl text-xs font-bold hover:bg-slate-50 transition-all shadow-sm cursor-pointer"
-          >
-            <Download size={15} />
-            <span>Export Monthly Renewals (CSV)</span>
-          </button>
-        </div>
-      </div>
-
-      {/* KPI Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mt-8">
-        <StatCard
-          title="Total Renewal Pool"
-          value={summary.totalRenewals}
-          subtitle={`₹${(summary.totalVolume || 0).toLocaleString()} Volume`}
-          icon={<Shield size={20} className="text-blue-600" />}
-          badgeColor="bg-blue-50"
-        />
-        <StatCard
-          title="Expiring This Month"
-          value={summary.expiringThisMonth}
-          subtitle="Target for this month"
-          icon={<Calendar size={20} className="text-indigo-600" />}
-          badgeColor="bg-indigo-50"
-        />
-        <StatCard
-          title="Urgent (< 30 Days)"
-          value={summary.expiring30Days}
-          subtitle="Critical follow-up queue"
-          icon={<Clock size={20} className="text-amber-600" />}
-          badgeColor="bg-amber-50"
-        />
-        <StatCard
-          title="Overdue / Expired"
-          value={summary.overdueCount}
-          subtitle="Lapsed / Immediate action"
-          icon={<AlertTriangle size={20} className="text-rose-600" />}
-          badgeColor="bg-rose-50"
-        />
-        <StatCard
-          title="Successfully Renewed"
-          value={summary.renewedCount}
-          subtitle="Converted renewals"
-          icon={<CheckCircle2 size={20} className="text-emerald-600" />}
-          badgeColor="bg-emerald-50"
-        />
-      </div>
-
-      {/* Filter & Search Bar */}
-      <div className="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm mt-6 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-        {/* Search */}
-        <div className="flex-1 relative">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-          <input
-            type="text"
-            placeholder="Search by Client, Vehicle No, Policy No, Phone, Sales Executive..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-blue-500 outline-none shadow-sm"
-          />
-        </div>
-
-        {/* Quick Filter Buttons & Month Picker */}
-        <div className="flex flex-wrap items-center gap-2.5">
-          {/* Month Selector */}
-          <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5">
-            <Calendar size={14} className="text-slate-400" />
-            <input
-              type="month"
-              value={selectedMonth}
-              onChange={e => setSelectedMonth(e.target.value)}
-              className="text-xs font-bold outline-none bg-transparent cursor-pointer text-slate-700"
-              title="Filter by Expiry Month (e.g. August 2027)"
-            />
-            {selectedMonth && (
-              <button onClick={() => setSelectedMonth('')} className="text-slate-400 hover:text-rose-500">
-                <X size={13} />
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              onClick={() => fetchRenewals()}
+              disabled={loading}
+              className="px-4 py-2.5 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-bold rounded-2xl border border-slate-200 transition-all flex items-center gap-2 cursor-pointer shadow-sm disabled:opacity-50"
+            >
+              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+              <span>Refresh</span>
+            </button>
+            {isAdmin && (
+              <button
+                onClick={() => { setShowAutoAssign(!showAutoAssign); if (!showAutoAssign && autoAssignMonth > 0) fetchExecsForAutoAssign(autoAssignMonth, autoAssignYear) }}
+                className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-2xl shadow-md transition-all flex items-center gap-2 cursor-pointer"
+              >
+                <Users size={15} />
+                <span>Auto-Assign Renewals</span>
               </button>
             )}
           </div>
-
-          {/* Urgency Filter Dropdown */}
-          <select
-            value={urgencyFilter}
-            onChange={e => setUrgencyFilter(e.target.value)}
-            className="bg-slate-50 border border-slate-200 text-xs font-bold rounded-xl px-3 py-2 outline-none cursor-pointer text-slate-700"
-          >
-            <option value="all">All Urgencies</option>
-            <option value="30days">Expiring &lt; 30 Days ({summary.expiring30Days})</option>
-            <option value="60days">Expiring &lt; 60 Days</option>
-            <option value="overdue">Overdue / Expired ({summary.overdueCount})</option>
-            <option value="renewed">Renewed ({summary.renewedCount})</option>
-          </select>
-
-          {/* Renewal Stage Filter */}
-          <select
-            value={statusFilter}
-            onChange={e => setStatusFilter(e.target.value)}
-            className="bg-slate-50 border border-slate-200 text-xs font-bold rounded-xl px-3 py-2 outline-none cursor-pointer text-slate-700"
-          >
-            <option value="all">All Stages</option>
-            {RENEWAL_STAGES.map(s => (
-              <option key={s} value={s}>{s}</option>
-            ))}
-          </select>
-
-          <button
-            onClick={() => fetchRenewals()}
-            disabled={loading}
-            className="p-2.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-slate-700 transition-all cursor-pointer disabled:opacity-50"
-            title="Refresh Renewals"
-          >
-            <RefreshCw size={14} className={loading ? 'animate-spin text-blue-600' : ''} />
-          </button>
         </div>
-      </div>
 
-      {/* Renewals Table */}
-      <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden mt-6">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left">
-            <thead>
-              <tr className="bg-slate-50/70 border-b border-slate-100 text-[10px] font-black text-slate-500 uppercase tracking-wider">
-                <th className="px-6 py-4">Client & Vehicle</th>
-                <th className="px-6 py-4">Policy & Previous Premium</th>
-                <th className="px-6 py-4">1-Year Expiry & Urgency</th>
-                <th className="px-6 py-4">Sales Executive</th>
-                <th className="px-6 py-4">Renewal Stage</th>
-                <th className="px-6 py-4 text-center">1-Year Docs & Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {loading ? (
-                <tr>
-                  <td colSpan={6} className="p-10 text-center text-slate-400 font-medium">
-                    <div className="flex items-center justify-center gap-2">
-                      <RefreshCw size={16} className="animate-spin text-blue-600" />
-                      <span>Loading renewal queue...</span>
-                    </div>
-                  </td>
-                </tr>
-              ) : renewals.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="p-10 text-center text-slate-400 italic">
-                    No policies found in this renewal cohort matching criteria.
-                  </td>
-                </tr>
-              ) : renewals.map((item) => {
-                const isOverdue = item.daysRemaining < 0
-                const isUrgent = item.daysRemaining >= 0 && item.daysRemaining <= 30
+        {/* Stats Cards */}
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          {[
+            { key: '', label: 'All', count: Object.values(stats).reduce((s, v) => s + v, 0), color: 'blue' },
+            { key: 'Active', label: 'Active', count: stats.Active || 0, color: 'blue' },
+            { key: 'PendingRenewal', label: 'Pending', count: stats.PendingRenewal || 0, color: 'amber' },
+            { key: 'Renewed', label: 'Renewed', count: stats.Renewed || 0, color: 'emerald' },
+            { key: 'Refused', label: 'Refused', count: stats.Refused || 0, color: 'rose' }
+          ].map(s => (
+            <button
+              key={s.key}
+              onClick={() => { setStatusFilter(s.key); setPage(1) }}
+              className={`p-4 rounded-2xl border text-left transition-all cursor-pointer ${
+                statusFilter === s.key
+                  ? `bg-${s.color}-50 border-${s.color}-300 ring-2 ring-${s.color}-500/20`
+                  : 'bg-white border-slate-100 hover:shadow-sm'
+              }`}
+            >
+              <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">{s.label}</p>
+              <h2 className="text-xl font-black text-slate-900 mt-1">{s.count}</h2>
+            </button>
+          ))}
+        </div>
 
-                return (
-                  <tr key={item.id} className="hover:bg-slate-50/50 transition-colors text-xs">
-                    {/* Client & Vehicle */}
-                    <td className="px-6 py-4">
-                      <div>
-                        <p className="font-black text-slate-900 text-sm">{item.clientName}</p>
-                        <div className="flex items-center gap-2 mt-1">
-                          {item.vehicleNo && (
-                            <span className="font-mono text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
-                              {item.vehicleNo}
+        {/* Filters */}
+        <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex flex-col sm:flex-row gap-3">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+            <input
+              type="text"
+              placeholder="Search by name, phone, vehicle, policy..."
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 pl-9 pr-8 text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-500"
+              value={search}
+              onChange={e => { setSearch(e.target.value); setPage(1) }}
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <select
+              value={monthFilter}
+              onChange={e => { setMonthFilter(Number(e.target.value)); setPage(1) }}
+              className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none cursor-pointer"
+            >
+              {MONTH_NAMES.map((name, idx) => (
+                <option key={idx} value={idx}>{name}</option>
+              ))}
+            </select>
+            <select
+              value={yearFilter}
+              onChange={e => { setYearFilter(Number(e.target.value)); setPage(1) }}
+              className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none cursor-pointer"
+            >
+              {[2024, 2025, 2026, 2027, 2028, 2029, 2030].map(y => (
+                <option key={y} value={y}>{y}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* Auto-Assign Panel */}
+        {showAutoAssign && isAdmin && (
+          <div className="bg-gradient-to-r from-indigo-50 via-purple-50 to-blue-50 p-5 rounded-2xl border border-indigo-200 space-y-4">
+            <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
+              <Users size={16} className="text-indigo-600" />
+              Auto-Assign Renewals to Sales Executives
+            </h3>
+            <div className="flex items-center gap-3">
+              <select
+                value={autoAssignMonth}
+                onChange={e => { setAutoAssignMonth(Number(e.target.value)); if (Number(e.target.value) > 0) fetchExecsForAutoAssign(Number(e.target.value), autoAssignYear) }}
+                className="bg-white border border-indigo-200 rounded-xl px-3 py-2 text-xs font-bold"
+              >
+                <option value={0}>Select Month</option>
+                {MONTH_NAMES.slice(1).map((name, idx) => (
+                  <option key={idx + 1} value={idx + 1}>{name}</option>
+                ))}
+              </select>
+              <select
+                value={autoAssignYear}
+                onChange={e => setAutoAssignYear(Number(e.target.value))}
+                className="bg-white border border-indigo-200 rounded-xl px-3 py-2 text-xs font-bold"
+              >
+                {[2024, 2025, 2026, 2027, 2028, 2029, 2030].map(y => (
+                  <option key={y} value={y}>{y}</option>
+                ))}
+              </select>
+            </div>
+
+            {autoAssignMonth > 0 && (
+              <div className="bg-white rounded-2xl border border-indigo-200 p-4 space-y-3">
+                {execsLoading ? (
+                  <div className="flex items-center gap-2 py-4 justify-center">
+                    <RefreshCw size={14} className="animate-spin text-indigo-500" />
+                    <span className="text-xs font-bold text-slate-500">Loading executives...</span>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {availableExecs.map(exec => {
+                      const isSelected = selectedExecIds.includes(exec.id)
+                      return (
+                        <button
+                          key={exec.id}
+                          onClick={() => setSelectedExecIds(prev => isSelected ? prev.filter(id => id !== exec.id) : [...prev, exec.id])}
+                          className={`p-3 rounded-xl border-2 text-left transition-all cursor-pointer ${
+                            isSelected ? 'border-indigo-500 bg-indigo-50 shadow-md' : 'border-slate-200 bg-white hover:border-slate-300'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between mb-1">
+                            <span className={`text-xs font-black ${isSelected ? 'text-indigo-700' : 'text-slate-800'}`}>
+                              {exec.fullName}
                             </span>
-                          )}
-                          {item.gvw && (
-                            <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">
-                              GVW: {item.gvw}
-                            </span>
-                          )}
-                        </div>
-                        {item.clientPhone && (
-                          <div className="flex items-center gap-2 mt-1.5">
-                            <a
-                              href={`tel:${item.clientPhone}`}
-                              className="text-[11px] font-mono font-bold text-blue-600 hover:underline flex items-center gap-1"
-                            >
-                              <Phone size={11} />
-                              <span>{item.clientPhone}</span>
-                            </a>
-                            <button
-                              onClick={() => handleSendWhatsApp(item)}
-                              className="text-emerald-600 hover:text-emerald-700 p-1 hover:bg-emerald-50 rounded transition-colors"
-                              title="Send 1-Click WhatsApp Renewal Reminder"
-                            >
-                              <MessageCircle size={13} />
-                            </button>
+                            <div className={`h-5 w-5 rounded-md flex items-center justify-center text-white ${isSelected ? 'bg-indigo-600' : 'bg-slate-200'}`}>
+                              {isSelected && <Check size={12} />}
+                            </div>
+                          </div>
+                          <div className="text-[10px] font-semibold text-slate-500">
+                            {exec.isOnExtendedLeave ? '⚠️ Extended Leave' : exec.isCurrentlyOnLeave ? '🕐 On Leave' : '✅ Available'}
+                          </div>
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between pt-3 border-t border-slate-100">
+                  <span className="text-xs font-semibold text-slate-600">
+                    {selectedExecIds.length} executives selected
+                  </span>
+                  <button
+                    onClick={handleAutoAssign}
+                    disabled={assigning || selectedExecIds.length === 0}
+                    className="px-6 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-sm font-black rounded-xl flex items-center gap-2 cursor-pointer shadow-lg disabled:opacity-50"
+                  >
+                    {assigning ? <><RefreshCw size={14} className="animate-spin" /> Assigning...</> : <><Users size={14} /> Auto-Assign</>}
+                  </button>
+                </div>
+
+                {assignResult && (
+                  <div className={`p-4 rounded-xl border ${assignResult.error ? 'bg-rose-50 border-rose-200 text-rose-700' : 'bg-emerald-50 border-emerald-200 text-emerald-800'}`}>
+                    {assignResult.error ? (
+                      <p className="text-xs font-bold">❌ {assignResult.error}</p>
+                    ) : (
+                      <div className="space-y-2">
+                        <p className="text-sm font-black">✅ {assignResult.message}</p>
+                        {assignResult.distribution && (
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                            {assignResult.distribution.map((d: any) => (
+                              <div key={d.id} className="bg-white p-2 rounded-lg text-xs">
+                                <span className="font-black text-slate-800">{d.name}</span>
+                                <span className="text-emerald-600 font-bold ml-1">→ {d.renewalsAssigned}</span>
+                              </div>
+                            ))}
                           </div>
                         )}
                       </div>
-                    </td>
-
-                    {/* Policy & Premium */}
-                    <td className="px-6 py-4">
-                      <p className="font-mono font-bold text-slate-800">{item.policyNumber}</p>
-                      <p className="text-[10px] text-slate-400 font-bold uppercase mt-0.5">
-                        {item.provider} • {item.type}
-                      </p>
-                      <p className="text-xs font-black text-slate-900 mt-1">
-                        ₹{item.premiumAmount.toLocaleString()}
-                      </p>
-                    </td>
-
-                    {/* Expiry & Urgency Countdown */}
-                    <td className="px-6 py-4">
-                      <div>
-                        <p className="font-bold text-slate-900">
-                          {item.expiryDate ? new Date(item.expiryDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : 'N/A'}
-                        </p>
-                        <div className="mt-1">
-                          {item.renewalStatus === 'Renewed' ? (
-                            <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase bg-emerald-50 text-emerald-700 border border-emerald-200">
-                              Renewed
-                            </span>
-                          ) : isOverdue ? (
-                            <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase bg-rose-50 text-rose-700 border border-rose-200 flex items-center gap-1 w-max">
-                              <AlertTriangle size={10} />
-                              <span>Expired {Math.abs(item.daysRemaining)}d ago</span>
-                            </span>
-                          ) : isUrgent ? (
-                            <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase bg-amber-50 text-amber-700 border border-amber-200 flex items-center gap-1 w-max">
-                              <Clock size={10} />
-                              <span>Expires in {item.daysRemaining} days</span>
-                            </span>
-                          ) : (
-                            <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase bg-slate-100 text-slate-600 w-max inline-block">
-                              In {item.daysRemaining} days
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </td>
-
-                    {/* Sales Executive */}
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-1.5 font-bold text-slate-700">
-                        <User size={13} className="text-slate-400" />
-                        <span>{item.salesPersonName}</span>
-                      </div>
-                    </td>
-
-                    {/* Renewal Stage */}
-                    <td className="px-6 py-4">
-                      <select
-                        value={item.renewalStatus}
-                        onChange={e => handleUpdateStatus(item, e.target.value)}
-                        className={`text-xs font-black rounded-xl px-2.5 py-1.5 outline-none cursor-pointer border ${
-                          item.renewalStatus === 'Renewed'
-                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                            : item.renewalStatus === 'Quotation Sent'
-                            ? 'bg-blue-50 text-blue-700 border-blue-200'
-                            : item.renewalStatus === 'Follow-up In Progress'
-                            ? 'bg-amber-50 text-amber-700 border-amber-200'
-                            : item.renewalStatus === 'Lost'
-                            ? 'bg-slate-100 text-slate-400 border-slate-200'
-                            : 'bg-white text-slate-700 border-slate-200'
-                        }`}
-                      >
-                        {RENEWAL_STAGES.map(s => (
-                          <option key={s} value={s}>{s}</option>
-                        ))}
-                      </select>
-
-                      {item.renewalNotes && (
-                        <p className="text-[10px] text-slate-500 italic mt-1 line-clamp-1 max-w-xs">
-                          "{item.renewalNotes}"
-                        </p>
-                      )}
-                    </td>
-
-                    {/* Actions: 1-Year 7-Doc Download, Renewal Quote, Notes */}
-                    <td className="px-6 py-4 text-center">
-                      <div className="flex items-center justify-center gap-1.5">
-                        {/* Download 1-Year Merged 7-Doc Bundle */}
-                        {item.compiledPdfUrl ? (
-                          <a
-                            href={item.compiledPdfUrl}
-                            download={`renewal_docs_${item.clientName}_${item.vehicleNo}.pdf`}
-                            className="p-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-xl transition-all border border-emerald-200"
-                            title="Download 1-Year Merged 7-Document Bundle (RC Book, NCB Proof, PAN, Quotation)"
-                          >
-                            <Download size={14} />
-                          </a>
-                        ) : (
-                          <span
-                            className="p-2 bg-slate-50 text-slate-300 rounded-xl border border-slate-100"
-                            title="No previous compiled PDF found"
-                          >
-                            <FileText size={14} />
-                          </span>
-                        )}
-
-                        {/* WhatsApp Reminder */}
-                        <button
-                          onClick={() => handleSendWhatsApp(item)}
-                          className="p-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl transition-all shadow-sm cursor-pointer"
-                          title="WhatsApp Renewal Reminder"
-                        >
-                          <MessageCircle size={14} />
-                        </button>
-
-                        {/* Create Renewal Quotation */}
-                        <Link
-                          href={`/rate-calculator?leadId=${item.leadId || ''}&vehicleNo=${encodeURIComponent(item.vehicleNo || '')}&clientName=${encodeURIComponent(item.clientName || '')}`}
-                          className="p-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-all shadow-sm"
-                          title="Create Renewal Quotation"
-                        >
-                          <Sparkles size={14} />
-                        </Link>
-
-                        {/* Notes / Follow-up */}
-                        <button
-                          onClick={() => handleOpenNotesModal(item)}
-                          className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition-all cursor-pointer"
-                          title="Add Renewal Notes & Follow-up"
-                        >
-                          <Edit3 size={14} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* RENEWAL NOTES MODAL */}
-      {notesTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white rounded-3xl w-full max-w-md overflow-hidden shadow-2xl p-6">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
-              <div>
-                <h3 className="font-black text-slate-900 text-base">Renewal Activity & Notes</h3>
-                <p className="text-xs text-slate-500 mt-0.5">{notesTarget.clientName} • {notesTarget.vehicleNo}</p>
+                    )}
+                  </div>
+                )}
               </div>
-              <button
-                onClick={() => setNotesTarget(null)}
-                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-xl"
-              >
-                <X size={18} />
-              </button>
+            )}
+          </div>
+        )}
+
+        {/* Renewals Table */}
+        {loading ? (
+          <div className="bg-white rounded-3xl p-12 text-center border border-slate-100">
+            <RefreshCw className="animate-spin text-slate-400 mx-auto" size={32} />
+            <p className="text-xs font-bold text-slate-500 mt-3">Loading renewals...</p>
+          </div>
+        ) : renewals.length === 0 ? (
+          <div className="bg-white rounded-3xl p-12 text-center border border-slate-100">
+            <FileText className="text-slate-300 mx-auto" size={48} />
+            <h3 className="text-base font-black text-slate-800 mt-3">No Renewals Found</h3>
+            <p className="text-xs text-slate-400 mt-1">No renewals match your current filters.</p>
+          </div>
+        ) : (
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="bg-slate-900 text-slate-100 text-[11px] font-black uppercase tracking-wider">
+                    <th className="px-4 py-3">#</th>
+                    <th className="px-4 py-3">Client</th>
+                    <th className="px-4 py-3">Vehicle</th>
+                    <th className="px-4 py-3">Policy #</th>
+                    <th className="px-4 py-3">Provider</th>
+                    <th className="px-4 py-3">Expiry</th>
+                    <th className="px-4 py-3">Assigned To</th>
+                    <th className="px-4 py-3">Status</th>
+                    {isAdmin && <th className="px-4 py-3">Actions</th>}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {renewals.map((r, idx) => {
+                    const sc = STATUS_COLORS[r.renewalStatus] || STATUS_COLORS.Active
+                    return (
+                      <tr key={r.id} className="hover:bg-slate-50/80 transition-colors">
+                        <td className="px-4 py-3 text-slate-400 font-mono">{(page - 1) * 50 + idx + 1}</td>
+                        <td className="px-4 py-3">
+                          <div className="font-bold text-slate-900">{r.clientName}</div>
+                          <div className="text-[10px] text-slate-500">{r.clientPhone || '—'}</div>
+                        </td>
+                        <td className="px-4 py-3 font-mono text-slate-700">{r.vehicleNo || '—'}</td>
+                        <td className="px-4 py-3 text-slate-700">{r.policyNumber || '—'}</td>
+                        <td className="px-4 py-3 text-slate-600">{r.provider || '—'}</td>
+                        <td className="px-4 py-3">
+                          <span className="font-bold text-slate-800">{formatDate(r.policyEndDate)}</span>
+                        </td>
+                        <td className="px-4 py-3 text-slate-700">{r.assignee?.fullName || <span className="text-slate-400 italic">Unassigned</span>}</td>
+                        <td className="px-4 py-3">
+                          <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black ${sc.bg} ${sc.text} border ${sc.border}`}>
+                            {r.renewalStatus}
+                          </span>
+                        </td>
+                        {isAdmin && (
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-1.5">
+                              {r.renewalStatus !== 'Renewed' && (
+                                <button
+                                  onClick={() => handleStatusChange(r.id, 'Renewed')}
+                                  className="px-2 py-1 bg-emerald-50 text-emerald-700 text-[10px] font-bold rounded-lg hover:bg-emerald-100 cursor-pointer border border-emerald-200"
+                                >
+                                  Renewed
+                                </button>
+                              )}
+                              {r.renewalStatus !== 'Refused' && (
+                                <button
+                                  onClick={() => handleStatusChange(r.id, 'Refused')}
+                                  className="px-2 py-1 bg-rose-50 text-rose-700 text-[10px] font-bold rounded-lg hover:bg-rose-100 cursor-pointer border border-rose-200"
+                                >
+                                  Refused
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        )}
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
             </div>
 
-            <form onSubmit={handleSaveNotes} className="space-y-4">
-              <div>
-                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">
-                  Follow-up Date & Time
-                </label>
-                <input
-                  type="datetime-local"
-                  value={modalFollowUpDate}
-                  onChange={e => setModalFollowUpDate(e.target.value)}
-                  className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold outline-none"
-                />
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100 text-xs font-bold text-slate-600">
+                <span>Page {page} of {totalPages} ({total} records)</span>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => setPage(p => Math.max(p - 1, 1))}
+                    disabled={page === 1}
+                    className="p-1.5 border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-30"
+                  >
+                    <ChevronLeft size={16} />
+                  </button>
+                  <button
+                    onClick={() => setPage(p => Math.min(p + 1, totalPages))}
+                    disabled={page === totalPages}
+                    className="p-1.5 border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-30"
+                  >
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
               </div>
-
-              <div>
-                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">
-                  Conversation Remarks / Notes
-                </label>
-                <textarea
-                  rows={4}
-                  placeholder="e.g. Client requested 20% discount quote, will call back on Thursday..."
-                  value={modalNotes}
-                  onChange={e => setModalNotes(e.target.value)}
-                  className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold outline-none resize-none"
-                />
-              </div>
-
-              <div className="flex gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setNotesTarget(null)}
-                  className="flex-1 py-2.5 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-200 transition-all cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSavingNotes}
-                  className="flex-1 py-2.5 bg-slate-900 hover:bg-black text-white rounded-xl text-xs font-bold transition-all shadow-md cursor-pointer disabled:opacity-50"
-                >
-                  {isSavingNotes ? 'Saving...' : 'Save Remarks'}
-                </button>
-              </div>
-            </form>
+            )}
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </AdminLayout>
-  )
-}
-
-function StatCard({ title, value, subtitle, icon, badgeColor }: any) {
-  return (
-    <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm flex flex-col justify-between">
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">{title}</span>
-        <div className={`p-2 rounded-xl ${badgeColor}`}>
-          {icon}
-        </div>
-      </div>
-      <div>
-        <h3 className="text-xl font-black text-slate-900 tracking-tight">{value}</h3>
-        <p className="text-[11px] font-semibold text-slate-500 mt-0.5">{subtitle}</p>
-      </div>
-    </div>
   )
 }

@@ -6,7 +6,8 @@ import {
   FileSpreadsheet, Download, Eye, Search, AlertCircle, RefreshCw, X,
   CheckCircle, FileText, ArrowRight, ChevronLeft, ChevronRight,
   Calendar, Clock, User, Filter, ArrowUpDown, ChevronDown, Sparkles,
-  Phone, Car, MapPin, Tag, Check, CalendarDays, Lock
+  Phone, Car, MapPin, Tag, Check, CalendarDays, Lock, Users, UserCheck,
+  Trash2, CheckSquare, Square
 } from 'lucide-react'
 import { fetchApi } from '@/lib/api'
 import { useAuth } from '@/context/AuthContext'
@@ -96,6 +97,24 @@ export default function ImportedSheetsPage() {
   const [previewSortOrder, setPreviewSortOrder] = useState<'asc' | 'desc'>('asc')
   const [currentPage, setCurrentPage] = useState(1)
   const [rowsPerPage, setRowsPerPage] = useState<number | 'all'>(50)
+
+  // Monthly Assignment States
+  const [expiryMonthFilter, setExpiryMonthFilter] = useState<number>(0) // 0 = All, 1-12 = month
+  const [expiryYearFilter, setExpiryYearFilter] = useState<number>(new Date().getFullYear())
+  const [showAssignPanel, setShowAssignPanel] = useState(false)
+  const [availableExecs, setAvailableExecs] = useState<any[]>([])
+  const [selectedExecIds, setSelectedExecIds] = useState<string[]>([])
+  const [execsLoading, setExecsLoading] = useState(false)
+  const [assigning, setAssigning] = useState(false)
+  const [assignResult, setAssignResult] = useState<any>(null)
+
+  // Multi-Selection & Deletion States
+  const [selectedFileNames, setSelectedFileNames] = useState<string[]>([])
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false)
+  const [filesToDelete, setFilesToDelete] = useState<string[]>([])
+  const [deleteAssociatedLeads, setDeleteAssociatedLeads] = useState(true)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [deleteSuccessMessage, setDeleteSuccessMessage] = useState('')
 
   const formatDateTime = (dateStr: string | Date | undefined) => {
     if (!dateStr) return '—'
@@ -199,6 +218,120 @@ export default function ImportedSheetsPage() {
       alert(err.message || 'Failed to load spreadsheet preview.')
     } finally {
       setPreviewLoading(false)
+    }
+  }
+
+  // Fetch available executives for assignment
+  const fetchAvailableExecs = async (month: number, year: number) => {
+    setExecsLoading(true)
+    try {
+      const res = await fetchApi(`/api/v1/leads/available-executives?month=${month}&year=${year}`)
+      setAvailableExecs(res?.executives || [])
+      // Auto-select available ones (not on extended leave)
+      const available = (res?.executives || []).filter((e: any) => !e.isOnExtendedLeave)
+      setSelectedExecIds(available.map((e: any) => e.id))
+    } catch (err) {
+      console.error('Failed to fetch executives:', err)
+    } finally {
+      setExecsLoading(false)
+    }
+  }
+
+  // Handle month filter change in preview
+  const handleExpiryMonthChange = (month: number) => {
+    setExpiryMonthFilter(month)
+    setCurrentPage(1)
+    setAssignResult(null)
+    if (month > 0) {
+      fetchAvailableExecs(month, expiryYearFilter)
+    } else {
+      setShowAssignPanel(false)
+    }
+  }
+
+  // Assign leads for the selected month
+  const handleAssignLeads = async () => {
+    if (!expiryMonthFilter || selectedExecIds.length === 0) return
+    setAssigning(true)
+    setAssignResult(null)
+    try {
+      const res = await fetchApi('/api/v1/leads/assign-monthly', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          importName: selectedFile?.batchName || null,
+          month: expiryMonthFilter,
+          year: expiryYearFilter,
+          salesExecutiveIds: selectedExecIds
+        })
+      })
+      setAssignResult(res)
+    } catch (err: any) {
+      setAssignResult({ error: err.message || 'Assignment failed' })
+    } finally {
+      setAssigning(false)
+    }
+  }
+
+  const MONTH_NAMES = ['All Months', 'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December']
+
+  // Multi-Selection Handlers
+  const toggleSelectFile = (fileName: string) => {
+    if (fileName === 'import_all_leads.xlsx') return
+    setSelectedFileNames(prev =>
+      prev.includes(fileName) ? prev.filter(f => f !== fileName) : [...prev, fileName]
+    )
+  }
+
+  const selectAllFiles = () => {
+    const selectable = filteredFiles
+      .filter(f => f.fileName !== 'import_all_leads.xlsx')
+      .map(f => f.fileName)
+    setSelectedFileNames(selectable)
+  }
+
+  const clearSelectedFiles = () => {
+    setSelectedFileNames([])
+  }
+
+  const promptDeleteFiles = (fileNames: string[]) => {
+    const valid = fileNames.filter(f => f !== 'import_all_leads.xlsx')
+    if (valid.length === 0) return
+    setFilesToDelete(valid)
+    setDeleteAssociatedLeads(true)
+    setDeleteModalOpen(true)
+  }
+
+  const confirmDeleteFiles = async () => {
+    if (filesToDelete.length === 0) return
+    setIsDeleting(true)
+    try {
+      if (filesToDelete.length === 1) {
+        const res = await fetchApi(`/api/v1/import/sheets/${encodeURIComponent(filesToDelete[0])}?deleteLeads=${deleteAssociatedLeads}`, {
+          method: 'DELETE'
+        })
+        setDeleteSuccessMessage(res?.message || 'Spreadsheet deleted successfully.')
+      } else {
+        const res = await fetchApi('/api/v1/import/sheets', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fileNames: filesToDelete,
+            deleteLeads: deleteAssociatedLeads
+          })
+        })
+        setDeleteSuccessMessage(res?.message || `${filesToDelete.length} spreadsheets deleted successfully.`)
+      }
+      setSelectedFileNames(prev => prev.filter(f => !filesToDelete.includes(f)))
+      setDeleteModalOpen(false)
+      setFilesToDelete([])
+      setTimeout(() => setDeleteSuccessMessage(''), 5000)
+      fetchFiles(true)
+    } catch (err: any) {
+      alert(err.message || 'Failed to delete spreadsheets')
+    } finally {
+      setIsDeleting(false)
     }
   }
 
@@ -324,6 +457,34 @@ export default function ImportedSheetsPage() {
     if (!previewData?.rows) return []
     let rows = previewData.rows
 
+    // Filter by expiry month if selected
+    if (expiryMonthFilter > 0 && previewData.headers) {
+      const expiryColIdx = previewData.headers.findIndex(h => {
+        const hLower = h.toLowerCase().replace(/[^a-z0-9]/g, '')
+        return hLower.includes('expiry') || hLower.includes('validity') || hLower.includes('duedate') || hLower.includes('policyend')
+      })
+      if (expiryColIdx !== -1) {
+        rows = rows.filter(row => {
+          const cellVal = String(row[expiryColIdx] || '').trim()
+          if (!cellVal) return false
+          // Parse the date to get its month
+          let d: Date | null = null
+          // Try DD/MM/YYYY or DD-MM-YYYY
+          const dmyMatch = cellVal.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2,4})/)
+          if (dmyMatch) {
+            let yr = parseInt(dmyMatch[3], 10)
+            if (yr < 100) yr += yr < 50 ? 2000 : 1900
+            d = new Date(yr, parseInt(dmyMatch[2], 10) - 1, parseInt(dmyMatch[1], 10))
+          }
+          if (!d || isNaN(d.getTime())) {
+            d = new Date(cellVal)
+          }
+          if (!d || isNaN(d.getTime())) return false
+          return (d.getMonth() + 1) === expiryMonthFilter && d.getFullYear() === expiryYearFilter
+        })
+      }
+    }
+
     // Filter by agent tag
     if (previewAgentFilter !== 'all' && previewData.agentColIdx !== -1) {
       rows = rows.filter(row => {
@@ -351,8 +512,31 @@ export default function ImportedSheetsPage() {
       })
     }
 
+    // If month is filtered, sort by expiry date nearest first
+    if (expiryMonthFilter > 0 && previewData.headers) {
+      const expiryColIdx = previewData.headers.findIndex(h => {
+        const hLower = h.toLowerCase().replace(/[^a-z0-9]/g, '')
+        return hLower.includes('expiry') || hLower.includes('validity') || hLower.includes('duedate')
+      })
+      if (expiryColIdx !== -1 && previewSortCol === null) {
+        rows = [...rows].sort((a, b) => {
+          const parseD = (v: any) => {
+            const s = String(v || '').trim()
+            const m = s.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2,4})/)
+            if (m) {
+              let yr = parseInt(m[3], 10)
+              if (yr < 100) yr += yr < 50 ? 2000 : 1900
+              return new Date(yr, parseInt(m[2], 10) - 1, parseInt(m[1], 10)).getTime()
+            }
+            return new Date(s).getTime() || 0
+          }
+          return parseD(a[expiryColIdx]) - parseD(b[expiryColIdx])
+        })
+      }
+    }
+
     return rows
-  }, [previewData, previewSearch, previewAgentFilter, previewSortCol, previewSortOrder])
+  }, [previewData, previewSearch, previewAgentFilter, previewSortCol, previewSortOrder, expiryMonthFilter, expiryYearFilter])
 
   // Pagination for preview modal
   const totalFilteredRows = filteredPreviewRows.length
@@ -894,11 +1078,67 @@ export default function ImportedSheetsPage() {
           </div>
         )}
 
+        {/* Success toast / banner */}
+        {deleteSuccessMessage && (
+          <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-4 rounded-2xl text-xs font-bold flex items-center justify-between shadow-sm animate-in slide-in-from-top duration-200">
+            <div className="flex items-center gap-2">
+              <CheckCircle size={16} className="text-emerald-600 shrink-0" />
+              <span>{deleteSuccessMessage}</span>
+            </div>
+            <button onClick={() => setDeleteSuccessMessage('')} className="text-emerald-600 hover:text-emerald-800">
+              <X size={14} />
+            </button>
+          </div>
+        )}
+
         {/* Error message */}
         {errorMessage && (
           <div className="bg-rose-50 border border-rose-200 text-rose-700 p-4 rounded-2xl text-xs font-bold flex items-center justify-between">
             <span>{errorMessage}</span>
             <button onClick={() => fetchFiles()} className="px-3 py-1 bg-rose-600 text-white rounded-lg text-[10px]">Retry</button>
+          </div>
+        )}
+
+        {/* BULK ACTIONS TOOLBAR */}
+        {isAdmin && filteredFiles.filter(f => f.fileName !== 'import_all_leads.xlsx').length > 0 && (
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white p-3.5 px-5 rounded-2xl border border-slate-100 shadow-sm">
+            <div className="flex items-center gap-3 w-full sm:w-auto">
+              <button
+                onClick={selectedFileNames.length === filteredFiles.filter(f => f.fileName !== 'import_all_leads.xlsx').length ? clearSelectedFiles : selectAllFiles}
+                className="flex items-center gap-2 text-xs font-bold text-slate-700 hover:text-slate-900 cursor-pointer"
+              >
+                {selectedFileNames.length > 0 && selectedFileNames.length === filteredFiles.filter(f => f.fileName !== 'import_all_leads.xlsx').length ? (
+                  <CheckSquare size={16} className="text-blue-600" />
+                ) : (
+                  <Square size={16} className="text-slate-400" />
+                )}
+                <span>
+                  {selectedFileNames.length > 0
+                    ? `${selectedFileNames.length} sheet(s) selected`
+                    : 'Select All Sheets'}
+                </span>
+              </button>
+              {selectedFileNames.length > 0 && (
+                <button
+                  onClick={clearSelectedFiles}
+                  className="text-[11px] font-semibold text-slate-400 hover:text-slate-600 underline cursor-pointer"
+                >
+                  Clear Selection
+                </button>
+              )}
+            </div>
+
+            {selectedFileNames.length > 0 && (
+              <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                <button
+                  onClick={() => promptDeleteFiles(selectedFileNames)}
+                  className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl transition-all flex items-center gap-2 shadow-sm cursor-pointer"
+                >
+                  <Trash2 size={14} />
+                  <span>Delete Selected ({selectedFileNames.length})</span>
+                </button>
+              </div>
+            )}
           </div>
         )}
 
@@ -925,88 +1165,122 @@ export default function ImportedSheetsPage() {
         ) : (
           /* File Cards Grid */
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {filteredFiles.map(file => (
-              <div 
-                key={file.fileName}
-                className="bg-white rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-all p-5 flex flex-col justify-between space-y-4 group"
-              >
-                <div className="space-y-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="h-10 w-10 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center shrink-0">
-                      <FileSpreadsheet size={20} />
-                    </div>
-                    <div className="flex flex-wrap items-center gap-1 justify-end">
-                      {file.dayOfWeek && (
-                        <span className="px-2 py-0.5 bg-slate-100 text-slate-700 text-[10px] font-bold rounded-md">
-                          {file.dayOfWeek}
-                        </span>
-                      )}
-                      {file.agentCount > 0 && (
-                        <span className="px-2.5 py-1 bg-amber-50 text-amber-700 text-[10px] font-black rounded-lg border border-amber-200 flex items-center gap-1">
-                          <AlertCircle size={11} /> {file.agentCount} Agent
-                        </span>
-                      )}
-                    </div>
-                  </div>
+            {filteredFiles.map(file => {
+              const isMaster = file.fileName === 'import_all_leads.xlsx'
+              const isSelected = selectedFileNames.includes(file.fileName)
 
-                  <div>
-                    <h3 className="text-sm font-black text-slate-900 group-hover:text-blue-600 transition-colors truncate" title={file.fileName}>
-                      {file.fileName}
-                    </h3>
-                    <p className="text-[11px] font-bold text-slate-400 mt-0.5">
-                      Batch: <span className="text-slate-700 font-extrabold">{file.batchName}</span>
-                    </p>
-                  </div>
+              return (
+                <div 
+                  key={file.fileName}
+                  className={`bg-white rounded-2xl border transition-all p-5 flex flex-col justify-between space-y-4 group relative ${
+                    isSelected
+                      ? 'border-blue-500 ring-2 ring-blue-500/20 shadow-md bg-blue-50/10'
+                      : 'border-slate-100 shadow-sm hover:shadow-md'
+                  }`}
+                >
+                  <div className="space-y-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        {!isMaster && isAdmin && (
+                          <button
+                            onClick={() => toggleSelectFile(file.fileName)}
+                            className="text-slate-400 hover:text-blue-600 transition-colors cursor-pointer"
+                            title={isSelected ? 'Deselect sheet' : 'Select sheet'}
+                          >
+                            {isSelected ? (
+                              <CheckSquare size={18} className="text-blue-600" />
+                            ) : (
+                              <Square size={18} className="text-slate-300 group-hover:text-slate-400" />
+                            )}
+                          </button>
+                        )}
+                        <div className="h-10 w-10 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center shrink-0">
+                          <FileSpreadsheet size={20} />
+                        </div>
+                      </div>
 
-                  <div className="grid grid-cols-2 gap-2 bg-slate-50 p-2.5 rounded-xl border border-slate-100 text-[11px]">
+                      <div className="flex flex-wrap items-center gap-1 justify-end">
+                        {file.dayOfWeek && (
+                          <span className="px-2 py-0.5 bg-slate-100 text-slate-700 text-[10px] font-bold rounded-md">
+                            {file.dayOfWeek}
+                          </span>
+                        )}
+                        {file.agentCount > 0 && (
+                          <span className="px-2.5 py-1 bg-amber-50 text-amber-700 text-[10px] font-black rounded-lg border border-amber-200 flex items-center gap-1">
+                            <AlertCircle size={11} /> {file.agentCount} Agent
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
                     <div>
-                      <span className="text-slate-400 font-bold block text-[9px] uppercase">Total Rows</span>
-                      <span className="font-black text-slate-800">{file.totalRows} leads</span>
+                      <h3 className="text-sm font-black text-slate-900 group-hover:text-blue-600 transition-colors truncate" title={file.fileName}>
+                        {file.fileName}
+                      </h3>
+                      <p className="text-[11px] font-bold text-slate-400 mt-0.5">
+                        Batch: <span className="text-slate-700 font-extrabold">{file.batchName}</span>
+                      </p>
                     </div>
-                    <div>
-                      <span className="text-slate-400 font-bold block text-[9px] uppercase">File Size</span>
-                      <span className="font-black text-slate-800">{formatFileSize(file.sizeBytes)}</span>
+
+                    <div className="grid grid-cols-2 gap-2 bg-slate-50 p-2.5 rounded-xl border border-slate-100 text-[11px]">
+                      <div>
+                        <span className="text-slate-400 font-bold block text-[9px] uppercase">Total Rows</span>
+                        <span className="font-black text-slate-800">{file.totalRows} leads</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 font-bold block text-[9px] uppercase">File Size</span>
+                        <span className="font-black text-slate-800">{formatFileSize(file.sizeBytes)}</span>
+                      </div>
+                    </div>
+
+                    {/* IMPORT DATE, DAY, AND TIME BADGES */}
+                    <div className="pt-2 text-[11px] space-y-1.5 border-t border-slate-100">
+                      <div className="flex items-center justify-between text-slate-600">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                          📅 Imported:
+                        </span>
+                        <span className="font-extrabold text-slate-800 bg-slate-100/70 px-2 py-0.5 rounded-md">
+                          {file.dayOfWeek ? `${file.dayOfWeek}, ` : ''}{formatDateTime(file.importedAt)}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-slate-500">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                          🔄 Last Synced:
+                        </span>
+                        <span className="font-semibold text-slate-600">
+                          {formatDateTime(file.updatedAt)}
+                        </span>
+                      </div>
                     </div>
                   </div>
 
-                  {/* IMPORT DATE, DAY, AND TIME BADGES */}
-                  <div className="pt-2 text-[11px] space-y-1.5 border-t border-slate-100">
-                    <div className="flex items-center justify-between text-slate-600">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                        📅 Imported:
-                      </span>
-                      <span className="font-extrabold text-slate-800 bg-slate-100/70 px-2 py-0.5 rounded-md">
-                        {file.dayOfWeek ? `${file.dayOfWeek}, ` : ''}{formatDateTime(file.importedAt)}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between text-slate-500">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                        🔄 Last Synced:
-                      </span>
-                      <span className="font-semibold text-slate-600">
-                        {formatDateTime(file.updatedAt)}
-                      </span>
-                    </div>
+                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
+                    <button
+                      onClick={() => handleOpenPreview(file, leadSearch)}
+                      className="flex-1 py-2 px-3 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <Eye size={14} /> Preview Sheet
+                    </button>
+                    <a
+                      href={file.downloadUrl}
+                      download={file.fileName}
+                      className="py-2 px-3 bg-slate-900 hover:bg-black text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Download size={14} /> Download
+                    </a>
+                    {!isMaster && isAdmin && (
+                      <button
+                        onClick={() => promptDeleteFiles([file.fileName])}
+                        className="p-2 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-xl transition-all cursor-pointer border border-transparent hover:border-rose-100"
+                        title="Delete this spreadsheet"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    )}
                   </div>
                 </div>
-
-                <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
-                  <button
-                    onClick={() => handleOpenPreview(file, leadSearch)}
-                    className="flex-1 py-2 px-3 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                  >
-                    <Eye size={14} /> Preview Sheet
-                  </button>
-                  <a
-                    href={file.downloadUrl}
-                    download={file.fileName}
-                    className="py-2 px-3 bg-slate-900 hover:bg-black text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <Download size={14} /> Download
-                  </a>
-                </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         )}
 
@@ -1151,6 +1425,176 @@ export default function ImportedSheetsPage() {
                       </div>
                     </div>
 
+                    {/* ========= MONTHLY FILTER + ASSIGNMENT PANEL ========= */}
+                    <div className="bg-gradient-to-r from-blue-50 via-indigo-50 to-purple-50 p-4 rounded-2xl border border-blue-200 space-y-4">
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                        <div className="flex items-center gap-2">
+                          <CalendarDays size={16} className="text-blue-600" />
+                          <span className="text-xs font-black text-slate-800">Filter by Expiry Month:</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <select
+                            value={expiryMonthFilter}
+                            onChange={e => handleExpiryMonthChange(Number(e.target.value))}
+                            className="bg-white border border-blue-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                          >
+                            {MONTH_NAMES.map((name, idx) => (
+                              <option key={idx} value={idx}>{name}</option>
+                            ))}
+                          </select>
+                          <select
+                            value={expiryYearFilter}
+                            onChange={e => {
+                              setExpiryYearFilter(Number(e.target.value))
+                              if (expiryMonthFilter > 0) {
+                                handleExpiryMonthChange(expiryMonthFilter)
+                              }
+                            }}
+                            className="bg-white border border-blue-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                          >
+                            {[2024, 2025, 2026, 2027, 2028, 2029, 2030].map(y => (
+                              <option key={y} value={y}>{y}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {expiryMonthFilter > 0 && (
+                          <div className="flex items-center gap-2 ml-auto">
+                            <span className="px-3 py-1 bg-blue-600 text-white text-[10px] font-black rounded-lg">
+                              {filteredPreviewRows.length} leads in {MONTH_NAMES[expiryMonthFilter]} {expiryYearFilter}
+                            </span>
+                            <button
+                              onClick={() => setShowAssignPanel(!showAssignPanel)}
+                              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition-all flex items-center gap-2 cursor-pointer shadow-md"
+                            >
+                              <Users size={14} />
+                              {showAssignPanel ? 'Hide Assignment Panel' : 'Assign to Sales Executives'}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Executive Selection Panel */}
+                      {showAssignPanel && expiryMonthFilter > 0 && (
+                        <div className="bg-white rounded-2xl border border-blue-200 p-4 space-y-4">
+                          <div className="flex items-center justify-between">
+                            <h4 className="text-sm font-black text-slate-900 flex items-center gap-2">
+                              <UserCheck size={16} className="text-indigo-600" />
+                              Select Sales Executives for {MONTH_NAMES[expiryMonthFilter]} {expiryYearFilter}
+                            </h4>
+                            {!execsLoading && (
+                              <span className="text-[10px] font-bold text-slate-500">
+                                {selectedExecIds.length} of {availableExecs.length} selected
+                              </span>
+                            )}
+                          </div>
+
+                          {execsLoading ? (
+                            <div className="flex items-center gap-2 py-4 justify-center">
+                              <RefreshCw size={14} className="animate-spin text-blue-500" />
+                              <span className="text-xs font-bold text-slate-500">Loading executives...</span>
+                            </div>
+                          ) : availableExecs.length === 0 ? (
+                            <p className="text-xs text-slate-500 italic py-3">No active sales executives found.</p>
+                          ) : (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                              {availableExecs.map(exec => {
+                                const isSelected = selectedExecIds.includes(exec.id)
+                                return (
+                                  <button
+                                    key={exec.id}
+                                    onClick={() => {
+                                      setSelectedExecIds(prev =>
+                                        isSelected ? prev.filter(id => id !== exec.id) : [...prev, exec.id]
+                                      )
+                                    }}
+                                    className={`p-3 rounded-xl border-2 text-left transition-all cursor-pointer ${
+                                      isSelected
+                                        ? 'border-indigo-500 bg-indigo-50 shadow-md'
+                                        : 'border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm'
+                                    }`}
+                                  >
+                                    <div className="flex items-center justify-between mb-1">
+                                      <span className={`text-xs font-black ${
+                                        isSelected ? 'text-indigo-700' : 'text-slate-800'
+                                      }`}>
+                                        {exec.fullName}
+                                      </span>
+                                      <div className={`h-5 w-5 rounded-md flex items-center justify-center text-white ${
+                                        isSelected ? 'bg-indigo-600' : 'bg-slate-200'
+                                      }`}>
+                                        {isSelected && <Check size={12} />}
+                                      </div>
+                                    </div>
+                                    <div className="text-[10px] font-semibold text-slate-500 space-y-0.5">
+                                      <div>{exec.roleName} • {exec.currentlyAssignedCount} assigned</div>
+                                      {exec.isOnExtendedLeave ? (
+                                        <span className="text-amber-600 font-bold">⚠️ On Leave ({exec.leaveDays} days this month)</span>
+                                      ) : exec.isCurrentlyOnLeave ? (
+                                        <span className="text-orange-500 font-bold">🕐 Currently on leave (returns soon)</span>
+                                      ) : (
+                                        <span className="text-emerald-600 font-bold">✅ Available</span>
+                                      )}
+                                    </div>
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          )}
+
+                          {/* Assign Button + Result */}
+                          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 border-t border-slate-100">
+                            <div className="text-xs font-semibold text-slate-600">
+                              <strong>{filteredPreviewRows.length}</strong> leads will be distributed via round-robin across <strong>{selectedExecIds.length}</strong> executives
+                              {selectedExecIds.length > 0 && (
+                                <span className="text-blue-600 ml-1">
+                                  (~{Math.ceil(filteredPreviewRows.length / selectedExecIds.length)} each)
+                                </span>
+                              )}
+                            </div>
+                            <button
+                              onClick={handleAssignLeads}
+                              disabled={assigning || selectedExecIds.length === 0 || filteredPreviewRows.length === 0}
+                              className="px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white text-sm font-black rounded-xl transition-all flex items-center gap-2 cursor-pointer shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              {assigning ? (
+                                <><RefreshCw size={16} className="animate-spin" /> Assigning...</>
+                              ) : (
+                                <><Users size={16} /> Assign {filteredPreviewRows.length} Leads</>
+                              )}
+                            </button>
+                          </div>
+
+                          {/* Assignment Result */}
+                          {assignResult && (
+                            <div className={`p-4 rounded-xl border ${
+                              assignResult.error
+                                ? 'bg-rose-50 border-rose-200 text-rose-700'
+                                : 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                            }`}>
+                              {assignResult.error ? (
+                                <p className="text-xs font-bold">❌ {assignResult.error}</p>
+                              ) : (
+                                <div className="space-y-2">
+                                  <p className="text-sm font-black">✅ {assignResult.message}</p>
+                                  {assignResult.distribution && (
+                                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-2">
+                                      {assignResult.distribution.map((d: any) => (
+                                        <div key={d.id} className="bg-white p-2 rounded-lg text-xs">
+                                          <span className="font-black text-slate-800">{d.name}</span>
+                                          <span className="text-emerald-600 font-bold ml-1">→ {d.leadsAssigned} leads</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
                     {/* Scrollable Data Table */}
                     <div className="border border-slate-200 rounded-2xl overflow-x-auto max-h-[58vh] shadow-inner">
                       <table className="w-full text-left text-xs border-collapse">
@@ -1267,6 +1711,83 @@ export default function ImportedSheetsPage() {
                 </button>
               </div>
 
+            </div>
+          </div>
+        )}
+
+        {/* DELETE CONFIRMATION MODAL */}
+        {deleteModalOpen && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-150">
+            <div className="bg-white rounded-3xl w-full max-w-md p-6 shadow-2xl border border-slate-100 space-y-5 animate-in zoom-in duration-150">
+              <div className="flex items-center gap-3">
+                <div className="h-12 w-12 rounded-2xl bg-rose-50 border border-rose-100 text-rose-600 flex items-center justify-center shrink-0">
+                  <Trash2 size={24} />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-900">
+                    Delete {filesToDelete.length === 1 ? 'Spreadsheet' : `${filesToDelete.length} Spreadsheets`}
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    This action will permanently delete the selected file(s).
+                  </p>
+                </div>
+              </div>
+
+              {/* List of files being deleted */}
+              <div className="bg-slate-50 border border-slate-100 rounded-2xl p-3 max-h-36 overflow-y-auto space-y-1 text-xs">
+                {filesToDelete.map((fn, idx) => (
+                  <div key={fn} className="flex items-center gap-2 text-slate-700 font-semibold truncate">
+                    <span className="text-slate-400 text-[10px] font-mono">{idx + 1}.</span>
+                    <span className="truncate">{fn}</span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Option to also delete leads from DB */}
+              <label className="flex items-start gap-3 p-3 bg-amber-50/70 border border-amber-200/80 rounded-2xl cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={deleteAssociatedLeads}
+                  onChange={e => setDeleteAssociatedLeads(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 rounded text-rose-600 focus:ring-rose-500 border-slate-300 cursor-pointer"
+                />
+                <div className="text-xs">
+                  <span className="font-black text-amber-900 block">
+                    Also delete associated leads from database
+                  </span>
+                  <span className="text-amber-700 text-[11px] block mt-0.5 leading-snug">
+                    Removes all lead records, call logs, and assignments imported in this batch.
+                  </span>
+                </div>
+              </label>
+
+              {/* Actions */}
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  onClick={() => { setDeleteModalOpen(false); setFilesToDelete([]); }}
+                  disabled={isDeleting}
+                  className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmDeleteFiles}
+                  disabled={isDeleting}
+                  className="px-6 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-2 shadow-md cursor-pointer disabled:opacity-50"
+                >
+                  {isDeleting ? (
+                    <>
+                      <RefreshCw size={14} className="animate-spin" />
+                      <span>Deleting...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 size={14} />
+                      <span>Confirm Delete</span>
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         )}

@@ -25,7 +25,7 @@ const DB_LEAD_FIELDS: ColumnMapping[] = [
   { dbField: 'clientEmail', label: 'Email Address', required: false, mappedHeader: '' },
   { dbField: 'vehicleNo', label: 'Vehicle Number', required: false, mappedHeader: '' },
   { dbField: 'expiryDate', label: 'Policy Expiry Date', required: false, mappedHeader: '' },
-  { dbField: 'registrationDate', label: 'REG NO', required: false, mappedHeader: '' },
+  { dbField: 'registrationDate', label: 'Registration Date', required: false, mappedHeader: '' },
   { dbField: 'gvw', label: 'Gross Vehicle Weight (GVW)', required: false, mappedHeader: '' },
   { dbField: 'address', label: 'Address', required: false, mappedHeader: '' },
   { dbField: 'city', label: 'City', required: false, mappedHeader: '' },
@@ -138,7 +138,7 @@ export default function LeadImportPage() {
         if (field.dbField === 'gvw') return ['gvw', 'gross weight', 'weight', 'gross vehicle weight'].includes(header)
         if (field.dbField === 'address') return ['address', 'location'].includes(header)
         if (field.dbField === 'city') return ['city', 'state'].includes(header)
-        if (field.dbField === 'existingAgent') return ['is agent', 'existing agent', 'is_agent', 'agent status', 'agent?'].includes(header)
+        if (field.dbField === 'existingAgent') return ['agent', 'broker', 'is agent', 'existing agent', 'is_agent', 'agent status', 'agent?', 'agent number', 'agent name', 'agent contact', 'agent no'].includes(header)
         
         return header === dbFieldName
       })

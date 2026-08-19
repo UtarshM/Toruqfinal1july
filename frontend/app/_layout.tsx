@@ -103,6 +103,7 @@ function RootLayoutNav() {
 }
 
 import { initDB } from '../src/lib/db';
+import { UpdateBanner } from '../src/components/UpdateManager';
 
 export default function RootLayout() {
   useEffect(() => {
@@ -119,6 +120,7 @@ export default function RootLayout() {
         />
         <AuthProvider>
           <RootLayoutNav />
+          <UpdateBanner />
         </AuthProvider>
       </SafeAreaProvider>
     </ErrorBoundary>

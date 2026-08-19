@@ -52,6 +52,8 @@ model User {
   role                 Role?               @relation(fields: [roleId], references: [id])
   visits               Visit[]
   permissions          Permission[]        @relation("UserPermissions")
+  renewalAssignments   RenewalRecord[]     @relation("RenewalAssignee")
+  renewalCreations     RenewalRecord[]     @relation("RenewalCreator")
 
   @@map("users")
 }
@@ -112,6 +114,7 @@ model Lead {
   quotations       Quotation[]
   rtoWork          RTOWork[]
   visits           Visit[]
+  renewalRecords   RenewalRecord[]
 
   @@index([status])
   @@index([assignedTo])
@@ -137,6 +140,7 @@ model Policy {
   claims        Claim[]
   lead          Lead?         @relation(fields: [leadId], references: [id])
   transactions  Transaction[]
+  renewalRecords RenewalRecord[]
 
   @@index([status])
   @@index([endDate])
@@ -629,5 +633,52 @@ model QuotationRelationship {
 
   @@unique([companyId, categoryId, status])
   @@map("quotation_relationship_details")
+}
+
+model RenewalRecord {
+  id                String    @id @default(uuid()) @db.Uuid
+  leadId            String?   @db.Uuid
+  policyId          String?   @db.Uuid
+  vehicleNo         String?
+  clientName        String
+  clientPhone       String?
+  clientEmail       String?
+
+  // Policy details
+  policyNumber      String?
+  provider          String?
+  policyType        String?
+  premiumAmount     Decimal?  @db.Decimal(12, 2)
+  policyStartDate   DateTime?
+  policyEndDate     DateTime  // Critical: used for renewal month detection
+
+  // Documents & data
+  documents         Json?     // Array of document URLs
+  customData        Json?     // Any additional data
+
+  // Assignment
+  assignedTo        String?   @db.Uuid
+  assignedMonth     Int?      // Month this was assigned for renewal (1-12)
+  assignedYear      Int?
+
+  // Status: Active, PendingRenewal, Renewed, Refused, RemovedToLeads
+  renewalStatus     String    @default("Active")
+  renewedAt         DateTime?
+  refusedAt         DateTime?
+
+  // Tracking
+  createdBySalesId  String?   @db.Uuid   // Which salesperson originally made the policy
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  lead              Lead?     @relation(fields: [leadId], references: [id])
+  policy            Policy?   @relation(fields: [policyId], references: [id])
+  assignee          User?     @relation("RenewalAssignee", fields: [assignedTo], references: [id])
+  createdBy         User?     @relation("RenewalCreator", fields: [createdBySalesId], references: [id])
+
+  @@index([renewalStatus])
+  @@index([policyEndDate])
+  @@index([assignedTo])
+  @@map("renewal_records")
 }
 

@@ -27,20 +27,38 @@ export async function POST(req: NextRequest) {
       const workbook = XLSX.read(new Uint8Array(buffer), { type: 'array' })
       const firstSheetName = workbook.SheetNames[0]
       const worksheet = workbook.Sheets[firstSheetName]
-      
-      const range = XLSX.utils.decode_range(worksheet['!ref'] || '')
-      for (let col = range.s.c; col <= range.e.c; col++) {
-        const cellRef = XLSX.utils.encode_cell({ r: range.s.r, c: col })
-        const cell = worksheet[cellRef]
-        if (cell && cell.v !== undefined) {
-          headers.push(String(cell.v).trim())
-        }
+      const rawAoa: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' })
+
+      if (rawAoa.length > 0) {
+        const rawHeaders = rawAoa[0].map((h: any) => String(h || '').trim())
+        headers = rawHeaders.map((h, c) => {
+          if (h) return h
+          // Check column values to infer header
+          for (let r = 1; r < Math.min(rawAoa.length, 10); r++) {
+            const val = String(rawAoa[r]?.[c] || '').trim().toLowerCase()
+            if (val.includes('agent') || val.includes('broker')) {
+              return 'Agent Number'
+            }
+          }
+          return `Column_${c + 1}`
+        })
       }
     } else {
       const text = await file.text()
-      const parseResult = Papa.parse(text, { preview: 1 })
-      if (parseResult.data && parseResult.data.length > 0) {
-        headers = (parseResult.data[0] as string[]).map(h => String(h).trim()).filter(Boolean)
+      const parseResult = Papa.parse(text, { preview: 10 })
+      const rawAoa = parseResult.data as any[][]
+      if (rawAoa && rawAoa.length > 0) {
+        const rawHeaders = (rawAoa[0] || []).map(h => String(h || '').trim())
+        headers = rawHeaders.map((h, c) => {
+          if (h) return h
+          for (let r = 1; r < Math.min(rawAoa.length, 10); r++) {
+            const val = String(rawAoa[r]?.[c] || '').trim().toLowerCase()
+            if (val.includes('agent') || val.includes('broker')) {
+              return 'Agent Number'
+            }
+          }
+          return `Column_${c + 1}`
+        })
       }
     }
 

@@ -5,14 +5,14 @@
  */
   import { supabase } from '../lib/supabase';
 
-const getBaseUrl = () => {
+export const getBaseUrl = () => {
   if (process.env.EXPO_PUBLIC_API_URL) {
     return process.env.EXPO_PUBLIC_API_URL.replace(/\/api\/v1\/?$/, '').replace(/\/$/, '');
   }
   return 'https://admin-panel-delta-steel.vercel.app';
 };
 
-const BASE_URL = getBaseUrl();
+export const BASE_URL = getBaseUrl();
 
 async function getToken(): Promise<string | null> {
   try {

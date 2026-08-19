@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { validateAuth } from '@/lib/auth-guard'
+import prisma from '@/lib/prisma'
 import path from 'path'
 import fs from 'fs'
 import * as XLSX from 'xlsx'
@@ -68,5 +69,90 @@ export async function GET(
   } catch (err: any) {
     console.error('[sheets-preview] Error:', err)
     return NextResponse.json({ error: 'Failed to parse spreadsheet file', details: err?.message }, { status: 500 })
+  }
+}
+
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ filename: string }> }
+) {
+  const { context, error } = await validateAuth(req, 'leads.delete')
+  if (error || !context) return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const roleUpper = (context.role || '').toUpperCase()
+  const isAdmin = roleUpper.includes('ADMIN') || roleUpper.includes('SUPER')
+  if (!isAdmin) {
+    return NextResponse.json({ error: 'Forbidden: Only Admins can delete spreadsheets' }, { status: 403 })
+  }
+
+  try {
+    const { filename } = await params
+    const safeFileName = path.basename(filename)
+
+    // Cannot delete the master aggregated sheet
+    if (safeFileName === 'import_all_leads.xlsx') {
+      return NextResponse.json({ error: 'Cannot delete the master aggregate spreadsheet' }, { status: 400 })
+    }
+
+    const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'imports')
+    const filePath = path.join(uploadDir, safeFileName)
+
+    // Extract batch name
+    const batchName = safeFileName
+      .replace(/^import_/, '')
+      .replace(/_\d+\.(xlsx|csv)$/, '')
+      .replace(/\.(xlsx|csv)$/, '')
+
+    const deleteLeads = req.nextUrl.searchParams.get('deleteLeads') !== 'false'
+
+    let deletedLeadsCount = 0
+    if (deleteLeads && batchName && batchName !== 'all_leads') {
+      // Find matching leads
+      const leads = await prisma.lead.findMany({
+        where: {
+          OR: [
+            { importName: batchName },
+            { importName: batchName.replace(/_/g, '-') },
+            { importName: batchName.replace(/-/g, '_') }
+          ]
+        },
+        select: { id: true }
+      })
+
+      const leadIds = leads.map(l => l.id)
+      if (leadIds.length > 0) {
+        // Delete dependent records first
+        await prisma.leadAssignment.deleteMany({ where: { leadId: { in: leadIds } } }).catch(() => {})
+        await prisma.leadStatusHistory.deleteMany({ where: { leadId: { in: leadIds } } }).catch(() => {})
+        await prisma.leadWhatsAppLog.deleteMany({ where: { leadId: { in: leadIds } } }).catch(() => {})
+        await prisma.call.deleteMany({ where: { leadId: { in: leadIds } } }).catch(() => {})
+        await prisma.followUp.deleteMany({ where: { leadId: { in: leadIds } } }).catch(() => {})
+        await prisma.activityLog.deleteMany({ where: { entityId: { in: leadIds } } }).catch(() => {})
+
+        const deleteResult = await prisma.lead.deleteMany({
+          where: { id: { in: leadIds } }
+        })
+        deletedLeadsCount = deleteResult.count
+      }
+    }
+
+    // Delete file from disk
+    if (fs.existsSync(filePath)) {
+      try {
+        fs.unlinkSync(filePath)
+      } catch (err: any) {
+        console.warn('[sheets DELETE] Failed to unlink file:', err)
+      }
+    }
+
+    return NextResponse.json({
+      success: true,
+      fileName: safeFileName,
+      deletedLeadsCount,
+      message: `Spreadsheet "${safeFileName}" and ${deletedLeadsCount} associated lead(s) deleted successfully.`
+    })
+  } catch (err: any) {
+    console.error('[sheets DELETE] Error:', err)
+    return NextResponse.json({ error: err.message || 'Failed to delete spreadsheet' }, { status: 500 })
   }
 }

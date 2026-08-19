@@ -13,18 +13,20 @@ export default function DataApprovalsScreen() {
   const { cache, setCache, loadCache } = useCacheStore();
 
   const [requests, setRequests] = useState<any[]>(cache['/data/changes']?.items || []);
+  const [executives, setExecutives] = useState<any[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [filter, setFilter] = useState('pending');
+  const [filter, setFilter] = useState('pending'); // 'pending' | 'agents' | 'approved' | 'rejected' | 'all'
 
   // Modal review state
   const [reviewModalVisible, setReviewModalVisible] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState<any | null>(null);
   const [reviewAction, setReviewAction] = useState<'approve' | 'reject'>('approve');
   const [reviewNote, setReviewNote] = useState('');
+  const [assigneeId, setAssigneeId] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  // Load cache on mount
+  // Load cache and users on mount
   useEffect(() => {
     loadCache().then(() => {
       const cached = cache['/data/changes'];
@@ -32,19 +34,26 @@ export default function DataApprovalsScreen() {
         setRequests(cached.items);
       }
     });
+
+    api.get<any>('/users?role=Sales Executive').then(res => {
+      if (res && Array.isArray(res.users)) {
+        setExecutives(res.users);
+      } else if (Array.isArray(res)) {
+        setExecutives(res);
+      }
+    }).catch(() => {});
   }, []);
 
   const load = useCallback(async () => {
     try {
-      const statusParam = filter !== 'all' ? `?status=${filter}` : '';
-      const data = await api.get<any[]>(`/data/changes${statusParam}`);
+      const data = await api.get<any[]>('/data/changes');
       const arr = Array.isArray(data) ? data : [];
       setRequests(arr);
       setCache('/data/changes', { items: arr });
     } catch (e) {
       console.error('[DataApprovalsScreen] Failed to load data changes', e);
     }
-  }, [filter, setCache]);
+  }, [setCache]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
   const onRefresh = async () => { setRefreshing(true); await load(); setRefreshing(false); };
@@ -53,6 +62,7 @@ export default function DataApprovalsScreen() {
     setSelectedRequest(req);
     setReviewAction(action);
     setReviewNote('');
+    setAssigneeId('');
     setReviewModalVisible(true);
   };
 
@@ -60,10 +70,15 @@ export default function DataApprovalsScreen() {
     if (!selectedRequest) return;
     setSubmitting(true);
     try {
-      await api.patch(`/data/changes/${selectedRequest.id}`, {
+      const payload: any = {
         action: reviewAction,
         reviewNote: reviewNote.trim() || null
-      });
+      };
+      if (assigneeId) {
+        payload.assignedTo = assigneeId;
+      }
+
+      await api.patch(`/data/changes/${selectedRequest.id}`, payload);
       setReviewModalVisible(false);
       Alert.alert('Success', `Request has been ${reviewAction === 'approve' ? 'approved' : 'rejected'} successfully.`);
       load();
@@ -73,6 +88,18 @@ export default function DataApprovalsScreen() {
       setSubmitting(false);
     }
   };
+
+  const filteredRequests = requests.filter(r => {
+    if (filter === 'agents') {
+      return (r.field === 'existingAgent' || r.newValue === 'Agent');
+    }
+    if (filter === 'pending') return r.status === 'pending';
+    if (filter === 'approved') return r.status === 'approved';
+    if (filter === 'rejected') return r.status === 'rejected';
+    return true;
+  });
+
+  const agentCount = requests.filter(r => (r.field === 'existingAgent' || r.newValue === 'Agent') && r.status === 'pending').length;
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -88,37 +115,62 @@ export default function DataApprovalsScreen() {
       </View>
 
       {/* Filters */}
-      <View style={styles.filterRow}>
-        {['pending', 'approved', 'rejected', 'all'].map(s => (
-          <Pressable key={s} style={[styles.chip, filter === s && styles.chipActive]} onPress={() => setFilter(s)}>
-            <Text style={[styles.chipText, filter === s && styles.chipTextActive]}>{s}</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
+        {[
+          { key: 'pending', label: 'Pending' },
+          { key: 'agents', label: `🚨 Agents (${agentCount})` },
+          { key: 'approved', label: 'Approved' },
+          { key: 'rejected', label: 'Rejected' },
+          { key: 'all', label: 'All' },
+        ].map(s => (
+          <Pressable
+            key={s.key}
+            style={[
+              styles.chip,
+              filter === s.key && styles.chipActive,
+              s.key === 'agents' && filter !== s.key && { borderColor: '#F59E0B', backgroundColor: '#FEF3C7' }
+            ]}
+            onPress={() => setFilter(s.key)}
+          >
+            <Text
+              style={[
+                styles.chipText,
+                filter === s.key && styles.chipTextActive,
+                s.key === 'agents' && filter !== s.key && { color: '#B45309', fontWeight: '800' }
+              ]}
+            >
+              {s.label}
+            </Text>
           </Pressable>
         ))}
-      </View>
+      </ScrollView>
 
       {/* List */}
       <FlatList 
-        data={requests} 
+        data={filteredRequests} 
         keyExtractor={i => i.id} 
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
-        contentContainerStyle={{ padding: Spacing.md, gap: Spacing.md }}
+        contentContainerStyle={{ padding: Spacing.md, gap: Spacing.md, paddingBottom: 100 }}
         ListEmptyComponent={
           <View style={styles.empty}>
             <Ionicons name="checkbox-outline" size={48} color={Colors.textLight} />
-            <Text style={styles.emptyText}>No change requests found</Text>
+            <Text style={styles.emptyText}>No matching change requests found</Text>
           </View>
         }
         renderItem={({ item }) => {
           let statusColor = Colors.primary;
           if (item.status === 'approved') statusColor = Colors.success;
           if (item.status === 'rejected') statusColor = Colors.error;
+          const isAgent = item.field === 'existingAgent' || item.newValue === 'Agent';
 
           return (
-            <View style={styles.card}>
+            <View style={[styles.card, isAgent && { borderColor: '#FDE68A', backgroundColor: '#FFFDF5' }]}>
               <View style={styles.cardHeader}>
-                <View>
-                  <Text style={styles.entityTitle}>{item.entityType.toUpperCase()} ({item.entityId.substring(0, 8)}…)</Text>
-                  <Text style={styles.requester}>Requested by {item.requester?.fullName || item.requester?.email || 'Staff'}</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.entityTitle}>
+                    {isAgent ? '🚨 AGENT DETECTED' : item.entityType.toUpperCase()} ({item.entityId.substring(0, 8)}…)
+                  </Text>
+                  <Text style={styles.requester}>Requested by {item.requester?.fullName || item.requester?.email || 'System'}</Text>
                 </View>
                 <View style={[styles.statusBadge, { borderColor: statusColor + '20', backgroundColor: statusColor + '10' }]}>
                   <Text style={[styles.statusText, { color: statusColor }]}>{item.status.toUpperCase()}</Text>
@@ -135,7 +187,7 @@ export default function DataApprovalsScreen() {
                     </View>
                     <View style={styles.leadDetailsCol}>
                       <Text style={styles.leadDetailsLabel}>Phone</Text>
-                      <Text style={styles.leadDetailsText}>{item.leadDetails.contactNo || '—'}</Text>
+                      <Text style={styles.leadDetailsText}>{item.leadDetails.clientPhone || item.leadDetails.contactNo || '—'}</Text>
                     </View>
                     <View style={styles.leadDetailsCol}>
                       <Text style={styles.leadDetailsLabel}>Vehicle</Text>
@@ -214,17 +266,46 @@ export default function DataApprovalsScreen() {
 
             <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
               <Text style={styles.descText}>
-                Are you sure you want to {reviewAction} this data change? Any approved change will overwrite the current live value.
+                {reviewAction === 'approve'
+                  ? 'Approve this change. The live record and disk spreadsheets will be synchronized immediately.'
+                  : 'Reject this change. The lead will be marked as a normal customer lead and assigned round-robin.'}
               </Text>
+
+              {reviewAction === 'approve' && (selectedRequest?.field === 'existingAgent' || selectedRequest?.newValue === 'Agent') && (
+                <View style={styles.field}>
+                  <Text style={styles.label}>ASSIGN TO SALES EXECUTIVE (OPTIONAL)</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 6 }}>
+                    <Pressable
+                      style={[styles.assignChip, !assigneeId && styles.assignChipActive]}
+                      onPress={() => setAssigneeId('')}
+                    >
+                      <Text style={[styles.assignChipText, !assigneeId && styles.assignChipTextActive]}>
+                        Keep Unassigned (Direct)
+                      </Text>
+                    </Pressable>
+                    {executives.map(ex => (
+                      <Pressable
+                        key={ex.id}
+                        style={[styles.assignChip, assigneeId === ex.id && styles.assignChipActive]}
+                        onPress={() => setAssigneeId(ex.id)}
+                      >
+                        <Text style={[styles.assignChipText, assigneeId === ex.id && styles.assignChipTextActive]}>
+                          {ex.fullName || ex.email}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </ScrollView>
+                </View>
+              )}
 
               <View style={styles.field}>
                 <Text style={styles.label}>REVIEW NOTE / COMMENTS (OPTIONAL)</Text>
                 <TextInput
-                  style={[styles.input, { height: 100, textAlignVertical: 'top', paddingTop: Spacing.sm }]}
+                  style={[styles.input, { height: 80, textAlignVertical: 'top', paddingTop: Spacing.sm }]}
                   placeholder="Explain why this request is approved or rejected..."
                   placeholderTextColor={Colors.textLight}
                   multiline
-                  numberOfLines={4}
+                  numberOfLines={3}
                   value={reviewNote}
                   onChangeText={setReviewNote}
                 />
@@ -307,4 +388,8 @@ const styles = StyleSheet.create({
   leadDetailsCol: { flex: 1 },
   leadDetailsLabel: { fontSize: 9, fontWeight: '700', color: Colors.textLight, textTransform: 'uppercase', marginBottom: 2 },
   leadDetailsText: { fontSize: FontSize.sm - 1, color: Colors.text, fontWeight: '500' },
+  assignChip: { paddingHorizontal: Spacing.sm, paddingVertical: 6, borderRadius: BorderRadius.sm, borderWidth: 1, borderColor: Colors.border, backgroundColor: '#FFFFFF', marginRight: Spacing.xs },
+  assignChipActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
+  assignChipText: { fontSize: 11, fontWeight: '600', color: Colors.textMuted },
+  assignChipTextActive: { color: '#FFFFFF' },
 });

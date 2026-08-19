@@ -9,13 +9,19 @@ import { supabase } from '../../../src/lib/supabase';
 import { useAuth } from '../../../src/context/AuthContext';
 import { useRouter } from 'expo-router';
 
+import { BASE_URL } from '../../../src/utils/api';
+
 interface Mappings {
   clientName: string;
   clientPhone: string;
   vehicleNo: string;
   clientEmail?: string;
   expiryDate?: string;
+  registrationDate?: string;
   gvw?: string;
+  address?: string;
+  city?: string;
+  existingAgent?: string;
 }
 
 interface HeaderDropdownProps {
@@ -129,7 +135,8 @@ export default function LeadImportScreen() {
     vehicleNo: '',
     clientEmail: '',
     expiryDate: '',
-    gvw: ''
+    gvw: '',
+    existingAgent: ''
   });
   const [showMappingForm, setShowMappingForm] = useState(false);
   
@@ -183,7 +190,7 @@ export default function LeadImportScreen() {
         type: file.mimeType || 'application/octet-stream',
       } as any);
 
-      const response = await fetch('https://admin-panel-delta-steel.vercel.app/api/v1/leads/import/parse', {
+      const response = await fetch(`${BASE_URL}/api/v1/leads/import/parse`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -200,15 +207,30 @@ export default function LeadImportScreen() {
       setFileHeaders(data.headers || []);
       
       // Auto-fuzzy match headers
-      const autoMatch: Mappings = { clientName: '', clientPhone: '', vehicleNo: '', clientEmail: '', expiryDate: '', gvw: '' };
+      const autoMatch: Mappings = {
+        clientName: '',
+        clientPhone: '',
+        vehicleNo: '',
+        clientEmail: '',
+        expiryDate: '',
+        registrationDate: '',
+        gvw: '',
+        address: '',
+        city: '',
+        existingAgent: ''
+      };
       (data.headers || []).forEach((h: string) => {
         const norm = h.toLowerCase().replace(/[\s\.\-_]/g, '');
-        if (['ownername', 'name', 'clientname'].includes(norm)) autoMatch.clientName = h;
-        else if (['phonenumber', 'contactnumber', 'phone', 'contact'].includes(norm)) autoMatch.clientPhone = h;
-        else if (['vehiclenumber', 'vehicleno', 'vehicle', 'regno'].includes(norm)) autoMatch.vehicleNo = h;
-        else if (['email', 'clientemail'].includes(norm)) autoMatch.clientEmail = h;
-        else if (['expirydate', 'expiry', 'insuranceexpirydate'].includes(norm)) autoMatch.expiryDate = h;
-        else if (['gvw', 'grossweight'].includes(norm)) autoMatch.gvw = h;
+        if (['ownername', 'name', 'clientname', 'partyname', 'insuredname', 'insured'].includes(norm)) autoMatch.clientName = h;
+        else if (['phonenumber', 'contactnumber', 'phone', 'contact', 'mobile', 'mobileno', 'phoneno'].includes(norm)) autoMatch.clientPhone = h;
+        else if (['vehiclenumber', 'vehicleno', 'vehicle', 'regno', 'registrationno'].includes(norm)) autoMatch.vehicleNo = h;
+        else if (['email', 'clientemail', 'emailid'].includes(norm)) autoMatch.clientEmail = h;
+        else if (['expirydate', 'expiry', 'insuranceexpirydate', 'duedate'].includes(norm)) autoMatch.expiryDate = h;
+        else if (['registrationdate', 'regdate'].includes(norm)) autoMatch.registrationDate = h;
+        else if (['gvw', 'grossweight', 'grossvehicleweight', 'weight'].includes(norm)) autoMatch.gvw = h;
+        else if (['address', 'location'].includes(norm)) autoMatch.address = h;
+        else if (['city', 'state'].includes(norm)) autoMatch.city = h;
+        else if (['existingagent', 'isagent', 'is_agent', 'agent', 'broker', 'agentnumber', 'agent?'].includes(norm)) autoMatch.existingAgent = h;
       });
       setMapping(autoMatch);
       setShowMappingForm(true);
@@ -259,11 +281,15 @@ export default function LeadImportScreen() {
       };
       if (mapping.clientEmail) cleanMapping.clientEmail = mapping.clientEmail;
       if (mapping.expiryDate) cleanMapping.expiryDate = mapping.expiryDate;
+      if (mapping.registrationDate) cleanMapping.registrationDate = mapping.registrationDate;
       if (mapping.gvw) cleanMapping.gvw = mapping.gvw;
+      if (mapping.address) cleanMapping.address = mapping.address;
+      if (mapping.city) cleanMapping.city = mapping.city;
+      if (mapping.existingAgent) cleanMapping.existingAgent = mapping.existingAgent;
 
       formData.append('mapping', JSON.stringify(cleanMapping));
 
-      const response = await fetch('https://admin-panel-delta-steel.vercel.app/api/v1/leads/import', {
+      const response = await fetch(`${BASE_URL}/api/v1/leads/import`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -282,7 +308,13 @@ export default function LeadImportScreen() {
       setSelectedFile(null);
       setImportName('');
       setShowMappingForm(false);
-      Alert.alert('Success', 'Leads imported and distributed successfully!');
+
+      const agentCount = data.stats?.agentCount ?? data.agentLeadsCount ?? 0;
+      const successMsg = agentCount > 0
+        ? `Leads imported successfully! ${agentCount} agent lead(s) were detected and held for Admin Approval.`
+        : 'Leads imported and distributed to Sales Executives successfully!';
+
+      Alert.alert('Import Completed 🎉', successMsg);
     } catch (err: any) {
       Alert.alert('Import Failed', err.message || 'An error occurred.');
     } finally {
@@ -397,11 +429,43 @@ export default function LeadImportScreen() {
             />
 
             <HeaderDropdownSelector
+              label="Registration Date"
+              placeholder="Choose Registration Date Column (Optional)"
+              options={fileHeaders}
+              selectedValue={mapping.registrationDate || ''}
+              onSelect={(val) => updateMapping('registrationDate', val)}
+            />
+
+            <HeaderDropdownSelector
               label="GVW"
               placeholder="Choose GVW Column (Optional)"
               options={fileHeaders}
               selectedValue={mapping.gvw || ''}
               onSelect={(val) => updateMapping('gvw', val)}
+            />
+
+            <HeaderDropdownSelector
+              label="Address"
+              placeholder="Choose Address Column (Optional)"
+              options={fileHeaders}
+              selectedValue={mapping.address || ''}
+              onSelect={(val) => updateMapping('address', val)}
+            />
+
+            <HeaderDropdownSelector
+              label="City"
+              placeholder="Choose City Column (Optional)"
+              options={fileHeaders}
+              selectedValue={mapping.city || ''}
+              onSelect={(val) => updateMapping('city', val)}
+            />
+
+            <HeaderDropdownSelector
+              label="Agent / Broker"
+              placeholder="Choose Agent Column (Optional)"
+              options={fileHeaders}
+              selectedValue={mapping.existingAgent || ''}
+              onSelect={(val) => updateMapping('existingAgent', val)}
             />
 
             <Pressable 

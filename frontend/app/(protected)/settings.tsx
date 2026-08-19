@@ -5,6 +5,7 @@ import AppFooter from '../../src/components/AppFooter';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../../src/context/AuthContext';
 import { Colors, Spacing, FontSize, BorderRadius } from '../../src/utils/theme';
+import { checkAndApplyUpdate } from '../../src/components/UpdateManager';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../../src/utils/api';
 import { getDB } from '../../src/lib/db';
@@ -26,40 +27,11 @@ export default function SettingsScreen() {
       { label: 'Security', icon: 'shield-outline', desc: 'Password and authentication' },
     ]},
     { title: 'App Settings', items: [
-      { 
-        label: 'Check for Updates (On-Air)', 
-        icon: 'cloud-download-outline', 
-        desc: 'Check and download latest OTA update instantly',
-        onPress: async () => {
-          try {
-            if (__DEV__) {
-              Alert.alert('Development Mode', 'OTA updates are disabled in local development mode.');
-              return;
-            }
-            Alert.alert('Checking Updates...', 'Connecting to Expo OTA update server...');
-            const update = await Updates.checkForUpdateAsync();
-            if (update.isAvailable) {
-              Alert.alert(
-                'New Update Available! 🎉',
-                'A new on-air update was found. Would you like to download and restart the app now?',
-                [
-                  { text: 'Later', style: 'cancel' },
-                  {
-                    text: 'Update & Restart',
-                    onPress: async () => {
-                      await Updates.fetchUpdateAsync();
-                      await Updates.reloadAsync();
-                    }
-                  }
-                ]
-              );
-            } else {
-              Alert.alert('App Up to Date ✓', 'You are running the latest version.');
-            }
-          } catch (e: any) {
-            Alert.alert('Update Status', e.message || 'Could not verify updates.');
-          }
-        }
+      {
+        label: 'App Updates',
+        icon: 'cloud-download-outline',
+        desc: 'Check and download On-Air (OTA) updates',
+        onPress: () => checkAndApplyUpdate(true)
       },
       { label: 'Notifications', icon: 'notifications-outline', desc: 'Manage push notifications', onPress: () => router.push('/(protected)/notifications') },
       { label: 'Data & Storage', icon: 'cloud-outline', desc: 'Cache and data management' },
