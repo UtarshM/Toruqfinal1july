@@ -11,6 +11,7 @@ import { Colors, Spacing, FontSize, BorderRadius } from '../../src/utils/theme';
 import Sidebar from '../../src/components/Sidebar';
 import AppFooter from '../../src/components/AppFooter';
 import { useAuth } from '../../src/context/AuthContext';
+import { supabase } from '../../src/lib/supabase';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 
@@ -205,24 +206,40 @@ export default function ImportedSheetsScreen() {
   const handleDownloadAndShare = async (file: SpreadsheetFile) => {
     setDownloading(true);
     try {
+      const session = (await supabase.auth.getSession()).data.session;
+      const token = session?.access_token || '';
+
       const downloadUrl = file.downloadUrl.startsWith('http')
         ? file.downloadUrl
         : `${BASE_URL}${file.downloadUrl}`;
 
-      const localUri = `${FileSystem.documentDirectory}${file.fileName}`;
-      const { uri } = await FileSystem.downloadAsync(downloadUrl, localUri);
+      // Append token for browser download to validate auth
+      const finalUrl = `${downloadUrl}${downloadUrl.includes('?') ? '&' : '?'}token=${encodeURIComponent(token)}`;
 
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(uri, {
-          mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-          dialogTitle: `Share ${file.batchName} Spreadsheet`,
-          UTI: 'com.microsoft.excel.xlsx'
-        });
+      if (Platform.OS === 'android') {
+        const supported = await Linking.canOpenURL(finalUrl);
+        if (supported) {
+          await Linking.openURL(finalUrl);
+          Alert.alert('Download Started', 'The file is being downloaded directly to your phone.');
+        } else {
+          throw new Error('No browser available to handle download.');
+        }
       } else {
-        Alert.alert('Download Complete', `File saved to ${uri}`);
+        const localUri = `${FileSystem.documentDirectory}${file.fileName}`;
+        const { uri } = await FileSystem.downloadAsync(finalUrl, localUri);
+
+        if (await Sharing.isAvailableAsync()) {
+          await Sharing.shareAsync(uri, {
+            mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            dialogTitle: `Share ${file.batchName} Spreadsheet`,
+            UTI: 'com.microsoft.excel.xlsx'
+          });
+        } else {
+          Alert.alert('Download Complete', `File saved to ${uri}`);
+        }
       }
     } catch (err: any) {
-      Alert.alert('Share Failed', err.message || 'Could not download or share spreadsheet.');
+      Alert.alert('Download Failed', err.message || 'Could not download spreadsheet.');
     } finally {
       setDownloading(false);
     }
@@ -728,9 +745,10 @@ export default function ImportedSheetsScreen() {
                     ) : null
                   }
                   renderItem={({ item: row, index: rIdx }) => {
-                    const isAgent = previewData?.agentColIdx !== undefined &&
+                    const isAgent = (previewData?.agentColIdx !== undefined &&
                       previewData.agentColIdx !== -1 &&
-                      String(row[previewData.agentColIdx] || '').toLowerCase().trim() === 'agent';
+                      String(row[previewData.agentColIdx] || '').toLowerCase().trim() === 'agent') ||
+                      row.some(cell => String(cell || '').includes('[Agent]'));
 
                     return (
                       <View style={[styles.tableRow, isAgent && styles.agentTableRow]}>
@@ -741,6 +759,9 @@ export default function ImportedSheetsScreen() {
                           const isAgentCell = cIdx === previewData?.agentColIdx && String(cell || '').toLowerCase().trim() === 'agent';
                           const valStr = cell !== null && cell !== undefined ? String(cell) : '';
                           const isLink = valStr.startsWith('http');
+                          const hasAgentTag = valStr.includes('[Agent]');
+                          const cleanVal = valStr.replace('[Agent]', '').trim();
+
                           return (
                             <View key={cIdx} style={[styles.tableCell, { width: 140 }, isAgent && styles.agentTableCell]}>
                               {isAgentCell ? (
@@ -755,6 +776,13 @@ export default function ImportedSheetsScreen() {
                                   <Ionicons name="document-outline" size={12} color="#0284C7" />
                                   <Text style={styles.pdfLinkText} numberOfLines={1}>View PDF</Text>
                                 </Pressable>
+                              ) : hasAgentTag ? (
+                                <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
+                                  <Text style={styles.tableCellText} numberOfLines={1}>{cleanVal}</Text>
+                                  <View style={styles.inlineAgentBadge}>
+                                    <Text style={styles.inlineAgentBadgeText}>AGENT</Text>
+                                  </View>
+                                </View>
                               ) : (
                                 <Text style={styles.tableCellText} numberOfLines={2}>
                                   {valStr || '—'}
@@ -1020,6 +1048,20 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   agentPillText: { fontSize: 9, fontWeight: '900', color: '#FFFFFF' },
+  inlineAgentBadge: {
+    backgroundColor: '#FEE2E2',
+    borderColor: '#EF4444',
+    borderWidth: 1,
+    borderRadius: 4,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    alignSelf: 'flex-start',
+  },
+  inlineAgentBadgeText: {
+    color: '#B91C1C',
+    fontSize: 9,
+    fontWeight: '900',
+  },
 
   emptyTable: { padding: 40, alignItems: 'center' },
   emptyTableText: { fontSize: 13, color: Colors.textMuted },

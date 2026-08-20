@@ -196,14 +196,15 @@ export async function GET(
 
     const standardHeaders = [
       'Client Name', 'Phone Number', 'Mo No. 2', 'REG NO / Vehicle No', 'Policy Expiry Date',
-      'Registration Date', 'GVW', 'City', 'Address', 'Agent', 'Lead Status', 'Assigned To', 'Import Batch'
+      'Registration Date', 'GVW', 'City', 'Address', 'Lead Status', 'Assigned To', 'Import Batch'
     ]
 
     const customKeys = new Set<string>()
     leadsList.forEach(l => {
       const cf = (l.customFields && typeof l.customFields === 'object') ? (l.customFields as any) : {}
       Object.keys(cf).forEach(k => {
-        if (!['phone2', 'mobile2', 'phone', 'contact'].includes(k.toLowerCase())) {
+        // Exclude all variations of agent fields to avoid duplication in headers
+        if (!['phone2', 'mobile2', 'phone', 'contact', 'agent', 'existingagent', 'isagent', 'agent number', 'agent no', 'agentname', 'agent name'].includes(k.toLowerCase())) {
           customKeys.add(k)
         }
       })
@@ -216,9 +217,12 @@ export async function GET(
       const phone2 = cf.phone2 || cf.mobile2 || cf['mo no 2'] || cf['Mo No 2'] || (l.clientEmail && /^[0-9\s+-]{7,15}$/.test(l.clientEmail.trim()) ? l.clientEmail : '')
       const isAgentLead = l.existingAgent === 'Agent' || (l.existingAgent && String(l.existingAgent).toLowerCase().includes('agent'))
 
+      const cleanPhone = l.clientPhone || ''
+      const phoneVal = cleanPhone ? (isAgentLead ? `${cleanPhone} [Agent]` : cleanPhone) : ''
+
       const row = [
         l.clientName || '',
-        l.clientPhone || '',
+        phoneVal,
         phone2 || '',
         l.vehicleNo || '',
         formatDate(l.expiryDate),
@@ -226,7 +230,6 @@ export async function GET(
         l.gvw || '',
         l.city || '',
         l.address || '',
-        isAgentLead ? 'agent' : (l.existingAgent || ''),
         l.status || 'New',
         l.assignee?.fullName || (isAgentLead ? 'Pending Admin Approval' : 'Unassigned'),
         l.importName || 'Direct Entry'

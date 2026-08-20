@@ -63,13 +63,14 @@ export async function syncSpreadsheetForBatch(batchName: string | null, customUp
     'GVW',
     'City',
     'Address',
-    'Agent',
     'Lead Status',
     'Assigned To',
     'Import Batch'
   ]
 
-  const customKeyList = Array.from(customKeys).filter(k => !['phone2', 'mobile2', 'phone', 'contact'].includes(k.toLowerCase()))
+  const customKeyList = Array.from(customKeys).filter(k => 
+    !['phone2', 'mobile2', 'phone', 'contact', 'agent', 'existingagent', 'isagent', 'agent number', 'agent no', 'agentname', 'agent name'].includes(k.toLowerCase())
+  )
   const allHeaders = [...standardHeaders, ...customKeyList]
   const rows: any[][] = [allHeaders]
 
@@ -78,10 +79,12 @@ export async function syncSpreadsheetForBatch(batchName: string | null, customUp
     const phone2 = cf.phone2 || cf.mobile2 || cf['mo no 2'] || cf['Mo No 2'] || (l.clientEmail && /^[0-9\s+-]{7,15}$/.test(l.clientEmail.trim()) ? l.clientEmail : '')
 
     const isAgentLead = l.existingAgent === 'Agent' || (l.existingAgent && String(l.existingAgent).toLowerCase().includes('agent'))
+    const cleanPhone = l.clientPhone || ''
+    const phoneVal = cleanPhone ? (isAgentLead ? `${cleanPhone} [Agent]` : cleanPhone) : ''
 
     const row = [
       l.clientName || '',
-      l.clientPhone || '',
+      phoneVal,
       phone2 || '',
       l.vehicleNo || '',
       formatDate(l.expiryDate),
@@ -89,7 +92,6 @@ export async function syncSpreadsheetForBatch(batchName: string | null, customUp
       l.gvw || '',
       l.city || '',
       l.address || '',
-      isAgentLead ? 'agent' : (l.existingAgent || ''),
       l.status || 'New',
       l.assignee?.fullName || (isAgentLead ? 'Pending Admin Approval' : 'Unassigned'),
       l.importName || 'Direct Entry'
