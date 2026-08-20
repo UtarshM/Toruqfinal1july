@@ -352,6 +352,23 @@ export async function POST(req: NextRequest) {
           })
         }
       }
+
+      // 2.4 Mark previous active/pending renewal records for this lead as Renewed
+      try {
+        await prisma.renewalRecord.updateMany({
+          where: {
+            leadId,
+            renewalStatus: { in: ['Active', 'PendingRenewal'] }
+          },
+          data: {
+            renewalStatus: 'Renewed',
+            renewedAt: new Date()
+          }
+        })
+      } catch (err) {
+        console.warn('[submissions] Failed to mark previous renewal records as Renewed:', err)
+      }
+
       // 2.5 Auto-create RenewalRecord for renewal lifecycle
       if (policyRecord) {
         try {
