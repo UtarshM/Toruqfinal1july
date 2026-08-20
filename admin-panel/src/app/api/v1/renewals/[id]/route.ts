@@ -58,12 +58,12 @@ export async function PATCH(
       }
     })
 
-    // If refused → recycle back to leads pool
+    // If refused → recycle back to leads pool as a normal unassigned lead
     if (body.renewalStatus === 'Refused' && renewal.leadId) {
       await prisma.lead.update({
         where: { id: renewal.leadId },
         data: {
-          status: 'Renewal Refused',
+          status: 'New',
           assignedTo: null // unassign so admin can re-assign
         }
       }).catch(() => {})

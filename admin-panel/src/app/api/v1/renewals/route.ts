@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { validateAuth } from '@/lib/auth-guard'
-import { autoAssignUpcomingRenewals } from '@/lib/renewal-helper'
 
 /**
  * GET /api/v1/renewals — List renewal records with filters
@@ -12,13 +11,6 @@ import { autoAssignUpcomingRenewals } from '@/lib/renewal-helper'
 export async function GET(req: NextRequest) {
   const { error, context } = await validateAuth(req)
   if (error || !context) return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  // Trigger auto-assignment for renewals expiring within 30 days
-  try {
-    await autoAssignUpcomingRenewals()
-  } catch (autoErr) {
-    console.error('[renewals GET] Auto-assign error:', autoErr)
-  }
 
   const url = new URL(req.url)
   const status = url.searchParams.get('status')
