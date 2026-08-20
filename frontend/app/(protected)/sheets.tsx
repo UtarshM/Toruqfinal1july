@@ -14,6 +14,7 @@ import { useAuth } from '../../src/context/AuthContext';
 import { supabase } from '../../src/lib/supabase';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
+import { saveFileToDevice } from '../../src/utils/fileSaver';
 
 interface SpreadsheetFile {
   fileName: string;
@@ -421,15 +422,7 @@ export default function ImportedSheetsScreen() {
         const localUri = `${FileSystem.documentDirectory}${file.fileName}`;
         const { uri } = await FileSystem.downloadAsync(finalUrl, localUri);
 
-        if (await Sharing.isAvailableAsync()) {
-          await Sharing.shareAsync(uri, {
-            mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            dialogTitle: `Share ${file.batchName} Spreadsheet`,
-            UTI: 'com.microsoft.excel.xlsx'
-          });
-        } else {
-          Alert.alert('Download Complete', `File saved to ${uri}`);
-        }
+        await saveFileToDevice(uri, file.fileName, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       }
     } catch (err: any) {
       Alert.alert('Download Failed', err.message || 'Could not download spreadsheet.');

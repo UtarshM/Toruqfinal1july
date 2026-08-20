@@ -118,7 +118,7 @@ export default function LeadDetailScreen() {
   const { id, showPolicyModal } = useLocalSearchParams<{ id: string; showPolicyModal?: string }>();
   const router = useRouter();
   const { user } = useAuth();
-  const roleUpper = user?.role?.toUpperCase() || '';
+  const roleUpper = (typeof (user?.role as any) === 'object' ? (user?.role as any)?.name : user?.role)?.toUpperCase() || '';
   const isAdmin = roleUpper === 'SUPER ADMIN' || roleUpper === 'ADMIN';
   const isManagerOrAdmin = isAdmin || roleUpper.includes('MANAGER');
 

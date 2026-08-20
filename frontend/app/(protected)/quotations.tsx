@@ -11,6 +11,7 @@ import Sidebar from '../../src/components/Sidebar';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { useAuth } from '../../src/context/AuthContext';
+import { saveFileToDevice } from '../../src/utils/fileSaver';
 
 export default function QuotationsScreen() {
   const router = useRouter();
@@ -67,15 +68,7 @@ export default function QuotationsScreen() {
       const result = await FileSystem.downloadAsync(url, fileUri);
 
       if (result.status === 200) {
-        if (await Sharing.isAvailableAsync()) {
-          await Sharing.shareAsync(result.uri, {
-            mimeType: 'application/pdf',
-            dialogTitle: 'Open Quotation PDF',
-            UTI: 'com.adobe.pdf'
-          });
-        } else {
-          Alert.alert('Success', 'PDF downloaded successfully to: ' + result.uri);
-        }
+        await saveFileToDevice(result.uri, filename, 'application/pdf');
       } else {
         Alert.alert('Error', `Failed to download PDF (Server status: ${result.status})`);
       }

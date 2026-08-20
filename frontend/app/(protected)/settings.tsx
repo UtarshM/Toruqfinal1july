@@ -12,6 +12,7 @@ import { getDB } from '../../src/lib/db';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import * as Updates from 'expo-updates';
+import { saveFileToDevice } from '../../src/utils/fileSaver';
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -82,14 +83,8 @@ export default function SettingsScreen() {
                     const fileUri = `${FileSystem.documentDirectory}torque_backup_${new Date().toISOString().split('T')[0]}.sql`;
                     await FileSystem.writeAsStringAsync(fileUri, sqlContent);
                     
-                    if (await Sharing.isAvailableAsync()) {
-                      await Sharing.shareAsync(fileUri, {
-                        mimeType: 'application/x-sql',
-                        dialogTitle: 'Export System Backup',
-                      });
-                    } else {
-                      Alert.alert('Success', 'Backup SQL generated and saved locally.');
-                    }
+                    const filename = `torque_backup_${new Date().toISOString().split('T')[0]}.sql`;
+                    await saveFileToDevice(fileUri, filename, 'application/x-sql');
                   } catch (e: any) {
                     Alert.alert('Backup Error', e.message || 'Failed to trigger database backup.');
                   }

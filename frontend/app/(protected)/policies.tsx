@@ -8,6 +8,7 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
+import { saveFileToDevice } from '../../src/utils/fileSaver';
 import { api } from '../../src/utils/api';
 import { supabase } from '../../src/lib/supabase';
 import { Colors, Spacing, FontSize, BorderRadius, StatusColors } from '../../src/utils/theme';
@@ -306,15 +307,8 @@ export default function PoliciesScreen() {
             const fileUri = FileSystem.documentDirectory + (res.fileName || 'master_policies.xlsx');
             const download = await FileSystem.downloadAsync(res.sheetUrl, fileUri);
             if (download.uri) {
-              const canShare = await Sharing.isAvailableAsync();
-              if (canShare) {
-                await Sharing.shareAsync(download.uri, {
-                  mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                  dialogTitle: 'Master Policy Excel Sheet'
-                });
-              } else {
-                Alert.alert('Downloaded', 'File saved successfully.');
-              }
+              const filename = res.fileName || 'master_policies.xlsx';
+              await saveFileToDevice(download.uri, filename, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
               downloaded = true;
             }
           }
@@ -418,11 +412,7 @@ export default function PoliciesScreen() {
 
       await FileSystem.writeAsStringAsync(fileUri, csvContent, { encoding: FileSystem.EncodingType.UTF8 });
 
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(fileUri, { mimeType: 'text/csv', dialogTitle: 'Export Policies CSV' });
-      } else {
-        Alert.alert('Exported', `File saved to ${fileUri}`);
-      }
+      await saveFileToDevice(fileUri, filename, 'text/csv');
     } catch (err: any) {
       Alert.alert('Export Failed', err?.message || 'Could not export CSV');
     }

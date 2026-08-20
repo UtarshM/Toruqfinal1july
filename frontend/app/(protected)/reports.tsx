@@ -19,6 +19,7 @@ import Sidebar from '../../src/components/Sidebar';
 import AppFooter from '../../src/components/AppFooter';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
+import { saveFileToDevice } from '../../src/utils/fileSaver';
 
 export default function ReportsScreen() {
   const router = useRouter();
@@ -105,15 +106,7 @@ export default function ReportsScreen() {
         encoding: FileSystem.EncodingType.UTF8
       });
 
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(fileUri, {
-          mimeType: 'text/csv',
-          dialogTitle: `Export ${type.toUpperCase()} Report`,
-          UTI: 'public.comma-separated-values-text'
-        });
-      } else {
-        Alert.alert('Success', `CSV saved to private storage:\n${fileUri}`);
-      }
+      await saveFileToDevice(fileUri, filename, 'text/csv');
     } catch (err: any) {
       Alert.alert('Error', err.message || 'Failed to export CSV report');
     } finally {

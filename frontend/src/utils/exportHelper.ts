@@ -1,9 +1,9 @@
 import * as FileSystem from 'expo-file-system/legacy';
-import * as Sharing from 'expo-sharing';
 import { Alert } from 'react-native';
+import { saveFileToDevice } from './fileSaver';
 
 /**
- * Generates a CSV file from headers and rows, and triggers the native sharing sheet.
+ * Generates a CSV file from headers and rows, and saves it directly to the device.
  */
 export async function exportToCSV(filename: string, headers: string[], rows: any[][]): Promise<void> {
   try {
@@ -27,17 +27,8 @@ export async function exportToCSV(filename: string, headers: string[], rows: any
       encoding: FileSystem.EncodingType.UTF8,
     });
 
-    // 4. Trigger sharing sheet
-    const isSharingAvailable = await Sharing.isAvailableAsync();
-    if (isSharingAvailable) {
-      await Sharing.shareAsync(fileUri, {
-        mimeType: 'text/csv',
-        dialogTitle: `Export ${filename}`,
-        UTI: 'public.comma-separated-values-text',
-      });
-    } else {
-      Alert.alert('Sharing Unavailable', 'This device does not support file sharing.');
-    }
+    // 4. Save directly to public storage
+    await saveFileToDevice(fileUri, filename, 'text/csv');
   } catch (error: any) {
     console.error('[CSV Export] Failed:', error);
     Alert.alert('Export Failed', error.message || 'An error occurred during CSV generation.');

@@ -1,7 +1,7 @@
 import * as Print from 'expo-print';
-import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system/legacy';
 import { getReceiptHTML, ReceiptData } from '../utils/pdfTemplates';
+import { saveFileToDevice } from '../utils/fileSaver';
 
 /**
  * Triggers the native print spooler dialog directly for a given receipt dataset.
@@ -17,8 +17,7 @@ export async function printReceiptDirect(data: ReceiptData): Promise<void> {
 }
 
 /**
- * Compiles a receipt to a PDF file locally, renames it, and opens the native
- * sharing overlay (allowing the user to send it via WhatsApp, email, or save it).
+ * Compiles a receipt to a PDF file locally, renames it, and saves it directly to the phone.
  */
 export async function shareReceiptPDF(data: ReceiptData): Promise<void> {
   const html = getReceiptHTML(data);
@@ -36,18 +35,10 @@ export async function shareReceiptPDF(data: ReceiptData): Promise<void> {
       to: targetUri,
     });
 
-    // 4. Check if sharing is available on the device and share it
-    if (await Sharing.isAvailableAsync()) {
-      await Sharing.shareAsync(targetUri, {
-        mimeType: 'application/pdf',
-        dialogTitle: `Share Receipt ${data.receiptNo}`,
-        UTI: 'com.adobe.pdf', // Universal Type Identifier for iOS
-      });
-    } else {
-      throw new Error('Sharing is not available on this device');
-    }
+    // 4. Save directly to public storage
+    await saveFileToDevice(targetUri, cleanFilename, 'application/pdf');
   } catch (error) {
-    console.error('[PrintService] Failed to generate and share receipt PDF:', error);
+    console.error('[PrintService] Failed to generate and save receipt PDF:', error);
     throw error;
   }
 }

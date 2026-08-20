@@ -26,6 +26,7 @@ import { Colors, Spacing, FontSize, BorderRadius } from '../utils/theme';
 import { api } from '../utils/api';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
+import { saveFileToDevice } from '../utils/fileSaver';
 
 export const DOCUMENT_CATEGORIES: Record<string, string> = {
   IMP_DATE_SS: 'IMP date Message Screenshot',
@@ -1094,15 +1095,7 @@ export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClo
         throw new Error(`Download failed with status ${downloadResult.status}`);
       }
 
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(localUri, {
-          mimeType: 'application/pdf',
-          dialogTitle: 'Save / Share Single Policy PDF',
-          UTI: 'com.adobe.pdf'
-        });
-      } else {
-        Alert.alert('PDF Saved! 💾', `File saved to phone at: ${localUri}`);
-      }
+      await saveFileToDevice(localUri, filename, 'application/pdf');
     } catch (e: any) {
       Alert.alert('Save Failed', e.message || 'Could not save PDF to phone.');
     } finally {

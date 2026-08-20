@@ -33,6 +33,7 @@ import { Colors, Spacing, FontSize, BorderRadius } from '../../src/utils/theme';
 import { useAuth } from '../../src/context/AuthContext';
 import AppFooter from '../../src/components/AppFooter';
 import LeadPolicySubmissionModal from '../../src/components/LeadPolicySubmissionModal';
+import { saveFileToDevice } from '../../src/utils/fileSaver';
 
 const LIVE_BASE_URL = 'https://admin-panel-delta-steel.vercel.app';
 
@@ -232,15 +233,7 @@ export default function PolicyApprovalsScreen() {
       const downloadResult = await FileSystem.downloadAsync(fullUrl, localUri);
       if (downloadResult.status !== 200) throw new Error('Download failed');
 
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(localUri, {
-          mimeType: 'application/pdf',
-          dialogTitle: 'Save / Share Consolidated Policy PDF',
-          UTI: 'com.adobe.pdf'
-        });
-      } else {
-        Alert.alert('PDF Saved! 💾', `File saved at: ${localUri}`);
-      }
+      await saveFileToDevice(localUri, filename, 'application/pdf');
     } catch (e: any) {
       Alert.alert('Download Error', e.message || 'Could not download PDF');
     }
