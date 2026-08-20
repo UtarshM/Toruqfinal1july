@@ -53,8 +53,8 @@ export default function Sidebar({ visible, onClose }: SidebarProps) {
       label: 'SALES',
       items: [
         { name: 'Leads', icon: 'people-outline', route: '/(protected)/leads', visible: true },
-        { name: 'Import Leads', icon: 'cloud-upload-outline', route: '/(protected)/leads/import', visible: isAdmin || isManager },
-        { name: 'Imported Sheets', icon: 'grid-outline', route: '/(protected)/sheets', visible: isAdmin || isManager },
+        { name: 'Import Leads', icon: 'cloud-upload-outline', route: '/(protected)/leads/import', visible: isAdmin },
+        { name: 'Imported Sheets', icon: 'grid-outline', route: '/(protected)/sheets', visible: isAdmin },
         { name: 'CRM', icon: 'person-add-outline', route: '/(protected)/crm', visible: !['ACCOUNTANT'].includes(roleUpper) },
         { name: 'Rate Calculator', icon: 'calculator-outline', route: '/(protected)/rate-calculator', visible: isAdmin },
         { name: 'Quotations', icon: 'clipboard-outline', route: '/(protected)/quotations', visible: isAdmin || isManager || isHrManager },

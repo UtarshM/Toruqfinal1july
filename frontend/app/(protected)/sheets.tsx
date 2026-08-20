@@ -48,7 +48,17 @@ export default function ImportedSheetsScreen() {
   const router = useRouter();
   const { user } = useAuth();
   const roleUpper = (typeof (user?.role as any) === 'object' ? (user?.role as any)?.name : user?.role)?.toUpperCase() || '';
-  const isAdminOrManager = roleUpper.includes('ADMIN') || roleUpper.includes('SUPER') || roleUpper === 'MANAGER';
+  const isAdmin = roleUpper === 'SUPER ADMIN' || roleUpper === 'ADMIN' || user?.email?.toLowerCase().includes('admin') || user?.permissions?.includes('leads.assign');
+
+  useEffect(() => {
+    if (user) {
+      const r = (typeof (user?.role as any) === 'object' ? (user?.role as any)?.name : user?.role)?.toUpperCase() || '';
+      const isAdm = r === 'SUPER ADMIN' || r === 'ADMIN' || user?.email?.toLowerCase().includes('admin') || user?.permissions?.includes('leads.assign');
+      if (!isAdm) {
+        router.replace('/(protected)/dashboard');
+      }
+    }
+  }, [user]);
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [files, setFiles] = useState<SpreadsheetFile[]>([]);
@@ -421,7 +431,7 @@ export default function ImportedSheetsScreen() {
     return rows;
   }, [previewData, modalRows, previewAgentOnly, previewSearch, activeTab, expiryMonthFilter, expiryYearFilter]);
 
-  if (!isAdminOrManager) {
+  if (!isAdmin) {
     return (
       <SafeAreaView style={styles.safe} edges={['top']}>
         <Sidebar visible={sidebarOpen} onClose={() => setSidebarOpen(false)} />
@@ -434,7 +444,7 @@ export default function ImportedSheetsScreen() {
         <View style={styles.restrictedContainer}>
           <Ionicons name="lock-closed-outline" size={56} color={Colors.error} style={{ marginBottom: 12 }} />
           <Text style={styles.restrictedTitle}>Access Restricted</Text>
-          <Text style={styles.restrictedDesc}>Spreadsheet data is exclusively accessible to Administrators and Managers.</Text>
+          <Text style={styles.restrictedDesc}>Spreadsheet data is exclusively accessible to Administrators.</Text>
         </View>
       </SafeAreaView>
     );
@@ -797,7 +807,7 @@ export default function ImportedSheetsScreen() {
           </View>
 
           {/* Monthly Filter & Executive Assignment Panel */}
-          {true && (
+          {isAdmin && (
             <View style={styles.mobileFilterContainer}>
               <Text style={styles.mobileFilterLabel}>Filter Expiry Month:</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
