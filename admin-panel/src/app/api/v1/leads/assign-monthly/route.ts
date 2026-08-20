@@ -72,14 +72,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No valid active executives found' }, { status: 400 })
     }
 
-    // Round-robin assignment — nearest expiry leads first
-    const assignments: { leadId: string; executiveId: string; executiveName: string }[] = []
+    // Group lead IDs by executive ID for fast bulk updates (1 query per executive)
+    const execLeadIds: Record<string, string[]> = {}
     const assignmentCounts: Record<string, number> = {}
-    executives.forEach(e => { assignmentCounts[e.id] = 0 })
+    executives.forEach(e => {
+      execLeadIds[e.id] = []
+      assignmentCounts[e.id] = 0
+    })
+
+    const assignments: { leadId: string; executiveId: string; executiveName: string }[] = []
 
     for (let i = 0; i < leadsToAssign.length; i++) {
       const lead = leadsToAssign[i]
       const exec = executives[i % executives.length]
+      execLeadIds[exec.id].push(lead.id)
       assignments.push({
         leadId: lead.id,
         executiveId: exec.id,
@@ -88,29 +94,27 @@ export async function POST(req: NextRequest) {
       assignmentCounts[exec.id] = (assignmentCounts[exec.id] || 0) + 1
     }
 
-    // Batch update leads with assignments
-    const updatePromises = assignments.map(a =>
-      prisma.lead.update({
-        where: { id: a.leadId },
-        data: {
-          assignedTo: a.executiveId,
-          status: 'Assigned'
-        }
-      })
-    )
-
-    // Process in chunks of 500 to avoid overloading
-    const CHUNK = 500
-    for (let i = 0; i < updatePromises.length; i += CHUNK) {
-      await Promise.all(updatePromises.slice(i, i + CHUNK))
+    // Perform bulk updates sequentially (maximum 1 connection used)
+    for (const exec of executives) {
+      const leadIds = execLeadIds[exec.id] || []
+      if (leadIds.length > 0) {
+        await prisma.lead.updateMany({
+          where: { id: { in: leadIds } },
+          data: {
+            assignedTo: exec.id,
+            status: 'Assigned'
+          }
+        })
+      }
     }
 
-    // Create LeadAssignment records
+    // Create LeadAssignment records in chunks of 500
     const assignmentRecords = assignments.map(a => ({
       leadId: a.leadId,
       userId: a.executiveId,
     }))
 
+    const CHUNK = 500
     for (let i = 0; i < assignmentRecords.length; i += CHUNK) {
       await prisma.leadAssignment.createMany({
         data: assignmentRecords.slice(i, i + CHUNK),
