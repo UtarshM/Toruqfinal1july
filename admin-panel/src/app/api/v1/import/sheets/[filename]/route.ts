@@ -158,6 +158,22 @@ export async function GET(
       whereClause.importName = null
     }
 
+    // Expiry Month and Year Filter
+    const monthParam = url.searchParams.get('month')
+    const yearParam = url.searchParams.get('year')
+    if (monthParam && monthParam !== '0') {
+      const m = parseInt(monthParam)
+      const y = parseInt(yearParam || String(new Date().getFullYear()))
+      
+      const startDate = new Date(y, m - 1, 1)
+      const endDate = new Date(y, m, 0, 23, 59, 59, 999)
+      
+      whereClause.expiryDate = {
+        gte: startDate,
+        lte: endDate
+      }
+    }
+
     if (searchParam) {
       whereClause.OR = [
         { clientName: { contains: searchParam, mode: 'insensitive' } },
@@ -177,7 +193,10 @@ export async function GET(
         prisma.lead.findMany({
           where: whereClause,
           include: { assignee: true },
-          orderBy: { createdAt: 'desc' },
+          orderBy: [
+            { expiryDate: 'desc' },
+            { createdAt: 'desc' }
+          ],
           skip: (page - 1) * limit,
           take: limit
         })
@@ -188,7 +207,10 @@ export async function GET(
       const leads = await prisma.lead.findMany({
         where: whereClause,
         include: { assignee: true },
-        orderBy: { createdAt: 'desc' }
+        orderBy: [
+          { expiryDate: 'desc' },
+          { createdAt: 'desc' }
+        ]
       })
       totalRows = leads.length
       leadsList = leads
@@ -200,11 +222,21 @@ export async function GET(
     ]
 
     const customKeys = new Set<string>()
+    const excludedKeys = [
+      'phone2', 'mobile2', 'phone', 'contact', 'clientname', 'client name', 'client_name',
+      'clientphone', 'client phone', 'client_phone', 'clientemail', 'client email', 'client_email',
+      'email', 'vehicle no', 'vehicle_no', 'vehicleno', 'reg no', 'reg_no', 'regno', 'vehicle number', 'vehiclenumber',
+      'policy expiry date', 'expirydate', 'expiry date', 'insurance validity', 'insurance_validity', 'insurancevalidity', 'expiry_date',
+      'registration date', 'registrationdate', 'registration_date', 'gvw', 'gvw (in kg)', 'gvw(in kg)', 'gvw_in_kg',
+      'city', 'address', 'status', 'lead status', 'lead_status', 'assigned to', 'assigned_to', 'assignedto',
+      'import batch', 'import_batch', 'importbatch', 'import name', 'import_name', 'importname',
+      'agent', 'existingagent', 'isagent', 'agent number', 'agent no', 'agentname', 'agent name', 'agent_name', 'agent_no'
+    ]
     leadsList.forEach(l => {
       const cf = (l.customFields && typeof l.customFields === 'object') ? (l.customFields as any) : {}
       Object.keys(cf).forEach(k => {
-        // Exclude all variations of agent fields to avoid duplication in headers
-        if (!['phone2', 'mobile2', 'phone', 'contact', 'agent', 'existingagent', 'isagent', 'agent number', 'agent no', 'agentname', 'agent name'].includes(k.toLowerCase())) {
+        const cleanK = k.toLowerCase().trim()
+        if (!excludedKeys.includes(cleanK)) {
           customKeys.add(k)
         }
       })

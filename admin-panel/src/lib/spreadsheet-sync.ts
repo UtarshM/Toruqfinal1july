@@ -36,7 +36,10 @@ export async function syncSpreadsheetForBatch(batchName: string | null, customUp
   const leads = await prisma.lead.findMany({
     where: whereClause,
     include: { assignee: true },
-    orderBy: { createdAt: 'desc' }
+    orderBy: [
+      { expiryDate: 'desc' },
+      { createdAt: 'desc' }
+    ]
   })
 
   if (leads.length === 0 && !isAll) return null
@@ -68,8 +71,18 @@ export async function syncSpreadsheetForBatch(batchName: string | null, customUp
     'Import Batch'
   ]
 
+  const excludedKeys = [
+    'phone2', 'mobile2', 'phone', 'contact', 'clientname', 'client name', 'client_name',
+    'clientphone', 'client phone', 'client_phone', 'clientemail', 'client email', 'client_email',
+    'email', 'vehicle no', 'vehicle_no', 'vehicleno', 'reg no', 'reg_no', 'regno', 'vehicle number', 'vehiclenumber',
+    'policy expiry date', 'expirydate', 'expiry date', 'insurance validity', 'insurance_validity', 'insurancevalidity', 'expiry_date',
+    'registration date', 'registrationdate', 'registration_date', 'gvw', 'gvw (in kg)', 'gvw(in kg)', 'gvw_in_kg',
+    'city', 'address', 'status', 'lead status', 'lead_status', 'assigned to', 'assigned_to', 'assignedto',
+    'import batch', 'import_batch', 'importbatch', 'import name', 'import_name', 'importname',
+    'agent', 'existingagent', 'isagent', 'agent number', 'agent no', 'agentname', 'agent name', 'agent_name', 'agent_no'
+  ]
   const customKeyList = Array.from(customKeys).filter(k => 
-    !['phone2', 'mobile2', 'phone', 'contact', 'agent', 'existingagent', 'isagent', 'agent number', 'agent no', 'agentname', 'agent name'].includes(k.toLowerCase())
+    !excludedKeys.includes(k.toLowerCase().trim())
   )
   const allHeaders = [...standardHeaders, ...customKeyList]
   const rows: any[][] = [allHeaders]

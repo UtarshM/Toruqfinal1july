@@ -80,9 +80,9 @@ export async function GET(req: NextRequest) {
     }
 
     const sortBy = searchParams.get('sortBy') || 'expiryDate'
-    const sortOrder = searchParams.get('sortOrder') || 'asc'
+    const sortOrder = searchParams.get('sortOrder') || 'desc'
 
-    let orderBy: any = [{ expiryDate: 'asc' }, { createdAt: 'desc' }]
+    let orderBy: any = [{ expiryDate: 'desc' }, { createdAt: 'desc' }]
     if (sortBy && sortBy !== 'expiryDate') {
       orderBy = [{ [sortBy]: sortOrder }]
     } else if (sortBy === 'expiryDate') {

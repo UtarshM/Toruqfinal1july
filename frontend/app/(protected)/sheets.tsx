@@ -39,6 +39,11 @@ interface SheetPreviewData {
   totalRows?: number;
 }
 
+const MONTH_NAMES = [
+  'All Months', 'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'
+];
+
 export default function ImportedSheetsScreen() {
   const router = useRouter();
   const { user } = useAuth();
@@ -72,6 +77,14 @@ export default function ImportedSheetsScreen() {
   const [modalTotalPages, setModalTotalPages] = useState(1);
   const [modalLoadingMore, setModalLoadingMore] = useState(false);
   const searchTimeoutRef = React.useRef<any>(null);
+
+  // Monthly Executive Assignment States for Modal
+  const [availableExecs, setAvailableExecs] = useState<any[]>([]);
+  const [selectedExecIds, setSelectedExecIds] = useState<string[]>([]);
+  const [execsLoading, setExecsLoading] = useState(false);
+  const [execDropdownOpen, setExecDropdownOpen] = useState(false);
+  const [assigning, setAssigning] = useState(false);
+  const [assignResult, setAssignResult] = useState<any>(null);
 
   const fetchFiles = useCallback(async (sync = false) => {
     try {
@@ -127,6 +140,12 @@ export default function ImportedSheetsScreen() {
     setModalPage(1);
     setModalTotalRows(0);
     setModalTotalPages(1);
+    setExpiryMonthFilter(0);
+    setExpiryYearFilter(new Date().getFullYear());
+    setAvailableExecs([]);
+    setSelectedExecIds([]);
+    setExecDropdownOpen(false);
+    setAssignResult(null);
     try {
       // For non-renewal files on mobile, use paginated API
       if (file.fileName !== 'import_renewals.xlsx') {
@@ -165,8 +184,9 @@ export default function ImportedSheetsScreen() {
     try {
       const nextPage = modalPage + 1;
       const searchQ = previewSearch.trim() ? `&search=${encodeURIComponent(previewSearch.trim())}` : '';
+      const monthQ = expiryMonthFilter > 0 ? `&month=${expiryMonthFilter}&year=${expiryYearFilter}` : '';
       const res = await api.get<any>(
-        `/import/sheets/${encodeURIComponent(selectedFile.fileName)}?page=${nextPage}&limit=50${searchQ}`
+        `/import/sheets/${encodeURIComponent(selectedFile.fileName)}?page=${nextPage}&limit=50${searchQ}${monthQ}`
       );
       setModalRows(prev => [...prev, ...(res.rows || [])]);
       setModalPage(nextPage);
@@ -177,7 +197,7 @@ export default function ImportedSheetsScreen() {
     } finally {
       setModalLoadingMore(false);
     }
-  }, [selectedFile, modalPage, modalTotalPages, modalLoadingMore, previewSearch]);
+  }, [selectedFile, modalPage, modalTotalPages, modalLoadingMore, previewSearch, expiryMonthFilter, expiryYearFilter]);
 
   // Debounced server-side search for modal
   const handleModalSearchChange = useCallback((text: string) => {
@@ -188,8 +208,9 @@ export default function ImportedSheetsScreen() {
       setPreviewLoading(true);
       try {
         const searchQ = text.trim() ? `&search=${encodeURIComponent(text.trim())}` : '';
+        const monthQ = expiryMonthFilter > 0 ? `&month=${expiryMonthFilter}&year=${expiryYearFilter}` : '';
         const res = await api.get<any>(
-          `/import/sheets/${encodeURIComponent(selectedFile.fileName)}?page=1&limit=50${searchQ}`
+          `/import/sheets/${encodeURIComponent(selectedFile.fileName)}?page=1&limit=50${searchQ}${monthQ}`
         );
         setModalRows(res.rows || []);
         setModalPage(1);
@@ -201,7 +222,72 @@ export default function ImportedSheetsScreen() {
         setPreviewLoading(false);
       }
     }, 500);
-  }, [selectedFile]);
+  }, [selectedFile, expiryMonthFilter, expiryYearFilter]);
+
+  const fetchAvailableExecs = async (month: number, year: number) => {
+    setExecsLoading(true);
+    try {
+      const res = await api.get<any>(`/leads/available-executives?month=${month}&year=${year}`);
+      setAvailableExecs(res?.executives || []);
+      const available = (res?.executives || []).filter((e: any) => !e.isOnExtendedLeave);
+      setSelectedExecIds(available.map((e: any) => e.id));
+    } catch (err) {
+      console.warn('Failed to fetch executives:', err);
+    } finally {
+      setExecsLoading(false);
+    }
+  };
+
+  const handleMonthFilterChange = async (month: number, year: number) => {
+    setExpiryMonthFilter(month);
+    setExpiryYearFilter(year);
+    setAssignResult(null);
+    if (!selectedFile) return;
+
+    setPreviewLoading(true);
+    try {
+      const searchQ = previewSearch.trim() ? `&search=${encodeURIComponent(previewSearch.trim())}` : '';
+      const monthQ = month > 0 ? `&month=${month}&year=${year}` : '';
+      const res = await api.get<any>(
+        `/import/sheets/${encodeURIComponent(selectedFile.fileName)}?page=1&limit=50${searchQ}${monthQ}`
+      );
+      setModalRows(res.rows || []);
+      setModalPage(1);
+      setModalTotalRows(res.totalRows || 0);
+      setModalTotalPages(res.totalPages || 1);
+
+      if (month > 0) {
+        await fetchAvailableExecs(month, year);
+      } else {
+        setAvailableExecs([]);
+        setSelectedExecIds([]);
+      }
+    } catch (err: any) {
+      console.warn('Failed to filter by month:', err);
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  const handleAssignLeads = async () => {
+    if (!selectedFile || selectedExecIds.length === 0 || expiryMonthFilter === 0) return;
+    setAssigning(true);
+    setAssignResult(null);
+    try {
+      const res = await api.post('/leads/assign-monthly', {
+        importName: selectedFile.batchName === 'Imported Leads (Master)' ? null : selectedFile.batchName || null,
+        month: expiryMonthFilter,
+        year: expiryYearFilter,
+        salesExecutiveIds: selectedExecIds
+      });
+      setAssignResult(res);
+      await handleMonthFilterChange(expiryMonthFilter, expiryYearFilter);
+    } catch (err: any) {
+      setAssignResult({ error: err.message || 'Assignment failed' });
+    } finally {
+      setAssigning(false);
+    }
+  };
 
   const handleDownloadAndShare = async (file: SpreadsheetFile) => {
     setDownloading(true);
@@ -688,6 +774,143 @@ export default function ImportedSheetsScreen() {
               </Pressable>
             )}
           </View>
+
+          {/* Monthly Filter & Executive Assignment Panel */}
+          {isAdminOrManager && (
+            <View style={styles.mobileFilterContainer}>
+              <Text style={styles.mobileFilterLabel}>Filter Expiry Month:</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+                {MONTH_NAMES.map((name, idx) => (
+                  <Pressable
+                    key={idx}
+                    style={[
+                      styles.mobileMonthChip,
+                      expiryMonthFilter === idx && styles.mobileMonthChipActive
+                    ]}
+                    onPress={() => handleMonthFilterChange(idx, expiryYearFilter)}
+                  >
+                    <Text style={[
+                      styles.mobileMonthChipText,
+                      expiryMonthFilter === idx && styles.mobileMonthChipTextActive
+                    ]}>
+                      {name === 'All Months' ? 'All' : name.substring(0, 3)}
+                    </Text>
+                  </Pressable>
+                ))}
+              </ScrollView>
+
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+                <Text style={[styles.mobileFilterLabel, { marginRight: 8, marginBottom: 0 }]}>Year:</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  {[2024, 2025, 2026, 2027, 2028, 2029, 2030].map(y => (
+                    <Pressable
+                      key={y}
+                      style={[
+                        styles.mobileYearChip,
+                        expiryYearFilter === y && styles.mobileYearChipActive
+                      ]}
+                      onPress={() => handleMonthFilterChange(expiryMonthFilter, y)}
+                    >
+                      <Text style={[
+                        styles.mobileYearChipText,
+                        expiryYearFilter === y && styles.mobileYearChipTextActive
+                      ]}>
+                        {y}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              </View>
+
+              {/* Collapsible Assignment Panel */}
+              {expiryMonthFilter > 0 && (
+                <View style={styles.mobileAssignPanel}>
+                  <View style={styles.mobileAssignHeader}>
+                    <Ionicons name="people-outline" size={16} color="#1E3A8A" />
+                    <Text style={styles.mobileAssignTitle}>Assign Leads ({modalTotalRows})</Text>
+                    <Pressable
+                      style={styles.mobileExecDropdownToggle}
+                      onPress={() => setExecDropdownOpen(!execDropdownOpen)}
+                    >
+                      <Text style={styles.mobileExecDropdownToggleText}>
+                        {selectedExecIds.length} Executives
+                      </Text>
+                      <Ionicons name={execDropdownOpen ? "chevron-up" : "chevron-down"} size={12} color="#1E40AF" />
+                    </Pressable>
+                  </View>
+
+                  {execDropdownOpen && (
+                    <ScrollView style={styles.mobileExecListContainer} nestedScrollEnabled={true}>
+                      {execsLoading ? (
+                        <ActivityIndicator size="small" color={Colors.primary} style={{ marginVertical: 10 }} />
+                      ) : availableExecs.length === 0 ? (
+                        <Text style={styles.mobileExecEmpty}>No active sales persons available.</Text>
+                      ) : (
+                        availableExecs.map(exec => {
+                          const isSelected = selectedExecIds.includes(exec.id);
+                          return (
+                            <Pressable
+                              key={exec.id}
+                              style={styles.mobileExecRow}
+                              onPress={() => {
+                                setSelectedExecIds(prev =>
+                                  isSelected ? prev.filter(id => id !== exec.id) : [...prev, exec.id]
+                                );
+                              }}
+                            >
+                              <Ionicons
+                                name={isSelected ? "checkbox" : "square-outline"}
+                                size={16}
+                                color={isSelected ? Colors.primary : Colors.textLight}
+                                style={{ marginRight: 8 }}
+                              />
+                              <View style={{ flex: 1 }}>
+                                <Text style={styles.mobileExecName}>{exec.fullName}</Text>
+                                <Text style={styles.mobileExecStats}>
+                                  {exec.currentlyAssignedCount} assigned • {exec.isOnExtendedLeave ? 'On Leave' : 'Active'}
+                                </Text>
+                              </View>
+                            </Pressable>
+                          );
+                        })
+                      )}
+                    </ScrollView>
+                  )}
+
+                  <Pressable
+                    style={[
+                      styles.mobileAssignBtn,
+                      (assigning || selectedExecIds.length === 0 || modalTotalRows === 0) && styles.mobileAssignBtnDisabled
+                    ]}
+                    disabled={assigning || selectedExecIds.length === 0 || modalTotalRows === 0}
+                    onPress={handleAssignLeads}
+                  >
+                    {assigning ? (
+                      <ActivityIndicator size="small" color="#FFFFFF" />
+                    ) : (
+                      <Text style={styles.mobileAssignBtnText}>
+                        Assign {modalTotalRows} Leads to {selectedExecIds.length} Executives
+                      </Text>
+                    )}
+                  </Pressable>
+
+                  {assignResult && (
+                    <View style={[
+                      styles.mobileResultBanner,
+                      assignResult.error ? styles.mobileResultBannerError : styles.mobileResultBannerSuccess
+                    ]}>
+                      <Text style={[
+                        styles.mobileResultText,
+                        assignResult.error ? styles.mobileResultTextError : styles.mobileResultTextSuccess
+                      ]}>
+                        {assignResult.error ? `❌ ${assignResult.error}` : `✅ ${assignResult.message}`}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              )}
+            </View>
+          )}
 
           {/* Table Container — uses FlatList for virtualized rendering */}
           {previewLoading && filteredPreviewRows.length === 0 ? (
@@ -1205,5 +1428,166 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '800',
     color: '#FFFFFF',
+  },
+
+  // Monthly Filter & Executive Assignment Styles
+  mobileFilterContainer: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    backgroundColor: '#F8FAFC',
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  mobileFilterLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: Colors.textMuted,
+    textTransform: 'uppercase',
+    marginBottom: 4,
+  },
+  mobileMonthChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: BorderRadius.sm,
+    backgroundColor: '#E2E8F0',
+    marginRight: 6,
+  },
+  mobileMonthChipActive: {
+    backgroundColor: Colors.primary,
+  },
+  mobileMonthChipText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: Colors.textMuted,
+  },
+  mobileMonthChipTextActive: {
+    color: '#FFFFFF',
+  },
+  mobileYearChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: BorderRadius.sm,
+    backgroundColor: '#E2E8F0',
+    marginRight: 6,
+  },
+  mobileYearChipActive: {
+    backgroundColor: Colors.primary,
+  },
+  mobileYearChipText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: Colors.textMuted,
+  },
+  mobileYearChipTextActive: {
+    color: '#FFFFFF',
+  },
+  mobileAssignPanel: {
+    padding: Spacing.md,
+    backgroundColor: '#EFF6FF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#DBEAFE',
+    marginTop: 8,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
+  mobileAssignHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  mobileAssignTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#1E3A8A',
+    flex: 1,
+    marginLeft: 6,
+  },
+  mobileExecDropdownToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    borderRadius: BorderRadius.sm,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  mobileExecDropdownToggleText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#1E40AF',
+    marginRight: 4,
+  },
+  mobileExecListContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    padding: 8,
+    maxHeight: 180,
+    marginBottom: 8,
+  },
+  mobileExecRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  mobileExecName: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.text,
+  },
+  mobileExecStats: {
+    fontSize: 9,
+    fontWeight: '600',
+    color: Colors.textMuted,
+  },
+  mobileExecEmpty: {
+    fontSize: 11,
+    color: Colors.textMuted,
+    textAlign: 'center',
+    paddingVertical: 12,
+  },
+  mobileAssignBtn: {
+    backgroundColor: Colors.primary,
+    paddingVertical: 10,
+    borderRadius: BorderRadius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mobileAssignBtnDisabled: {
+    backgroundColor: '#93C5FD',
+  },
+  mobileAssignBtnText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  mobileResultBanner: {
+    marginTop: 8,
+    padding: 8,
+    borderRadius: BorderRadius.sm,
+    alignItems: 'center',
+  },
+  mobileResultBannerSuccess: {
+    backgroundColor: '#D1FAE5',
+  },
+  mobileResultBannerError: {
+    backgroundColor: '#FEE2E2',
+  },
+  mobileResultText: {
+    fontSize: 10,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  mobileResultTextSuccess: {
+    color: '#065F46',
+  },
+  mobileResultTextError: {
+    color: '#991B1B',
   },
 });

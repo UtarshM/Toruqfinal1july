@@ -13,7 +13,10 @@ export async function GET(req: NextRequest) {
         deletedAt: null,
         status: { not: 'Trashed' }
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: [
+        { expiryDate: 'desc' },
+        { createdAt: 'desc' }
+      ],
       include: {
         assignee: { select: { fullName: true } }
       }
