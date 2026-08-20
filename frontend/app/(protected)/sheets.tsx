@@ -776,7 +776,7 @@ export default function ImportedSheetsScreen() {
           </View>
 
           {/* Monthly Filter & Executive Assignment Panel */}
-          {isAdminOrManager && (
+          {true && (
             <View style={styles.mobileFilterContainer}>
               <Text style={styles.mobileFilterLabel}>Filter Expiry Month:</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
