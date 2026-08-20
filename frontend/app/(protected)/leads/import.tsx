@@ -11,17 +11,11 @@ import { useRouter } from 'expo-router';
 
 import { BASE_URL } from '../../../src/utils/api';
 
-interface Mappings {
-  clientName: string;
-  clientPhone: string;
-  vehicleNo: string;
-  clientEmail?: string;
-  expiryDate?: string;
-  registrationDate?: string;
-  gvw?: string;
-  address?: string;
-  city?: string;
-  existingAgent?: string;
+interface ColumnMapping {
+  dbField: string;
+  label: string;
+  required: boolean;
+  mappedHeader: string;
 }
 
 interface HeaderDropdownProps {
@@ -31,14 +25,32 @@ interface HeaderDropdownProps {
   selectedValue: string;
   onSelect: (val: string) => void;
   required?: boolean;
+  onDelete?: () => void;
+  onRename?: () => void;
 }
 
-function HeaderDropdownSelector({ label, placeholder, options, selectedValue, onSelect, required = false }: HeaderDropdownProps) {
+function HeaderDropdownSelector({ label, placeholder, options, selectedValue, onSelect, required = false, onDelete, onRename }: HeaderDropdownProps) {
   const [visible, setVisible] = useState(false);
 
   return (
     <View style={styles.selectRow}>
-      <Text style={styles.selectLabel}>{label} {required && '*'}</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+        <Text style={styles.selectLabel}>{label} {required && '*'}</Text>
+        {!required && (onDelete || onRename) && (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            {onRename && (
+              <Pressable onPress={onRename} style={{ padding: 4 }}>
+                <Ionicons name="pencil-outline" size={14} color={Colors.primary} />
+              </Pressable>
+            )}
+            {onDelete && (
+              <Pressable onPress={onDelete} style={{ padding: 4 }}>
+                <Ionicons name="trash-outline" size={14} color={Colors.error} />
+              </Pressable>
+            )}
+          </View>
+        )}
+      </View>
       <Pressable style={styles.dropdownTrigger} onPress={() => setVisible(true)}>
         <Text style={[styles.dropdownTriggerText, !selectedValue && styles.placeholderText]}>
           {selectedValue || placeholder}
@@ -129,15 +141,15 @@ export default function LeadImportScreen() {
   // Mapping UI states
   const [fileHeaders, setFileHeaders] = useState<string[]>([]);
   const [parsingHeaders, setParsingHeaders] = useState(false);
-  const [mapping, setMapping] = useState<Mappings>({
-    clientName: '',
-    clientPhone: '',
-    vehicleNo: '',
-    clientEmail: '',
-    expiryDate: '',
-    gvw: '',
-    existingAgent: ''
-  });
+  const [mappings, setMappings] = useState<ColumnMapping[]>([]);
+  
+  // Custom Field adding/editing states
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [newColLabel, setNewColLabel] = useState('');
+  const [selectedSheetHeader, setSelectedSheetHeader] = useState('');
+  const [renameFieldModalVisible, setRenameFieldModalVisible] = useState(false);
+  const [renameTargetFieldKey, setRenameTargetFieldKey] = useState<string | null>(null);
+  const [renameFieldLabel, setRenameFieldLabel] = useState('');
   const [showMappingForm, setShowMappingForm] = useState(false);
   
   const [uploading, setUploading] = useState(false);
@@ -207,32 +219,36 @@ export default function LeadImportScreen() {
       setFileHeaders(data.headers || []);
       
       // Auto-fuzzy match headers
-      const autoMatch: Mappings = {
-        clientName: '',
-        clientPhone: '',
-        vehicleNo: '',
-        clientEmail: '',
-        expiryDate: '',
-        registrationDate: '',
-        gvw: '',
-        address: '',
-        city: '',
-        existingAgent: ''
-      };
-      (data.headers || []).forEach((h: string) => {
-        const norm = h.toLowerCase().replace(/[\s\.\-_]/g, '');
-        if (['ownername', 'name', 'clientname', 'partyname', 'insuredname', 'insured'].includes(norm)) autoMatch.clientName = h;
-        else if (['phonenumber', 'contactnumber', 'phone', 'contact', 'mobile', 'mobileno', 'phoneno'].includes(norm)) autoMatch.clientPhone = h;
-        else if (['vehiclenumber', 'vehicleno', 'vehicle', 'regno', 'registrationno'].includes(norm)) autoMatch.vehicleNo = h;
-        else if (['email', 'clientemail', 'emailid'].includes(norm)) autoMatch.clientEmail = h;
-        else if (['expirydate', 'expiry', 'insuranceexpirydate', 'duedate'].includes(norm)) autoMatch.expiryDate = h;
-        else if (['registrationdate', 'regdate'].includes(norm)) autoMatch.registrationDate = h;
-        else if (['gvw', 'grossweight', 'grossvehicleweight', 'weight'].includes(norm)) autoMatch.gvw = h;
-        else if (['address', 'location'].includes(norm)) autoMatch.address = h;
-        else if (['city', 'state'].includes(norm)) autoMatch.city = h;
-        else if (['existingagent', 'isagent', 'is_agent', 'agent', 'broker', 'agentnumber', 'agent?'].includes(norm)) autoMatch.existingAgent = h;
+      const defaultMappings: ColumnMapping[] = [
+        { dbField: 'clientName', label: 'Owner Name', required: true, mappedHeader: '' },
+        { dbField: 'clientPhone', label: 'Contact Phone', required: true, mappedHeader: '' },
+        { dbField: 'vehicleNo', label: 'Vehicle Number', required: true, mappedHeader: '' },
+        { dbField: 'expiryDate', label: 'Expiry Date', required: true, mappedHeader: '' },
+        { dbField: 'clientEmail', label: 'Email Address', required: false, mappedHeader: '' },
+        { dbField: 'registrationDate', label: 'Registration Date', required: false, mappedHeader: '' },
+        { dbField: 'gvw', label: 'GVW', required: false, mappedHeader: '' },
+        { dbField: 'address', label: 'Address', required: false, mappedHeader: '' },
+        { dbField: 'city', label: 'City', required: false, mappedHeader: '' }
+      ];
+
+      const updatedMappings = defaultMappings.map(field => {
+        const match = (data.headers || []).find((h: string) => {
+          const header = h.toLowerCase().trim().replace(/[\s\.\-_]/g, '');
+          if (field.dbField === 'clientName') return ['ownername', 'name', 'clientname', 'partyname', 'insuredname', 'insured'].includes(header);
+          if (field.dbField === 'clientPhone') return ['phonenumber', 'contactnumber', 'phone', 'contact', 'mobile', 'mobileno', 'phoneno'].includes(header);
+          if (field.dbField === 'vehicleNo') return ['vehiclenumber', 'vehicleno', 'vehicle', 'regno', 'registrationno'].includes(header);
+          if (field.dbField === 'clientEmail') return ['email', 'clientemail', 'emailid'].includes(header);
+          if (field.dbField === 'expiryDate') return ['expirydate', 'expiry', 'insuranceexpirydate', 'duedate'].includes(header);
+          if (field.dbField === 'registrationDate') return ['registrationdate', 'regdate'].includes(header);
+          if (field.dbField === 'gvw') return ['gvw', 'grossweight', 'grossvehicleweight', 'weight'].includes(header);
+          if (field.dbField === 'address') return ['address', 'location'].includes(header);
+          if (field.dbField === 'city') return ['city', 'state'].includes(header);
+          return false;
+        });
+        return { ...field, mappedHeader: match || '' };
       });
-      setMapping(autoMatch);
+
+      setMappings(updatedMappings);
       setShowMappingForm(true);
 
     } catch (err: any) {
@@ -252,8 +268,11 @@ export default function LeadImportScreen() {
       Alert.alert('Error', 'Please enter a sheet/import name first.');
       return;
     }
-    if (!mapping.clientName || !mapping.clientPhone || !mapping.vehicleNo || !mapping.expiryDate) {
-      Alert.alert('Error', 'Please map the required fields: Owner Name, Phone, Vehicle No, and Expiry Date.');
+    
+    const missingRequired = mappings.filter(m => m.required && !m.mappedHeader);
+    if (missingRequired.length > 0) {
+      const labels = missingRequired.map(m => m.label).join(', ');
+      Alert.alert('Error', `Please map all required fields: ${labels}`);
       return;
     }
 
@@ -274,18 +293,12 @@ export default function LeadImportScreen() {
       } as any);
       formData.append('importName', importName.trim());
       
-      const cleanMapping: Record<string, string> = {
-        clientName: mapping.clientName,
-        clientPhone: mapping.clientPhone,
-        vehicleNo: mapping.vehicleNo
-      };
-      if (mapping.clientEmail) cleanMapping.clientEmail = mapping.clientEmail;
-      if (mapping.expiryDate) cleanMapping.expiryDate = mapping.expiryDate;
-      if (mapping.registrationDate) cleanMapping.registrationDate = mapping.registrationDate;
-      if (mapping.gvw) cleanMapping.gvw = mapping.gvw;
-      if (mapping.address) cleanMapping.address = mapping.address;
-      if (mapping.city) cleanMapping.city = mapping.city;
-      if (mapping.existingAgent) cleanMapping.existingAgent = mapping.existingAgent;
+      const cleanMapping: Record<string, string> = {};
+      mappings.forEach(m => {
+        if (m.mappedHeader) {
+          cleanMapping[m.dbField] = m.mappedHeader;
+        }
+      });
 
       formData.append('mapping', JSON.stringify(cleanMapping));
 
@@ -309,11 +322,7 @@ export default function LeadImportScreen() {
       setImportName('');
       setShowMappingForm(false);
 
-      const agentCount = data.stats?.agentCount ?? data.agentLeadsCount ?? 0;
-      const successMsg = agentCount > 0
-        ? `Leads imported successfully! ${agentCount} agent lead(s) were detected and held for Admin Approval.`
-        : 'Leads imported and distributed to Sales Executives successfully!';
-
+      const successMsg = 'Leads imported successfully! You can now view and assign them to Sales Executives from the Spreadsheets section.';
       Alert.alert('Import Completed 🎉', successMsg);
     } catch (err: any) {
       Alert.alert('Import Failed', err.message || 'An error occurred.');
@@ -322,8 +331,64 @@ export default function LeadImportScreen() {
     }
   };
 
-  const updateMapping = (key: keyof Mappings, val: string) => {
-    setMapping(prev => ({ ...prev, [key]: val }));
+  const updateMapping = (dbField: string, val: string) => {
+    setMappings(prev =>
+      prev.map(m => (m.dbField === dbField ? { ...m, mappedHeader: val } : m))
+    );
+  };
+
+  const handleDeleteField = (dbField: string) => {
+    setMappings(prev => prev.filter(m => m.dbField !== dbField));
+  };
+
+  const handleEditField = (dbField: string, newLabel: string) => {
+    if (!newLabel.trim()) return;
+    setMappings(prev =>
+      prev.map(m => (m.dbField === dbField ? { ...m, label: newLabel.trim() } : m))
+    );
+  };
+
+  const handlePromptRenameField = (dbField: string, currentLabel: string) => {
+    setRenameTargetFieldKey(dbField);
+    setRenameFieldLabel(currentLabel);
+    setRenameFieldModalVisible(true);
+  };
+
+  const addMapping = () => {
+    const label = newColLabel.trim() || selectedSheetHeader;
+    if (!label) {
+      Alert.alert('Error', 'Please enter a column label or select a sheet header.');
+      return;
+    }
+
+    const sanitizeFieldKey = (lbl: string): string => {
+      return lbl
+        .toLowerCase()
+        .replace(/[^a-zA-Z0-9\s]/g, '')
+        .replace(/(?:^\w|[A-Z]|\b\w)/g, (word, index) => {
+          return index === 0 ? word.toLowerCase() : word.toUpperCase();
+        })
+        .replace(/\s+/g, '');
+    };
+
+    const key = sanitizeFieldKey(label) || 'customCol';
+    let finalDbField = key;
+    let counter = 1;
+    while (mappings.some(m => m.dbField === finalDbField)) {
+      finalDbField = `${key}_${counter++}`;
+    }
+
+    const newField: ColumnMapping = {
+      dbField: finalDbField,
+      label,
+      required: false,
+      mappedHeader: selectedSheetHeader || ''
+    };
+
+    setMappings(prev => [...prev, newField]);
+    setShowAddForm(false);
+    setNewColLabel('');
+    setSelectedSheetHeader('');
   };
 
   return (
@@ -343,7 +408,7 @@ export default function LeadImportScreen() {
           <Ionicons name="cloud-upload-outline" size={56} color={Colors.primary} style={styles.uploadIcon} />
           <Text style={styles.cardTitle}>Upload CSV or Excel File</Text>
           <Text style={styles.cardSubtitle}>
-            Select a sheet to automatically import leads and assign them to active Sales Executives.
+            Select a sheet to automatically import leads. You can view and assign them from the Spreadsheets section.
           </Text>
 
           <Text style={styles.inputLabel}>SHEET / IMPORT BATCH NAME *</Text>
@@ -383,91 +448,43 @@ export default function LeadImportScreen() {
           <View style={styles.mappingCard}>
             <Text style={styles.mappingTitle}>Map Sheet Columns</Text>
             
-            <HeaderDropdownSelector
-              label="Owner Name"
-              placeholder="Choose Name Column"
-              options={fileHeaders}
-              selectedValue={mapping.clientName}
-              onSelect={(val) => updateMapping('clientName', val)}
-              required
-            />
+            {/* Required Fields */}
+            {mappings.filter(m => m.required).map((item) => (
+              <HeaderDropdownSelector
+                key={item.dbField}
+                label={item.label}
+                placeholder={`Choose ${item.label} Column`}
+                options={fileHeaders}
+                selectedValue={item.mappedHeader}
+                onSelect={(val) => updateMapping(item.dbField, val)}
+                required
+              />
+            ))}
 
-            <HeaderDropdownSelector
-              label="Contact Phone"
-              placeholder="Choose Phone Column"
-              options={fileHeaders}
-              selectedValue={mapping.clientPhone}
-              onSelect={(val) => updateMapping('clientPhone', val)}
-              required
-            />
+            {/* Optional & Custom Fields */}
+            <Text style={styles.optionalDivider}>Optional & Custom Column Mappings</Text>
 
-            <HeaderDropdownSelector
-              label="Vehicle Number"
-              placeholder="Choose Vehicle No Column"
-              options={fileHeaders}
-              selectedValue={mapping.vehicleNo}
-              onSelect={(val) => updateMapping('vehicleNo', val)}
-              required
-            />
+            {mappings.filter(m => !m.required).map((item) => (
+              <HeaderDropdownSelector
+                key={item.dbField}
+                label={item.label}
+                placeholder={`Choose ${item.label} Column`}
+                options={fileHeaders}
+                selectedValue={item.mappedHeader}
+                onSelect={(val) => updateMapping(item.dbField, val)}
+                onDelete={() => handleDeleteField(item.dbField)}
+                onRename={() => handlePromptRenameField(item.dbField, item.label)}
+              />
+            ))}
 
-            <HeaderDropdownSelector
-              label="Expiry Date"
-              placeholder="Choose Expiry Date Column"
-              options={fileHeaders}
-              selectedValue={mapping.expiryDate || ''}
-              onSelect={(val) => updateMapping('expiryDate', val)}
-              required
-            />
-
-            <Text style={styles.optionalDivider}>Optional Column Mappings</Text>
-
-            <HeaderDropdownSelector
-              label="Email Address"
-              placeholder="Choose Email Column (Optional)"
-              options={fileHeaders}
-              selectedValue={mapping.clientEmail || ''}
-              onSelect={(val) => updateMapping('clientEmail', val)}
-            />
-
-            <HeaderDropdownSelector
-              label="Registration Date"
-              placeholder="Choose Registration Date Column (Optional)"
-              options={fileHeaders}
-              selectedValue={mapping.registrationDate || ''}
-              onSelect={(val) => updateMapping('registrationDate', val)}
-            />
-
-            <HeaderDropdownSelector
-              label="GVW"
-              placeholder="Choose GVW Column (Optional)"
-              options={fileHeaders}
-              selectedValue={mapping.gvw || ''}
-              onSelect={(val) => updateMapping('gvw', val)}
-            />
-
-            <HeaderDropdownSelector
-              label="Address"
-              placeholder="Choose Address Column (Optional)"
-              options={fileHeaders}
-              selectedValue={mapping.address || ''}
-              onSelect={(val) => updateMapping('address', val)}
-            />
-
-            <HeaderDropdownSelector
-              label="City"
-              placeholder="Choose City Column (Optional)"
-              options={fileHeaders}
-              selectedValue={mapping.city || ''}
-              onSelect={(val) => updateMapping('city', val)}
-            />
-
-            <HeaderDropdownSelector
-              label="Agent / Broker"
-              placeholder="Choose Agent Column (Optional)"
-              options={fileHeaders}
-              selectedValue={mapping.existingAgent || ''}
-              onSelect={(val) => updateMapping('existingAgent', val)}
-            />
+            {/* Add Custom Field Button */}
+            <Pressable
+              style={styles.addCustomFieldBtn}
+              onPress={() => setShowAddForm(true)}
+            >
+              <Ionicons name="add-circle-outline" size={16} color={Colors.primary} />
+              <Text style={styles.addCustomFieldBtnText}>Add Custom Field</Text>
+            </Pressable>
 
             <Pressable 
               style={[styles.uploadBtn, uploading && styles.disabledBtn]} 
@@ -478,8 +495,8 @@ export default function LeadImportScreen() {
                 <ActivityIndicator color={Colors.white} />
               ) : (
                 <>
-                  <Ionicons name="rocket-outline" size={20} color={Colors.white} />
-                  <Text style={styles.uploadBtnText}>Upload & Distribute</Text>
+                  <Ionicons name="cloud-upload-outline" size={20} color={Colors.white} />
+                  <Text style={styles.uploadBtnText}>Upload Leads</Text>
                 </>
               )}
             </Pressable>
@@ -498,7 +515,7 @@ export default function LeadImportScreen() {
               </View>
               <View style={styles.statBox}>
                 <Text style={styles.statLabel}>Imported</Text>
-                <Text style={[styles.statVal, { color: Colors.success }]}>{results.assignedCount}</Text>
+                <Text style={[styles.statVal, { color: Colors.success }]}>{results.assignedCount || results.valid || 0}</Text>
               </View>
               <View style={styles.statBox}>
                 <Text style={styles.statLabel}>Duplicates</Text>
@@ -512,16 +529,13 @@ export default function LeadImportScreen() {
 
             {importedList.length > 0 && (
               <View style={{ marginTop: Spacing.lg }}>
-                <Text style={styles.assignmentsHeading}>Lead Assignments Breakdown</Text>
+                <Text style={styles.assignmentsHeading}>Leads Breakdown</Text>
                 <View style={styles.assignmentsList}>
                   {importedList.map((lead, idx) => (
                     <View key={idx} style={styles.assignmentRow}>
                       <View style={{ flex: 1 }}>
                         <Text style={styles.leadNameVal}>{lead.clientName}</Text>
                         <Text style={styles.leadPlateVal}>{lead.vehicleNo}</Text>
-                      </View>
-                      <View style={styles.assignedBadge}>
-                        <Text style={styles.assignedBadgeText}>{lead.assignedToName}</Text>
                       </View>
                     </View>
                   ))}
@@ -533,6 +547,102 @@ export default function LeadImportScreen() {
 
         <View style={{ height: 40 }} />
       </ScrollView>
+
+      {/* Add Custom Mapping Modal */}
+      <Modal
+        visible={showAddForm}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowAddForm(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.dropdownModalContent}>
+            <View style={styles.dropdownModalHeader}>
+              <Text style={styles.dropdownModalTitle}>Add Custom Mapping</Text>
+              <Pressable onPress={() => setShowAddForm(false)} style={styles.modalCloseBtn}>
+                <Ionicons name="close" size={24} color={Colors.text} />
+              </Pressable>
+            </View>
+            <ScrollView style={{ padding: Spacing.md }} keyboardShouldPersistTaps="handled">
+              <Text style={styles.inputLabel}>CUSTOM COLUMN LABEL *</Text>
+              <TextInput
+                style={styles.textInput}
+                placeholder="e.g. Model, Engine Number, Chasis No"
+                placeholderTextColor={Colors.textLight}
+                value={newColLabel}
+                onChangeText={setNewColLabel}
+              />
+
+              <Text style={styles.inputLabel}>MAPPED SPREADSHEET HEADER (OPTIONAL)</Text>
+              <View style={{ borderWidth: 1, borderColor: Colors.border, borderRadius: BorderRadius.md, marginBottom: Spacing.lg }}>
+                <ScrollView style={{ maxHeight: 150 }} nestedScrollEnabled>
+                  <Pressable
+                    style={[styles.headerOption, !selectedSheetHeader && styles.headerOptionActive]}
+                    onPress={() => setSelectedSheetHeader('')}
+                  >
+                    <Text style={[styles.headerOptionText, !selectedSheetHeader && styles.headerOptionTextActive]}>(None / Select Later)</Text>
+                  </Pressable>
+                  {fileHeaders.map(h => (
+                    <Pressable
+                      key={h}
+                      style={[styles.headerOption, h === selectedSheetHeader && styles.headerOptionActive]}
+                      onPress={() => setSelectedSheetHeader(h)}
+                    >
+                      <Text style={[styles.headerOptionText, h === selectedSheetHeader && styles.headerOptionTextActive]}>{h}</Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              </View>
+
+              <Pressable style={styles.addMappingSubmitBtn} onPress={addMapping}>
+                <Text style={styles.addMappingSubmitBtnText}>Add Field Mapping</Text>
+              </Pressable>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Rename Field Modal */}
+      <Modal
+        visible={renameFieldModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setRenameFieldModalVisible(false)}
+      >
+        <View style={styles.renameBackdrop}>
+          <View style={styles.renameContainer}>
+            <Text style={styles.renameTitle}>Rename Column Field</Text>
+            <Text style={styles.renameSubtitle}>Enter new display name for this mapping column:</Text>
+            <TextInput
+              style={styles.renameInput}
+              value={renameFieldLabel}
+              onChangeText={setRenameFieldLabel}
+              placeholder="e.g. Policy Number"
+              placeholderTextColor={Colors.textLight}
+              autoFocus
+            />
+            <View style={styles.renameActions}>
+              <Pressable
+                style={styles.renameCancelBtn}
+                onPress={() => setRenameFieldModalVisible(false)}
+              >
+                <Text style={styles.renameCancelText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={styles.renameConfirmBtn}
+                onPress={() => {
+                  if (renameTargetFieldKey) {
+                    handleEditField(renameTargetFieldKey, renameFieldLabel);
+                    setRenameFieldModalVisible(false);
+                  }
+                }}
+              >
+                <Text style={styles.renameConfirmText}>Save</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -593,5 +703,125 @@ const styles = StyleSheet.create({
   optionItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: Spacing.md, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
   optionItemActive: { backgroundColor: Colors.primaryLight, paddingHorizontal: Spacing.sm, borderRadius: BorderRadius.sm },
   optionText: { fontSize: FontSize.md, color: Colors.text },
-  optionTextActive: { color: Colors.primary, fontWeight: '600' }
+  optionTextActive: { color: Colors.primary, fontWeight: '600' },
+  addCustomFieldBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.xs,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: Colors.primary,
+    borderStyle: 'dashed',
+    borderRadius: BorderRadius.md,
+    backgroundColor: '#FFFFFF',
+    marginTop: Spacing.sm,
+    marginBottom: Spacing.sm,
+  },
+  addCustomFieldBtnText: {
+    fontSize: FontSize.sm,
+    fontWeight: '800',
+    color: Colors.primary,
+  },
+  headerOption: {
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  headerOptionActive: {
+    backgroundColor: Colors.primaryLight,
+  },
+  headerOptionText: {
+    fontSize: FontSize.sm,
+    color: Colors.text,
+  },
+  headerOptionTextActive: {
+    color: Colors.primary,
+    fontWeight: '700',
+  },
+  addMappingSubmitBtn: {
+    backgroundColor: Colors.primary,
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: Spacing.md,
+  },
+  addMappingSubmitBtnText: {
+    fontSize: FontSize.md,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  renameBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: Spacing.lg,
+  },
+  renameContainer: {
+    width: '100%',
+    maxWidth: 320,
+    backgroundColor: '#FFFFFF',
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.lg,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  renameTitle: {
+    fontSize: FontSize.lg,
+    fontWeight: '900',
+    color: Colors.text,
+    marginBottom: Spacing.xs,
+  },
+  renameSubtitle: {
+    fontSize: FontSize.xs,
+    color: Colors.textMuted,
+    marginBottom: Spacing.md,
+    lineHeight: 16,
+  },
+  renameInput: {
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 10,
+    fontSize: FontSize.md,
+    color: Colors.text,
+    marginBottom: Spacing.lg,
+  },
+  renameActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: Spacing.sm,
+  },
+  renameCancelBtn: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 10,
+    borderRadius: BorderRadius.md,
+    backgroundColor: '#F1F5F9',
+  },
+  renameCancelText: {
+    fontSize: FontSize.sm,
+    fontWeight: '700',
+    color: Colors.textMuted,
+  },
+  renameConfirmBtn: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 10,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.primary,
+    minWidth: 80,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  renameConfirmText: {
+    fontSize: FontSize.sm,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
 });
