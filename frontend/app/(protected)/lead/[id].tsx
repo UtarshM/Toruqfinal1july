@@ -313,18 +313,19 @@ export default function LeadDetailScreen() {
   useEffect(() => {
     if (lead) {
       const cf = lead.customFields || {};
-      const subStatus = cf.policySubmission?.status;
-      if (isManagerOrAdmin) {
-        if (showPolicyModal === 'true' || subStatus === 'Pending_Review' || subStatus === 'Approved' || subStatus === 'Reverted') {
-          setShowPolicySubmissionModal(true);
-        }
+      const roleStr = (typeof (user?.role as any) === 'object' ? (user?.role as any)?.name : user?.role)?.toUpperCase() || '';
+      const userIsManager = roleStr.includes('MANAGER');
+
+      if (userIsManager) {
+        // Managers should never see this page or the modal form – redirect directly to approvals
+        router.replace('/(protected)/policy-approvals' as any);
       } else {
         if (showPolicyModal === 'true') {
           setShowPolicySubmissionModal(true);
         }
       }
     }
-  }, [lead, showPolicyModal, isManagerOrAdmin]);
+  }, [lead, showPolicyModal, user]);
 
   const makeCall = () => { 
     if (lead?.phone) {

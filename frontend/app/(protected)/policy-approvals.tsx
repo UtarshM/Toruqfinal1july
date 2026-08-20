@@ -903,6 +903,12 @@ export default function PolicyApprovalsScreen() {
                         </>
                       )}
                     </Pressable>
+                  ) : isManagerOrAdmin ? (
+                    <View style={{ flex: 1, paddingVertical: 8, alignItems: 'center', justifyContent: 'center' }}>
+                      <Text style={{ fontSize: 11, color: '#94A3B8', fontStyle: 'italic' }}>
+                        No documents uploaded by Salesperson yet
+                      </Text>
+                    </View>
                   ) : (
                     <Pressable
                       style={styles.uploadPromptBtn}
@@ -1059,14 +1065,6 @@ export default function PolicyApprovalsScreen() {
                         <Text style={styles.issueToolBtnText}>Issue Policy</Text>
                       </Pressable>
                     )}
-
-                    <Pressable
-                      style={styles.editFormBtn}
-                      onPress={() => setSelectedLeadModal(item)}
-                    >
-                      <Ionicons name="create-outline" size={15} color={Colors.primary} />
-                      <Text style={styles.editFormBtnText}>Edit</Text>
-                    </Pressable>
                   </View>
                 )}
               </View>
