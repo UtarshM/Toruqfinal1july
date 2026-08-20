@@ -4,6 +4,17 @@ import { validateAuth } from '@/lib/auth-guard'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import * as XLSX from 'xlsx'
 
+function formatDate(date: any): string {
+  if (!date) return ''
+  try {
+    const d = new Date(date)
+    if (isNaN(d.getTime())) return ''
+    return d.toISOString().split('T')[0]
+  } catch {
+    return ''
+  }
+}
+
 interface SheetFilterOptions {
   month?: string | null
   startDate?: string | null
@@ -295,39 +306,66 @@ export async function generateMasterSheet(options: SheetFilterOptions) {
       where: renewalWhere,
       include: {
         assignee: { select: { fullName: true } },
-        lead: { select: { customFields: true } }
+        createdBy: { select: { fullName: true } },
+        lead: {
+          select: {
+            customFields: true,
+            assignee: { select: { fullName: true } }
+          }
+        },
+        policy: { select: { policyNumber: true, provider: true, type: true } }
       },
       orderBy: { policyEndDate: 'asc' }
     })
 
     const renewalHeaders = [
-      'SR NO',
-      'EXPIRY DATE',
-      'REG NO',
-      'CLIENT NAME',
-      'PHONE NUMBER 1',
-      'PHONE NUMBER 2',
-      'COMPANY',
-      'POLICY NUMBER',
-      'SALES EXECUTIVE',
-      'STATUS'
+      'Client Name',
+      'Phone Number',
+      'Vehicle No',
+      'Policy Number',
+      'Provider / Insurer',
+      'Policy Type',
+      'Premium Amount',
+      'Policy Expiry Date',
+      'Policy Start Date',
+      'Renewal Status',
+      'Sales Person',
+      'Policy PDF',
+      'Assigned To',
+      'Assigned Month',
+      'Assigned Year',
+      'Renewed Date',
+      'Refused Date',
+      'Created At'
     ]
 
     const renewalRows: any[][] = [renewalHeaders]
-    renewals.forEach((r, idx) => {
-      const cf = (r.lead?.customFields && typeof r.lead.customFields === 'object') ? (r.lead.customFields as any) : {}
-      const phone2 = cf.phone2 || cf.mobile2 || ''
+    renewals.forEach((r) => {
+      const leadCf = r.lead?.customFields as any
+      const pdfUrl = (Array.isArray(r.documents) && r.documents[0]) || 
+                     leadCf?.policySubmission?.issuedPolicyPdfUrl || 
+                     '';
+      const salesPerson = r.createdBy?.fullName || r.lead?.assignee?.fullName || 'Unassigned'
+
       renewalRows.push([
-        idx + 1,
-        r.policyEndDate ? new Date(r.policyEndDate).toLocaleDateString('en-IN') : '',
-        r.vehicleNo || 'N/A',
-        r.clientName || 'N/A',
-        r.clientPhone || 'N/A',
-        phone2,
-        r.provider || 'N/A',
-        r.policyNumber || 'N/A',
+        r.clientName || '',
+        r.clientPhone || '',
+        r.vehicleNo || '',
+        r.policyNumber || r.policy?.policyNumber || '',
+        r.provider || r.policy?.provider || '',
+        r.policyType || r.policy?.type || '',
+        r.premiumAmount ? Number(r.premiumAmount) : '',
+        formatDate(r.policyEndDate),
+        formatDate(r.policyStartDate),
+        r.renewalStatus || 'Active',
+        salesPerson,
+        pdfUrl,
         r.assignee?.fullName || 'Unassigned',
-        r.renewalStatus || 'Active'
+        r.assignedMonth || '',
+        r.assignedYear || '',
+        formatDate(r.renewedAt),
+        formatDate(r.refusedAt),
+        formatDate(r.createdAt)
       ])
     })
 
