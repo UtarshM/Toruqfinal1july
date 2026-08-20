@@ -221,14 +221,22 @@ export async function generateMasterSheet(options: SheetFilterOptions) {
         p.policyNumber,
         submission.issuedPolicyPdfUrl || '',
         submission.compiledPdfUrl || '',
-        p.lead?.assignee?.fullName || 'Direct / Unassigned',
+        p.lead?.assignee?.fullName || submission.salesPersonName || 'Direct / Unassigned',
         submission.reviewedByName || 'Manager',
         formData.description || ''
       ])
     })
 
     // Also append extra leads that have expiryDate or policy submission
-    extraLeads.forEach((lead, lIdx) => {
+    // Also append extra leads that have policy submission or won status
+    const activeExtraLeads = extraLeads.filter(lead => {
+      if (lead.status === 'Won') return true
+      const cf = (lead.customFields && typeof lead.customFields === 'object') ? (lead.customFields as any) : {}
+      const submission = cf.policySubmission || {}
+      return submission.status && submission.status !== 'Draft'
+    })
+
+    activeExtraLeads.forEach((lead, lIdx) => {
       const cf = (lead.customFields && typeof lead.customFields === 'object') ? (lead.customFields as any) : {}
       const submission = cf.policySubmission || {}
       const formData = submission.formData || {}
@@ -264,13 +272,13 @@ export async function generateMasterSheet(options: SheetFilterOptions) {
         submission.issuedPolicyNumber || submission.policyNumber || formData.policyNumber || 'N/A',
         submission.issuedPolicyPdfUrl || '',
         submission.compiledPdfUrl || '',
-        lead.assignee?.fullName || 'Direct / Unassigned',
+        lead.assignee?.fullName || submission.salesPersonName || 'Direct / Unassigned',
         submission.reviewedByName || 'Manager',
         formData.description || ''
       ])
     })
 
-    const totalCount = policies.length + extraLeads.length
+    const totalCount = policies.length + activeExtraLeads.length
 
     const ws = XLSX.utils.aoa_to_sheet(rows)
     const wb = XLSX.utils.book_new()

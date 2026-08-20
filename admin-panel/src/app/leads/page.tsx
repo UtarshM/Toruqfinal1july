@@ -1043,6 +1043,9 @@ export default function LeadsPage() {
                 const tpFull = getLeadColumnValue(lead, 'tpFull')
                 const via = getLeadColumnValue(lead, 'via')
 
+                const subStatus = (lead.customFields && typeof lead.customFields === 'object') ? (lead.customFields as any)?.policySubmission?.status : null
+                const isInReviewOrWon = subStatus === 'Pending_Review' || subStatus === 'Approved' || subStatus === 'Reverted' || lead.status === 'Won'
+
                 return (
                   <tr 
                     key={lead.id} 
@@ -1065,7 +1068,7 @@ export default function LeadsPage() {
                     <td className="px-3 py-3 text-xs text-slate-700 whitespace-nowrap">
                       <div className="flex items-center gap-1.5">
                         <span>{phone1}</span>
-                        {lead.existingAgent === 'Agent' && (
+                        {lead.existingAgent === 'Agent' && !isInReviewOrWon && (
                           <span className="px-1.5 py-0.5 bg-amber-100 text-amber-800 text-[9px] font-black rounded-md border border-amber-200 uppercase tracking-wide shrink-0" title="Contact number belongs to an agent">
                             AGENT
                           </span>
@@ -1562,23 +1565,32 @@ export default function LeadsPage() {
                           )}
 
                           {/* Client Card details */}
-                          <div className="space-y-4">
-                            <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Metadata & Import Details</h4>
-                            <div className="grid grid-cols-2 gap-4">
-                              <DetailItem label="Import Sheet Name" value={detailedLead.importName || 'Manual / Direct Entry'} isCopyable />
-                              <DetailItem label="Agent Contact Status" value={detailedLead.existingAgent === 'Agent' ? 'Agent Contact (Alert Sent)' : 'Standard Direct Contact'} />
-                              <DetailItem 
-                                label="Mo No. 1" 
-                                value={detailedLead.clientPhone ? (detailedLead.existingAgent === 'Agent' ? `${detailedLead.clientPhone} [AGENT]` : detailedLead.clientPhone) : 'N/A'} 
-                                isCopyable 
-                              />
-                              <DetailItem label="Mo No. 2" value={getLeadColumnValue(detailedLead, 'phone2')} isCopyable />
-                              <DetailItem label="Gross Vehicle Weight (GVW)" value={detailedLead.gvw || 'N/A'} />
-                              <DetailItem label="City / VIA" value={getLeadColumnValue(detailedLead, 'via')} />
-                              <DetailItem label="Previous Policy Expiry Date" value={detailedLead.expiryDate ? new Date(detailedLead.expiryDate).toLocaleDateString() : 'N/A'} />
-                              <DetailItem label="Created On" value={new Date(detailedLead.createdAt).toLocaleDateString()} />
-                            </div>
-                          </div>
+                          {/* Client Card details */}
+                          {(() => {
+                            const detailSubStatus = (detailedLead.customFields && typeof detailedLead.customFields === 'object') ? (detailedLead.customFields as any)?.policySubmission?.status : null
+                            const detailedLeadIsInReviewOrWon = detailSubStatus === 'Pending_Review' || detailSubStatus === 'Approved' || detailSubStatus === 'Reverted' || detailedLead.status === 'Won'
+                            const isAgentLabel = detailedLead.existingAgent === 'Agent' && !detailedLeadIsInReviewOrWon
+
+                            return (
+                              <div className="space-y-4">
+                                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Metadata & Import Details</h4>
+                                <div className="grid grid-cols-2 gap-4">
+                                  <DetailItem label="Import Sheet Name" value={detailedLead.importName || 'Manual / Direct Entry'} isCopyable />
+                                  <DetailItem label="Agent Contact Status" value={isAgentLabel ? 'Agent Contact (Alert Sent)' : 'Standard Direct Contact'} />
+                                  <DetailItem 
+                                    label="Mo No. 1" 
+                                    value={detailedLead.clientPhone ? (isAgentLabel ? `${detailedLead.clientPhone} [AGENT]` : detailedLead.clientPhone) : 'N/A'} 
+                                    isCopyable 
+                                  />
+                                  <DetailItem label="Mo No. 2" value={getLeadColumnValue(detailedLead, 'phone2')} isCopyable />
+                                  <DetailItem label="Gross Vehicle Weight (GVW)" value={detailedLead.gvw || 'N/A'} />
+                                  <DetailItem label="City / VIA" value={getLeadColumnValue(detailedLead, 'via')} />
+                                  <DetailItem label="Previous Policy Expiry Date" value={detailedLead.expiryDate ? new Date(detailedLead.expiryDate).toLocaleDateString() : 'N/A'} />
+                                  <DetailItem label="Created On" value={new Date(detailedLead.createdAt).toLocaleDateString()} />
+                                </div>
+                              </div>
+                            )
+                          })()}
 
                           {/* Edit button */}
                           {!isExecutive && (

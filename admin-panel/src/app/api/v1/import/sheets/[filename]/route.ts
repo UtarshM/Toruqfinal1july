@@ -247,7 +247,9 @@ export async function GET(
     const rows = leadsList.map((l) => {
       const cf = (l.customFields && typeof l.customFields === 'object') ? (l.customFields as any) : {}
       const phone2 = cf.phone2 || cf.mobile2 || cf['mo no 2'] || cf['Mo No 2'] || (l.clientEmail && /^[0-9\s+-]{7,15}$/.test(l.clientEmail.trim()) ? l.clientEmail : '')
-      const isAgentLead = l.existingAgent === 'Agent' || (l.existingAgent && String(l.existingAgent).toLowerCase().includes('agent'))
+      const subStatus = cf.policySubmission?.status
+      const isInReviewOrWon = subStatus === 'Pending_Review' || subStatus === 'Approved' || subStatus === 'Reverted' || l.status === 'Won'
+      const isAgentLead = !isInReviewOrWon && (l.existingAgent === 'Agent' || (l.existingAgent && String(l.existingAgent).toLowerCase().includes('agent')))
 
       const cleanPhone = l.clientPhone || ''
       const phoneVal = cleanPhone ? (isAgentLead ? `${cleanPhone} [Agent]` : cleanPhone) : ''
