@@ -213,14 +213,7 @@ export async function POST(req: NextRequest) {
           const headers: string[] = rawAoa[0].map(h => String(h || '').trim())
           for (let c = 0; c < headers.length; c++) {
             if (!headers[c] || headers[c] === '') {
-              for (let r = 1; r < rawAoa.length; r++) {
-                const val = String(rawAoa[r][c] || '').trim().toLowerCase()
-                if (val.includes('agent') || val.includes('broker')) {
-                  headers[c] = 'Agent Number'
-                  break
-                }
-              }
-              if (!headers[c]) headers[c] = `Column_${c + 1}`
+              headers[c] = `Column_${c + 1}`
             }
           }
           rawData = rawAoa.slice(1).map(row => {
@@ -237,14 +230,7 @@ export async function POST(req: NextRequest) {
           const headers: string[] = rawAoa[0].map((h: any) => String(h || '').trim())
           for (let c = 0; c < headers.length; c++) {
             if (!headers[c] || headers[c] === '') {
-              for (let r = 1; r < rawAoa.length; r++) {
-                const val = String(rawAoa[r][c] || '').trim().toLowerCase()
-                if (val.includes('agent') || val.includes('broker')) {
-                  headers[c] = 'Agent Number'
-                  break
-                }
-              }
-              if (!headers[c]) headers[c] = `Column_${c + 1}`
+              headers[c] = `Column_${c + 1}`
             }
           }
           rawData = rawAoa.slice(1).map(row => {

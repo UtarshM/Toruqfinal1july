@@ -32,15 +32,7 @@ export async function POST(req: NextRequest) {
       if (rawAoa.length > 0) {
         const rawHeaders = rawAoa[0].map((h: any) => String(h || '').trim())
         headers = rawHeaders.map((h, c) => {
-          if (h) return h
-          // Check column values to infer header
-          for (let r = 1; r < Math.min(rawAoa.length, 10); r++) {
-            const val = String(rawAoa[r]?.[c] || '').trim().toLowerCase()
-            if (val.includes('agent') || val.includes('broker')) {
-              return 'Agent Number'
-            }
-          }
-          return `Column_${c + 1}`
+          return h || `Column_${c + 1}`
         })
       }
     } else {
@@ -50,14 +42,7 @@ export async function POST(req: NextRequest) {
       if (rawAoa && rawAoa.length > 0) {
         const rawHeaders = (rawAoa[0] || []).map(h => String(h || '').trim())
         headers = rawHeaders.map((h, c) => {
-          if (h) return h
-          for (let r = 1; r < Math.min(rawAoa.length, 10); r++) {
-            const val = String(rawAoa[r]?.[c] || '').trim().toLowerCase()
-            if (val.includes('agent') || val.includes('broker')) {
-              return 'Agent Number'
-            }
-          }
-          return `Column_${c + 1}`
+          return h || `Column_${c + 1}`
         })
       }
     }
