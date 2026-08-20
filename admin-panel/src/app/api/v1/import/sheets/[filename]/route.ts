@@ -380,3 +380,78 @@ export async function DELETE(
     return NextResponse.json({ error: err.message || 'Failed to delete spreadsheet' }, { status: 500 })
   }
 }
+
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ filename: string }> }
+) {
+  const { context, error } = await validateAuth(req)
+  if (error || !context) return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const roleUpper = (context.role || '').toUpperCase()
+  const isAdmin = roleUpper.includes('ADMIN') || roleUpper.includes('SUPER')
+  if (!isAdmin) {
+    return NextResponse.json({ error: 'Forbidden: Only Admins can rename spreadsheets' }, { status: 403 })
+  }
+
+  try {
+    const { filename } = await params
+    const oldFileName = path.basename(filename)
+    const body = await req.json()
+    const { newBatchName } = body
+
+    if (!newBatchName || typeof newBatchName !== 'string' || !newBatchName.trim()) {
+      return NextResponse.json({ error: 'New batch name is required' }, { status: 400 })
+    }
+
+    const trimmedNewName = newBatchName.trim()
+    const uploadDir = getUploadDir()
+    const oldFilePath = path.join(uploadDir, oldFileName)
+
+    // Cannot rename master files
+    if (oldFileName === 'import_leads.xlsx' || oldFileName === 'import_renewals.xlsx') {
+      return NextResponse.json({ error: 'Cannot rename master system spreadsheets' }, { status: 400 })
+    }
+
+    if (!fs.existsSync(oldFilePath)) {
+      return NextResponse.json({ error: 'Source spreadsheet file not found' }, { status: 404 })
+    }
+
+    // Extract old batch name
+    const oldBatchName = oldFileName
+      .replace(/^import_/, '')
+      .replace(/\.(xlsx|csv)$/, '')
+      .replace(/_/g, ' ')
+
+    const cleanNewName = trimmedNewName.replace(/[^a-zA-Z0-9_-]/g, '_')
+    const ext = path.extname(oldFileName)
+    const newFileName = `import_${cleanNewName}${ext}`
+    const newFilePath = path.join(uploadDir, newFileName)
+
+    if (fs.existsSync(newFilePath) && oldFileName !== newFileName) {
+      return NextResponse.json({ error: 'A spreadsheet with this name already exists' }, { status: 400 })
+    }
+
+    // 1. Update database leads importName field
+    const updateResult = await prisma.lead.updateMany({
+      where: { importName: oldBatchName },
+      data: { importName: trimmedNewName }
+    })
+
+    // 2. Rename file on disk
+    fs.renameSync(oldFilePath, newFilePath)
+
+    return NextResponse.json({
+      success: true,
+      oldFileName,
+      newFileName,
+      oldBatchName,
+      newBatchName: trimmedNewName,
+      updatedLeadsCount: updateResult.count,
+      message: `Spreadsheet renamed successfully to "${trimmedNewName}". ${updateResult.count} leads updated.`
+    })
+  } catch (err: any) {
+    console.error('[sheets PATCH] Error:', err)
+    return NextResponse.json({ error: err.message || 'Failed to rename spreadsheet' }, { status: 500 })
+  }
+}

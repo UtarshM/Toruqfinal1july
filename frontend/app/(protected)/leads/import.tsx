@@ -252,8 +252,8 @@ export default function LeadImportScreen() {
       Alert.alert('Error', 'Please enter a sheet/import name first.');
       return;
     }
-    if (!mapping.clientName || !mapping.clientPhone || !mapping.vehicleNo) {
-      Alert.alert('Error', 'Please map the required fields: Owner Name, Phone, and Vehicle No.');
+    if (!mapping.clientName || !mapping.clientPhone || !mapping.vehicleNo || !mapping.expiryDate) {
+      Alert.alert('Error', 'Please map the required fields: Owner Name, Phone, Vehicle No, and Expiry Date.');
       return;
     }
 
@@ -410,6 +410,15 @@ export default function LeadImportScreen() {
               required
             />
 
+            <HeaderDropdownSelector
+              label="Expiry Date"
+              placeholder="Choose Expiry Date Column"
+              options={fileHeaders}
+              selectedValue={mapping.expiryDate || ''}
+              onSelect={(val) => updateMapping('expiryDate', val)}
+              required
+            />
+
             <Text style={styles.optionalDivider}>Optional Column Mappings</Text>
 
             <HeaderDropdownSelector
@@ -418,14 +427,6 @@ export default function LeadImportScreen() {
               options={fileHeaders}
               selectedValue={mapping.clientEmail || ''}
               onSelect={(val) => updateMapping('clientEmail', val)}
-            />
-
-            <HeaderDropdownSelector
-              label="Expiry Date"
-              placeholder="Choose Expiry Date Column (Optional)"
-              options={fileHeaders}
-              selectedValue={mapping.expiryDate || ''}
-              onSelect={(val) => updateMapping('expiryDate', val)}
             />
 
             <HeaderDropdownSelector

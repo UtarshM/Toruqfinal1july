@@ -96,6 +96,12 @@ export default function ImportedSheetsScreen() {
   const [assigning, setAssigning] = useState(false);
   const [assignResult, setAssignResult] = useState<any>(null);
 
+  // Custom Spreadsheet Cards Edit/Delete States
+  const [renameModalVisible, setRenameModalVisible] = useState(false);
+  const [renameTargetFile, setRenameTargetFile] = useState<SpreadsheetFile | null>(null);
+  const [newSheetName, setNewSheetName] = useState('');
+  const [renaming, setRenaming] = useState(false);
+
   const fetchFiles = useCallback(async (sync = false) => {
     try {
       setLoading(true);
@@ -318,6 +324,76 @@ export default function ImportedSheetsScreen() {
     } finally {
       setAssigning(false);
     }
+  };
+
+  const handleCardOptions = (file: SpreadsheetFile) => {
+    if (file.fileName === 'import_leads.xlsx' || file.fileName === 'import_renewals.xlsx') return;
+
+    Alert.alert(
+      'Spreadsheet Options',
+      `Choose an action for "${file.batchName}":`,
+      [
+        {
+          text: '✏️ Rename Spreadsheet',
+          onPress: () => handlePromptRename(file)
+        },
+        {
+          text: '🗑️ Delete Spreadsheet',
+          onPress: () => handleConfirmDelete(file),
+          style: 'destructive'
+        },
+        {
+          text: 'Cancel',
+          style: 'cancel'
+        }
+      ]
+    );
+  };
+
+  const handlePromptRename = (file: SpreadsheetFile) => {
+    setRenameTargetFile(file);
+    setNewSheetName(file.batchName);
+    setRenameModalVisible(true);
+  };
+
+  const handleRenameSubmit = async () => {
+    if (!renameTargetFile || !newSheetName.trim() || renaming) return;
+    setRenaming(true);
+    try {
+      const res = await api.patch(`/import/sheets/${renameTargetFile.fileName}`, {
+        newBatchName: newSheetName.trim()
+      });
+      Alert.alert('Success 🎉', res.message || 'Spreadsheet renamed successfully.');
+      setRenameModalVisible(false);
+      fetchFiles(); // Refresh listing
+    } catch (err: any) {
+      Alert.alert('Rename Failed', err.message || 'Could not rename spreadsheet.');
+    } finally {
+      setRenaming(false);
+    }
+  };
+
+  const handleConfirmDelete = (file: SpreadsheetFile) => {
+    Alert.alert(
+      'Delete Spreadsheet ⚠️',
+      `Are you sure you want to permanently delete "${file.batchName}"?\n\nThis will delete the file on the server and delete all leads imported from this sheet from the database. This action cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete Permanently',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const res = await api.delete(`/import/sheets/${file.fileName}`);
+              Alert.alert('Deleted Successfully', res.message || 'Spreadsheet batch deleted.');
+              fetchFiles(); // Refresh listing
+            } catch (err: any) {
+              Alert.alert('Delete Failed', err.message || 'Could not delete spreadsheet.');
+            }
+          }
+        }
+      ]
+    );
   };
 
   const handleDownloadAndShare = async (file: SpreadsheetFile) => {
@@ -569,6 +645,14 @@ export default function ImportedSheetsScreen() {
                     <View style={styles.cleanBadge}>
                       <Text style={styles.cleanBadgeText}>Direct Leads</Text>
                     </View>
+                  )}
+                  {item.fileName !== 'import_leads.xlsx' && item.fileName !== 'import_renewals.xlsx' && (
+                    <Pressable
+                      onPress={() => handleCardOptions(item)}
+                      style={{ padding: 6, marginLeft: 4 }}
+                    >
+                      <Ionicons name="ellipsis-vertical" size={20} color={Colors.textMuted} />
+                    </Pressable>
                   )}
                 </View>
 
@@ -1066,6 +1150,49 @@ export default function ImportedSheetsScreen() {
             </Pressable>
           </View>
         </SafeAreaView>
+      </Modal>
+
+      {/* Rename Sheet Modal */}
+      <Modal
+        visible={renameModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setRenameModalVisible(false)}
+      >
+        <View style={styles.renameBackdrop}>
+          <View style={styles.renameContainer}>
+            <Text style={styles.renameTitle}>Rename Spreadsheet</Text>
+            <Text style={styles.renameSubtitle}>Enter new display name for "{renameTargetFile?.batchName}":</Text>
+            <TextInput
+              style={styles.renameInput}
+              value={newSheetName}
+              onChangeText={setNewSheetName}
+              placeholder="e.g. September Leads Campaign"
+              placeholderTextColor={Colors.textLight}
+              autoFocus
+            />
+            <View style={styles.renameActions}>
+              <Pressable
+                style={styles.renameCancelBtn}
+                onPress={() => setRenameModalVisible(false)}
+                disabled={renaming}
+              >
+                <Text style={styles.renameCancelText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.renameConfirmBtn, renaming && { opacity: 0.7 }]}
+                onPress={handleRenameSubmit}
+                disabled={renaming}
+              >
+                {renaming ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.renameConfirmText}>Rename</Text>
+                )}
+              </Pressable>
+            </View>
+          </View>
+        </View>
       </Modal>
 
       <AppFooter />
@@ -1620,5 +1747,76 @@ const styles = StyleSheet.create({
   },
   mobileResultTextError: {
     color: '#991B1B',
+  },
+  renameBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: Spacing.lg,
+  },
+  renameContainer: {
+    width: '100%',
+    maxWidth: 320,
+    backgroundColor: '#FFFFFF',
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.lg,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  renameTitle: {
+    fontSize: FontSize.lg,
+    fontWeight: '900',
+    color: Colors.text,
+    marginBottom: Spacing.xs,
+  },
+  renameSubtitle: {
+    fontSize: FontSize.xs,
+    color: Colors.textMuted,
+    marginBottom: Spacing.md,
+    lineHeight: 16,
+  },
+  renameInput: {
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 10,
+    fontSize: FontSize.md,
+    color: Colors.text,
+    marginBottom: Spacing.lg,
+  },
+  renameActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: Spacing.sm,
+  },
+  renameCancelBtn: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 10,
+    borderRadius: BorderRadius.md,
+    backgroundColor: '#F1F5F9',
+  },
+  renameCancelText: {
+    fontSize: FontSize.sm,
+    fontWeight: '700',
+    color: Colors.textMuted,
+  },
+  renameConfirmBtn: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 10,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.primary,
+    minWidth: 80,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  renameConfirmText: {
+    fontSize: FontSize.sm,
+    fontWeight: '800',
+    color: '#FFFFFF',
   },
 });
