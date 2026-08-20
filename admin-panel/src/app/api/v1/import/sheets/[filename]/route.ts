@@ -217,8 +217,8 @@ export async function GET(
     }
 
     const standardHeaders = [
-      'Client Name', 'Phone Number', 'Mo No. 2', 'REG NO / Vehicle No', 'Policy Expiry Date',
-      'Registration Date', 'GVW', 'City', 'Address', 'Lead Status', 'Assigned To', 'Import Batch'
+      'Client Name', 'Phone Number', 'REG NO / Vehicle No', 'Policy Expiry Date',
+      'Lead Status', 'Assigned To', 'Import Batch', 'Mo No. 2', 'Registration Date', 'GVW', 'City', 'Address'
     ]
 
     const customKeys = new Set<string>()
@@ -255,16 +255,16 @@ export async function GET(
       const row = [
         l.clientName || '',
         phoneVal,
-        phone2 || '',
         l.vehicleNo || '',
         formatDate(l.expiryDate),
+        l.status || 'New',
+        l.assignee?.fullName || (isAgentLead ? 'Pending Admin Approval' : 'Unassigned'),
+        l.importName || 'Direct Entry',
+        phone2 || '',
         formatDate(l.registrationDate),
         l.gvw || '',
         l.city || '',
-        l.address || '',
-        l.status || 'New',
-        l.assignee?.fullName || (isAgentLead ? 'Pending Admin Approval' : 'Unassigned'),
-        l.importName || 'Direct Entry'
+        l.address || ''
       ]
 
       customKeyList.forEach(k => {

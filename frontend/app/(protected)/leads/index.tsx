@@ -259,20 +259,34 @@ export default function LeadsScreen() {
 
       {/* Header */}
       <View style={styles.header}>
-        <Pressable onPress={() => setSidebarOpen(true)} style={styles.menuBtn}>
-          <Ionicons name="menu-outline" size={26} color={Colors.text} />
-        </Pressable>
-        <Text style={styles.title}>My Leads</Text>
-        <View style={styles.headerActions}>
-          <Pressable style={styles.actionIconBtn} onPress={handleExport}>
-            <Ionicons name="cloud-download-outline" size={22} color={Colors.primary} />
-          </Pressable>
-          {isAdminOrManager && (
-            <Pressable style={styles.addBtn} onPress={() => router.push('/lead/new')}>
-              <Ionicons name="add" size={22} color={Colors.primary} />
+        {selectionMode ? (
+          <>
+            <Pressable onPress={cancelSelection} style={styles.menuBtn}>
+              <Ionicons name="close" size={26} color={Colors.text} />
             </Pressable>
-          )}
-        </View>
+            <Text style={styles.title}>{selectedIds.size} Selected</Text>
+            <Pressable onPress={selectAll} style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: BorderRadius.sm, backgroundColor: Colors.primaryLight }}>
+              <Text style={{ fontSize: 11, fontWeight: '800', color: Colors.primary }}>Select All</Text>
+            </Pressable>
+          </>
+        ) : (
+          <>
+            <Pressable onPress={() => setSidebarOpen(true)} style={styles.menuBtn}>
+              <Ionicons name="menu-outline" size={26} color={Colors.text} />
+            </Pressable>
+            <Text style={styles.title}>My Leads</Text>
+            <View style={styles.headerActions}>
+              <Pressable style={styles.actionIconBtn} onPress={handleExport}>
+                <Ionicons name="cloud-download-outline" size={22} color={Colors.primary} />
+              </Pressable>
+              {isAdminOrManager && (
+                <Pressable style={styles.addBtn} onPress={() => router.push('/lead/new')}>
+                  <Ionicons name="add" size={22} color={Colors.primary} />
+                </Pressable>
+              )}
+            </View>
+          </>
+        )}
       </View>
 
       {/* Search */}

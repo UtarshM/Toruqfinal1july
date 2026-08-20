@@ -281,9 +281,30 @@ export default function ImportedSheetsScreen() {
         salesExecutiveIds: selectedExecIds
       });
       setAssignResult(res);
+      
+      // Native Alert Prompt on Successful Assignment
+      Alert.alert(
+        'Leads Assigned',
+        res.message || `${modalTotalRows} leads assigned successfully!`,
+        [
+          {
+            text: 'Go to Leads',
+            onPress: () => {
+              setSelectedFile(null); // Close preview modal
+              router.replace('/(protected)/leads'); // Redirect to Leads tab
+            }
+          },
+          {
+            text: 'OK',
+            style: 'cancel'
+          }
+        ]
+      );
+
       await handleMonthFilterChange(expiryMonthFilter, expiryYearFilter);
     } catch (err: any) {
       setAssignResult({ error: err.message || 'Assignment failed' });
+      Alert.alert('Assignment Failed', err.message || 'Could not assign leads.');
     } finally {
       setAssigning(false);
     }

@@ -167,8 +167,8 @@ export async function GET(req: NextRequest) {
       topAgents,
       pendingAgentApprovals
     ] = await Promise.all([
-      prisma.lead.count({ where: { status: { not: 'Trashed' } } }),
-      prisma.lead.count({ where: { createdAt: todayFilter, status: { not: 'Trashed' } } }),
+      prisma.lead.count({ where: { status: { not: 'Trashed' }, assignedTo: { not: null } } }),
+      prisma.lead.count({ where: { createdAt: todayFilter, status: { not: 'Trashed' }, assignedTo: { not: null } } }),
       prisma.policy.count({ where: { createdAt: dateFilter } }),
       prisma.policy.count({ where: { status: 'Active', createdAt: dateFilter } }),
       prisma.quotation.count({ where: { createdAt: dateFilter } }),
