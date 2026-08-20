@@ -311,10 +311,20 @@ export default function LeadDetailScreen() {
   useFocusEffect(useCallback(() => { loadData(); }, [loadData]));
 
   useEffect(() => {
-    if (showPolicyModal === 'true') {
-      setShowPolicySubmissionModal(true);
+    if (lead) {
+      const cf = lead.customFields || {};
+      const subStatus = cf.policySubmission?.status;
+      if (isManagerOrAdmin) {
+        if (showPolicyModal === 'true' || subStatus === 'Pending_Review' || subStatus === 'Approved' || subStatus === 'Reverted') {
+          setShowPolicySubmissionModal(true);
+        }
+      } else {
+        if (showPolicyModal === 'true') {
+          setShowPolicySubmissionModal(true);
+        }
+      }
     }
-  }, [showPolicyModal]);
+  }, [lead, showPolicyModal, isManagerOrAdmin]);
 
   const makeCall = () => { 
     if (lead?.phone) {
@@ -368,6 +378,23 @@ export default function LeadDetailScreen() {
 
   if (loading) return <View style={styles.loadingView}><ActivityIndicator size="large" color={Colors.primary} /></View>;
   if (!lead) return <View style={styles.loadingView}><Text style={styles.errorText}>Lead not found</Text></View>;
+
+  if (isManagerOrAdmin && showPolicySubmissionModal) {
+    return (
+      <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+        <LeadPolicySubmissionModal
+          visible={true}
+          leadId={id as string}
+          lead={lead}
+          onClose={() => {
+            setShowPolicySubmissionModal(false);
+            router.back();
+          }}
+          onUpdated={loadData}
+        />
+      </SafeAreaView>
+    );
+  }
 
   const sc = StatusColors[lead.status] || StatusColors.new;
 
