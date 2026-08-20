@@ -207,7 +207,13 @@ export default function DashboardScreen() {
                 const data = (typeof item.data === 'object' && item.data) ? item.data : {};
                 const leadId = data.leadId || entityId;
 
-                if (entityType === 'lead' && leadId) {
+                const roleStr = (typeof (user?.role as any) === 'object' ? (user?.role as any)?.name : user?.role)?.toUpperCase() || '';
+                const userIsManager = roleStr.includes('MANAGER');
+
+                if (userIsManager) {
+                  // Managers should always go to policy approvals - they only review documents
+                  router.push('/(protected)/policy-approvals' as any);
+                } else if (entityType === 'lead' && leadId) {
                   router.push(`/(protected)/lead/${leadId}` as any);
                 } else if (entityType === 'policy' || item.type?.includes('policy')) {
                   router.push('/(protected)/policy-approvals' as any);

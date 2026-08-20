@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as FileSystem from 'expo-file-system/legacy';
-import * as Sharing from 'expo-sharing';
+import { saveFileToDevice } from '../../src/utils/fileSaver';
 import {
   View,
   Text,
@@ -73,11 +73,7 @@ export default function OnboardingApprovalsScreen() {
       
       const { uri } = await FileSystem.downloadAsync(url, localUri);
       
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(uri);
-      } else {
-        Alert.alert('Downloaded', `Saved to: ${uri}`);
-      }
+      await saveFileToDevice(uri, `${displayName}.${ext}`, ext === 'pdf' ? 'application/pdf' : 'application/octet-stream');
     } catch (err: any) {
       Alert.alert('Error', err.message || 'Failed to download file');
     }
@@ -114,12 +110,12 @@ export default function OnboardingApprovalsScreen() {
         [
           { text: 'OK' },
           {
-            text: 'Share All',
+            text: 'Save All',
             onPress: async () => {
-              if (await Sharing.isAvailableAsync()) {
-                for (const uri of downloadedUris) {
-                  await Sharing.shareAsync(uri);
-                }
+              for (const uri of downloadedUris) {
+                const name = uri.split('/').pop() || 'document';
+                const ext = name.split('.').pop() || 'pdf';
+                await saveFileToDevice(uri, name, ext === 'pdf' ? 'application/pdf' : 'application/octet-stream');
               }
             }
           }

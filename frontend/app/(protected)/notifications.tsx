@@ -8,6 +8,7 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../../src/utils/api';
 import { Colors, Spacing, FontSize, BorderRadius } from '../../src/utils/theme';
+import { useAuth } from '../../src/context/AuthContext';
 
 interface Notification {
   id: string;
@@ -40,6 +41,9 @@ const COLORS: Record<string, string> = {
 
 export default function NotificationsScreen() {
   const router = useRouter();
+  const { user } = useAuth();
+  const roleUpper = (typeof (user?.role as any) === 'object' ? (user?.role as any)?.name : user?.role)?.toUpperCase() || '';
+  const isManager = roleUpper.includes('MANAGER');
   const [items, setItems] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -79,7 +83,11 @@ export default function NotificationsScreen() {
     } catch (err) {
       console.warn('Failed to mark read', err);
     }
-    if (item.entityType === 'lead' && item.entityId) {
+    if (isManager) {
+      // Managers always go to policy approvals - they only review documents
+      console.log('Manager role detected, navigating to policy-approvals');
+      router.push('/(protected)/policy-approvals' as any);
+    } else if (item.entityType === 'lead' && item.entityId) {
       console.log('Navigating to lead with policy modal:', item.entityId);
       router.push(`/(protected)/lead/${item.entityId}?showPolicyModal=true` as any);
     } else {
