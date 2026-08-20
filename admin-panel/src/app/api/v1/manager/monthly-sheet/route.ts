@@ -280,9 +280,62 @@ export async function generateMasterSheet(options: SheetFilterOptions) {
 
     const totalCount = policies.length + activeExtraLeads.length
 
+    // Fetch renewals expiring in this month/date range
+    const renewalWhere: any = {}
+    if (where.createdAt) {
+      renewalWhere.policyEndDate = where.createdAt
+    } else {
+      const now = new Date()
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0)
+      const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999)
+      renewalWhere.policyEndDate = { gte: startOfMonth, lte: endOfMonth }
+    }
+
+    const renewals = await prisma.renewalRecord.findMany({
+      where: renewalWhere,
+      include: {
+        assignee: { select: { fullName: true } },
+        lead: { select: { customFields: true } }
+      },
+      orderBy: { policyEndDate: 'asc' }
+    })
+
+    const renewalHeaders = [
+      'SR NO',
+      'EXPIRY DATE',
+      'REG NO',
+      'CLIENT NAME',
+      'PHONE NUMBER 1',
+      'PHONE NUMBER 2',
+      'COMPANY',
+      'POLICY NUMBER',
+      'SALES EXECUTIVE',
+      'STATUS'
+    ]
+
+    const renewalRows: any[][] = [renewalHeaders]
+    renewals.forEach((r, idx) => {
+      const cf = (r.lead?.customFields && typeof r.lead.customFields === 'object') ? (r.lead.customFields as any) : {}
+      const phone2 = cf.phone2 || cf.mobile2 || ''
+      renewalRows.push([
+        idx + 1,
+        r.policyEndDate ? new Date(r.policyEndDate).toLocaleDateString('en-IN') : '',
+        r.vehicleNo || 'N/A',
+        r.clientName || 'N/A',
+        r.clientPhone || 'N/A',
+        phone2,
+        r.provider || 'N/A',
+        r.policyNumber || 'N/A',
+        r.assignee?.fullName || 'Unassigned',
+        r.renewalStatus || 'Active'
+      ])
+    })
+
     const ws = XLSX.utils.aoa_to_sheet(rows)
+    const ws2 = XLSX.utils.aoa_to_sheet(renewalRows)
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Master Policies')
+    XLSX.utils.book_append_sheet(wb, ws2, 'Renewals')
 
     // Generate buffer and upload to Supabase Storage (no local disk writes)
     const xlsxBuffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer

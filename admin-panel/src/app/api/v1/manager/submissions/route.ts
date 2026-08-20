@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { validateAuth } from '@/lib/auth-guard'
 import { updateMonthlyMasterSheet } from '../monthly-sheet/route'
+import { autoAssignUpcomingRenewals } from '@/lib/renewal-helper'
 
 function generateCopyableSummary(formData: any, lead: any): string {
   const d = formData || {}
@@ -427,6 +428,13 @@ export async function POST(req: NextRequest) {
         await updateMonthlyMasterSheet(currentMonthStr)
       } catch (sheetErr) {
         console.error('[manager submissions] Failed to update monthly master sheet:', sheetErr)
+      }
+
+      // 4.5 Trigger auto-assignment of upcoming renewals expiring in < 30 days
+      try {
+        await autoAssignUpcomingRenewals()
+      } catch (autoErr) {
+        console.error('[manager submissions] Auto-assign error:', autoErr)
       }
 
       // 5. Notify Sales Person & Admin

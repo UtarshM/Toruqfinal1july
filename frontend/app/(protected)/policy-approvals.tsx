@@ -15,7 +15,8 @@ import {
   ScrollView,
   StatusBar,
   Image,
-  Switch
+  Switch,
+  Clipboard
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
@@ -82,6 +83,12 @@ export default function PolicyApprovalsScreen() {
   const isManagerOrAdmin = roleUpper.includes('MANAGER') || roleUpper.includes('ADMIN') || roleUpper.includes('SUPER');
 
   const [activeTab, setActiveTab] = useState<TabKey>('Pending_Review');
+
+  const copyToClipboard = (val: string, label: string) => {
+    if (!val || val === 'N/A') return;
+    Clipboard.setString(val);
+    Alert.alert('Copied ✅', `"${val}" (${label}) copied to clipboard.`);
+  };
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -931,14 +938,50 @@ export default function PolicyApprovalsScreen() {
                   <View style={styles.expandedDrawer}>
                     <Text style={styles.drawerHeading}>Policy Particulars</Text>
                     <View style={styles.drawerGrid}>
-                      <View style={styles.drawerGridCol}><Text style={styles.drawerLbl}>Policy Type</Text><Text style={styles.drawerVal}>{formData.policyType || insCo}</Text></View>
-                      <View style={styles.drawerGridCol}><Text style={styles.drawerLbl}>Customer Type</Text><Text style={styles.drawerVal}>{formData.customerType || 'Existing'}</Text></View>
-                      <View style={styles.drawerGridCol}><Text style={styles.drawerLbl}>Category</Text><Text style={styles.drawerVal}>{formData.customerCategory || 'MVC'}</Text></View>
-                      <View style={styles.drawerGridCol}><Text style={styles.drawerLbl}>Payment Mode</Text><Text style={styles.drawerVal}>{formData.paymentMode || 'Cash'}</Text></View>
-                      <View style={styles.drawerGridCol}><Text style={styles.drawerLbl}>NCB Bonus</Text><Text style={styles.drawerVal}>{formData.ncbPercent || '0'}%</Text></View>
-                      <View style={styles.drawerGridCol}><Text style={styles.drawerLbl}>Expiry Date</Text><Text style={styles.drawerVal}>{formData.expDate || '-'}</Text></View>
-                      <View style={styles.drawerGridCol}><Text style={styles.drawerLbl}>Hypothecation</Text><Text style={styles.drawerVal}>{formData.hpDetails || formData.hypothecation || 'None'}</Text></View>
-                      <View style={styles.drawerGridCol}><Text style={styles.drawerLbl}>Rate Confirmation</Text><Text style={styles.drawerVal}>{formData.rateConfirmationSS || 'YES'}</Text></View>
+                      {[
+                        { label: 'Registration No', value: formData.regNo || item.vehicleNo },
+                        { label: 'Policy Type', value: formData.policyType },
+                        { label: 'Customer Type', value: formData.customerType },
+                        { label: 'Category', value: formData.customerCategory },
+                        { label: 'Expiry Date', value: formData.expDate || (item.expiryDate ? new Date(item.expiryDate).toLocaleDateString() : '') },
+                        { label: 'Mobile No 1', value: formData.mobileNo1 || item.clientPhone },
+                        { label: 'Mobile No 2', value: formData.mobileNo2 },
+                        { label: 'Approved Rate', value: formData.rate },
+                        { label: 'Rs From Customer', value: formData.rsFromCustomer },
+                        { label: 'Payment Mode', value: formData.paymentMode },
+                        { label: 'NCB', value: formData.ncb },
+                        { label: 'NCB Confirmation SS', value: formData.ncbConfirmation },
+                        { label: 'IMP Date Msg SS', value: formData.impDateMsgSS },
+                        { label: 'Rate Confirmation SS', value: formData.rateConfirmationSS },
+                        { label: 'Hypothecation (HP)', value: formData.hpDetails || formData.hypothecation },
+                        { label: 'Vehicle Photo', value: formData.vehiclePhoto },
+                        { label: 'Body Type Matched', value: formData.bodyTypeMatched },
+                        { label: 'Inspection Status', value: formData.inspectionStatus },
+                        { label: 'Remarks / Description', value: formData.description },
+                        { label: 'Other Works', value: formData.otherWorks },
+                        { label: 'Google Form Submitted', value: formData.googleFormSubmitted },
+                        { label: 'No Jack Cover SS', value: formData.noJackCoverConfirmationSS },
+                        { label: 'IDV Breakup', value: formData.idvBreakup },
+                        { label: 'New Name', value: formData.newName },
+                        { label: 'mParivahan RC Status', value: formData.mparivahanRcStatus },
+                        { label: 'Amount Due Date Msg SS', value: formData.amountDueDateMsgSS },
+                      ].map((field, idx) => (
+                        <Pressable 
+                          key={idx} 
+                          style={styles.drawerGridCol} 
+                          onPress={() => copyToClipboard(field.value || 'N/A', field.label)}
+                        >
+                          <Text style={styles.drawerLbl}>{field.label.toUpperCase()}</Text>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 1 }}>
+                            <Text selectable={true} style={[styles.drawerVal, { marginTop: 0, flex: 1 }]}>
+                              {field.value || 'N/A'}
+                            </Text>
+                            {field.value && field.value !== 'N/A' && (
+                              <Ionicons name="copy-outline" size={10} color="#94A3B8" style={{ marginRight: 8 }} />
+                            )}
+                          </View>
+                        </Pressable>
+                      ))}
                     </View>
 
                     <Text style={[styles.drawerHeading, { marginTop: 12 }]}>Uploaded Documents ({docs.length})</Text>
