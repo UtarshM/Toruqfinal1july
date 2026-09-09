@@ -265,6 +265,30 @@ export default function LeadPolicySubmissionModal({ leadId, lead, onClose, onUpd
 
   // Generate copyable text format
   const generateFormattedText = () => {
+    const isWithoutNcb =
+      formData.ncbConfirmation?.toLowerCase() === 'no' ||
+      formData.ncbConfirmation?.toLowerCase() === 'without ncb' ||
+      formData.ncb?.toLowerCase() === 'without ncb' ||
+      formData.ncb?.toLowerCase() === 'no'
+
+    if (isWithoutNcb) {
+      return `*Policy Type:* ${formData.policyType || 'nil dep'}
+*Customer Type:* ${formData.customerType || 'existing'}
+*Customer Category:* ${formData.customerCategory || 'MVC'}
+*Reg No:* ${formData.regNo || lead?.vehicleNo || ''}
+*Rate:* ${formData.rate || ''}
+*Rate Confirmation SS:* ${formData.rateConfirmationSS || 'YES'}
+*Rs From Customer:* ${formData.rsFromCustomer || ''}
+*Description:* ${formData.description || ''}
+*Other Works:* ${formData.otherWorks || ''}
+*Payment mode*:- ${formData.paymentMode || 'cash'}
+*NCB:* ${formData.ncb || 'without ncb'}
+*Exp Date:* ${formData.expDate || ''}
+*Mobile No. 1:* ${formData.mobileNo1 || lead?.clientPhone || ''}
+*Mobile No. 2:* ${formData.mobileNo2 || ''}
+*NCB Confirmation:* ${formData.ncbConfirmation || 'No'}`
+    }
+
     return `*Policy Type:* ${formData.policyType || 'nil dep'}
 *Customer Type:* ${formData.customerType || 'existing'}
 *Customer Category:* ${formData.customerCategory || 'MVC'}
@@ -457,13 +481,16 @@ export default function LeadPolicySubmissionModal({ leadId, lead, onClose, onUpd
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3.5">
                   <div>
                     <label className="text-[11px] font-bold text-slate-600 block mb-1">Policy Type *</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. nil dep / Comprehensive"
+                    <select
                       value={formData.policyType}
                       onChange={e => setFormData({ ...formData, policyType: e.target.value })}
                       className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500"
-                    />
+                    >
+                      <option value="nil dep">Nil Dep (Zero Depreciation)</option>
+                      <option value="comprehensive">Comprehensive</option>
+                      <option value="TP">Third Party (TP)</option>
+                      <option value="OD">Own Damage (OD)</option>
+                    </select>
                   </div>
 
                   <div>
@@ -480,13 +507,19 @@ export default function LeadPolicySubmissionModal({ leadId, lead, onClose, onUpd
 
                   <div>
                     <label className="text-[11px] font-bold text-slate-600 block mb-1">Customer Category *</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. MVC / PVT / GCV"
+                    <select
                       value={formData.customerCategory}
                       onChange={e => setFormData({ ...formData, customerCategory: e.target.value })}
                       className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500"
-                    />
+                    >
+                      <option value="MVC">MVC (Motor Vehicle Commercial)</option>
+                      <option value="PVT">PVT (Private Vehicle)</option>
+                      <option value="GCV">GCV (Goods Carrying Vehicle)</option>
+                      <option value="PCV">PCV (Passenger Carrying Vehicle)</option>
+                      <option value="2W">2W (Two Wheeler)</option>
+                      <option value="3W">3W (Three Wheeler)</option>
+                      <option value="OTHER">OTHER</option>
+                    </select>
                   </div>
 
                   <div>
@@ -512,13 +545,21 @@ export default function LeadPolicySubmissionModal({ leadId, lead, onClose, onUpd
 
                   <div>
                     <label className="text-[11px] font-bold text-slate-600 block mb-1">NCB</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. with ncb / 20%"
+                    <select
                       value={formData.ncb}
-                      onChange={e => setFormData({ ...formData, ncb: e.target.value })}
+                      onChange={e => {
+                        const val = e.target.value;
+                        setFormData({
+                          ...formData,
+                          ncb: val,
+                          ncbConfirmation: val === 'without ncb' ? 'No' : (formData.ncbConfirmation || 'Yes')
+                        });
+                      }}
                       className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500"
-                    />
+                    >
+                      <option value="with ncb">With NCB (Yes)</option>
+                      <option value="without ncb">Without NCB (No)</option>
+                    </select>
                   </div>
 
                   <div>
@@ -646,125 +687,137 @@ export default function LeadPolicySubmissionModal({ leadId, lead, onClose, onUpd
                 </h4>
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3.5">
                   <div>
-                    <label className="text-[11px] font-bold text-slate-600 block mb-1">NCB Confirmation</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Yes / No"
-                      value={formData.ncbConfirmation}
-                      onChange={e => setFormData({ ...formData, ncbConfirmation: e.target.value })}
+                    <label className="text-[11px] font-bold text-slate-600 block mb-1">NCB Confirmation (With NCB?) *</label>
+                    <select
+                      value={formData.ncbConfirmation || (formData.ncb?.toLowerCase().includes('without') ? 'No' : 'Yes')}
+                      onChange={e => {
+                        const val = e.target.value;
+                        setFormData({
+                          ...formData,
+                          ncbConfirmation: val,
+                          ncb: val === 'No' ? 'without ncb' : 'with ncb'
+                        });
+                      }}
                       className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500"
-                    />
+                    >
+                      <option value="Yes">Yes (With NCB)</option>
+                      <option value="No">No (Without NCB)</option>
+                    </select>
                   </div>
 
-                  <div>
-                    <label className="text-[11px] font-bold text-slate-600 block mb-1">Imp Date Msg SS</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Yes"
-                      value={formData.impDateMsgSS}
-                      onChange={e => setFormData({ ...formData, impDateMsgSS: e.target.value })}
-                      className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
+                  {(formData.ncbConfirmation?.toLowerCase() !== 'no' && formData.ncbConfirmation?.toLowerCase() !== 'without ncb' && formData.ncb?.toLowerCase() !== 'without ncb') && (
+                    <>
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-600 block mb-1">Imp Date Msg SS</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Yes"
+                          value={formData.impDateMsgSS}
+                          onChange={e => setFormData({ ...formData, impDateMsgSS: e.target.value })}
+                          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
 
-                  <div>
-                    <label className="text-[11px] font-bold text-slate-600 block mb-1">Vehicle Photo</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. YES / n.a."
-                      value={formData.vehiclePhoto}
-                      onChange={e => setFormData({ ...formData, vehiclePhoto: e.target.value })}
-                      className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-600 block mb-1">Vehicle Photo</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. YES / n.a."
+                          value={formData.vehiclePhoto}
+                          onChange={e => setFormData({ ...formData, vehiclePhoto: e.target.value })}
+                          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
 
-                  <div>
-                    <label className="text-[11px] font-bold text-slate-600 block mb-1">Body Type Matched</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. YES / n.a."
-                      value={formData.bodyTypeMatched}
-                      onChange={e => setFormData({ ...formData, bodyTypeMatched: e.target.value })}
-                      className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-600 block mb-1">Body Type Matched</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. YES / n.a."
+                          value={formData.bodyTypeMatched}
+                          onChange={e => setFormData({ ...formData, bodyTypeMatched: e.target.value })}
+                          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
 
-                  <div>
-                    <label className="text-[11px] font-bold text-slate-600 block mb-1">Google Form Submitted</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. YES"
-                      value={formData.googleFormSubmitted}
-                      onChange={e => setFormData({ ...formData, googleFormSubmitted: e.target.value })}
-                      className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-600 block mb-1">Google Form Submitted</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. YES"
+                          value={formData.googleFormSubmitted}
+                          onChange={e => setFormData({ ...formData, googleFormSubmitted: e.target.value })}
+                          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
 
-                  <div>
-                    <label className="text-[11px] font-bold text-slate-600 block mb-1">No-Jack Cover SS</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. N.A. / YES"
-                      value={formData.noJackCoverConfirmationSS}
-                      onChange={e => setFormData({ ...formData, noJackCoverConfirmationSS: e.target.value })}
-                      className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-600 block mb-1">No-Jack Cover SS</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. N.A. / YES"
+                          value={formData.noJackCoverConfirmationSS}
+                          onChange={e => setFormData({ ...formData, noJackCoverConfirmationSS: e.target.value })}
+                          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
 
-                  <div>
-                    <label className="text-[11px] font-bold text-slate-600 block mb-1">IDV Break up</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. IDV value details"
-                      value={formData.idvBreakup}
-                      onChange={e => setFormData({ ...formData, idvBreakup: e.target.value })}
-                      className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-600 block mb-1">IDV Break up</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. IDV value details"
+                          value={formData.idvBreakup}
+                          onChange={e => setFormData({ ...formData, idvBreakup: e.target.value })}
+                          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
 
-                  <div>
-                    <label className="text-[11px] font-bold text-slate-600 block mb-1">New Name (Endorsement)</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Name if ownership transfer"
-                      value={formData.newName}
-                      onChange={e => setFormData({ ...formData, newName: e.target.value })}
-                      className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-600 block mb-1">New Name (Endorsement)</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Name if ownership transfer"
+                          value={formData.newName}
+                          onChange={e => setFormData({ ...formData, newName: e.target.value })}
+                          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
 
-                  <div>
-                    <label className="text-[11px] font-bold text-slate-600 block mb-1">Inspection Status</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Not Required / Done"
-                      value={formData.inspectionStatus}
-                      onChange={e => setFormData({ ...formData, inspectionStatus: e.target.value })}
-                      className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-600 block mb-1">Inspection Status</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Not Required / Done"
+                          value={formData.inspectionStatus}
+                          onChange={e => setFormData({ ...formData, inspectionStatus: e.target.value })}
+                          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
 
-                  <div>
-                    <label className="text-[11px] font-bold text-slate-600 block mb-1">Mparivahan RC Status (Juni policy na hoy to)</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Verified on Mparivahan"
-                      value={formData.mparivahanRcStatus}
-                      onChange={e => setFormData({ ...formData, mparivahanRcStatus: e.target.value })}
-                      className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-600 block mb-1">Mparivahan RC Status (Juni policy na hoy to)</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Verified on Mparivahan"
+                          value={formData.mparivahanRcStatus}
+                          onChange={e => setFormData({ ...formData, mparivahanRcStatus: e.target.value })}
+                          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
 
-                  <div className="sm:col-span-2">
-                    <label className="text-[11px] font-bold text-slate-600 block mb-1">Amount & Due Date msg SS (Only Baki wala case ma)</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. SS confirmed / N.A."
-                      value={formData.amountDueDateMsgSS}
-                      onChange={e => setFormData({ ...formData, amountDueDateMsgSS: e.target.value })}
-                      className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
+                      <div className="sm:col-span-2">
+                        <label className="text-[11px] font-bold text-slate-600 block mb-1">Amount & Due Date msg SS (Only Baki wala case ma)</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. SS confirmed / N.A."
+                          value={formData.amountDueDateMsgSS}
+                          onChange={e => setFormData({ ...formData, amountDueDateMsgSS: e.target.value })}
+                          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
 

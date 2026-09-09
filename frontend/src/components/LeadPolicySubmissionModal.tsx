@@ -1351,9 +1351,21 @@ export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClo
                   <Text style={styles.sectionCardTitle}>Vehicle & Policy Basics</Text>
                   
                   <FormField label="Registration No (Reg No)" value={formData.regNo} onChange={(v: string) => handleFieldChange('regNo', v)} placeholder="e.g. GJ18AV5577" />
-                  <FormField label="Policy Type" value={formData.policyType} onChange={(v: string) => handleFieldChange('policyType', v)} placeholder="e.g. nil dep, comprehensive, TP" />
+                  <DropdownSelect
+                    label="Policy Type"
+                    value={formData.policyType}
+                    options={POLICY_TYPE_OPTIONS}
+                    onSelect={(v: string) => handleFieldChange('policyType', v)}
+                    placeholder="Select Policy Type"
+                  />
                   <FormField label="Customer Type" value={formData.customerType} onChange={(v: string) => handleFieldChange('customerType', v)} placeholder="existing / new" />
-                  <FormField label="Customer Category" value={formData.customerCategory} onChange={(v: string) => handleFieldChange('customerCategory', v)} placeholder="MVC, GCV, PCV, etc." />
+                  <DropdownSelect
+                    label="Customer Category"
+                    value={formData.customerCategory}
+                    options={CUSTOMER_CATEGORY_OPTIONS}
+                    onSelect={(v: string) => handleFieldChange('customerCategory', v)}
+                    placeholder="Select Customer Category"
+                  />
                   <FormField label="Expiry Date" value={formData.expDate} onChange={(v: string) => handleFieldChange('expDate', v)} placeholder="YYYY-MM-DD" />
                 </View>
 
@@ -1364,21 +1376,51 @@ export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClo
                   <FormField label="Mobile No 2" value={formData.mobileNo2} onChange={(v: string) => handleFieldChange('mobileNo2', v)} placeholder="Secondary Mobile" />
                   <FormField label="Approved Rate / Quotation" value={formData.rate} onChange={(v: string) => handleFieldChange('rate', v)} placeholder="e.g. 18500" />
                   <FormField label="Rs From Customer (Amount Paid)" value={formData.rsFromCustomer} onChange={(v: string) => handleFieldChange('rsFromCustomer', v)} placeholder="e.g. 18500" />
-                  <FormField label="Payment Mode" value={formData.paymentMode} onChange={(v: string) => handleFieldChange('paymentMode', v)} placeholder="cash / gpay / bank" />
+                  <DropdownSelect
+                    label="Payment Mode"
+                    value={formData.paymentMode}
+                    options={PAYMENT_MODE_OPTIONS}
+                    onSelect={(v: string) => handleFieldChange('paymentMode', v)}
+                    placeholder="Select Payment Mode"
+                  />
                 </View>
 
                 <View style={styles.sectionCard}>
                   <Text style={styles.sectionCardTitle}>Confirmations & Verifications</Text>
                   
-                  <FormField label="NCB" value={formData.ncb} onChange={(v: string) => handleFieldChange('ncb', v)} placeholder="with ncb / without ncb" />
-                  <FormField label="NCB Confirmation Screenshot" value={formData.ncbConfirmation} onChange={(v: string) => handleFieldChange('ncbConfirmation', v)} placeholder="Yes / No" />
-                  <FormField label="IMP Date Message SS" value={formData.impDateMsgSS} onChange={(v: string) => handleFieldChange('impDateMsgSS', v)} placeholder="Yes / No" />
-                  <FormField label="Rate Confirmation SS" value={formData.rateConfirmationSS} onChange={(v: string) => handleFieldChange('rateConfirmationSS', v)} placeholder="YES / NO" />
-                  <FormField label="HP Details (Hypothecation)" value={formData.hpDetails} onChange={(v: string) => handleFieldChange('hpDetails', v)} placeholder="as per rc / bank name" />
-                  <FormField label="Vehicle Photo" value={formData.vehiclePhoto} onChange={(v: string) => handleFieldChange('vehiclePhoto', v)} placeholder="available / n.a." />
-                  <FormField label="Body Type Matched" value={formData.bodyTypeMatched} onChange={(v: string) => handleFieldChange('bodyTypeMatched', v)} placeholder="matched / n.a." />
-                  <FormField label="Inspection Status" value={formData.inspectionStatus} onChange={(v: string) => handleFieldChange('inspectionStatus', v)} placeholder="Not Required / Done" />
-                  <FormField label="Description / Remarks" value={formData.description} onChange={(v: string) => handleFieldChange('description', v)} placeholder="Special notes..." multiline />
+                  <DropdownSelect
+                    label="NCB (With NCB?)"
+                    value={formData.ncb}
+                    options={NCB_OPTIONS}
+                    onSelect={(v: string) => {
+                      handleFieldChange('ncb', v);
+                      if (v === 'without ncb') {
+                        handleFieldChange('ncbConfirmation', 'No');
+                      } else {
+                        handleFieldChange('ncbConfirmation', 'Yes');
+                      }
+                    }}
+                    placeholder="Select Yes / No"
+                  />
+
+                  {(!formData.ncb || (!formData.ncb.toLowerCase().includes('without') && formData.ncb.toLowerCase() !== 'no')) && (
+                    <>
+                      <DropdownSelect
+                        label="NCB Confirmation Screenshot"
+                        value={formData.ncbConfirmation}
+                        options={YES_NO_OPTIONS}
+                        onSelect={(v: string) => handleFieldChange('ncbConfirmation', v)}
+                        placeholder="Select Yes / No"
+                      />
+                      <FormField label="IMP Date Message SS" value={formData.impDateMsgSS} onChange={(v: string) => handleFieldChange('impDateMsgSS', v)} placeholder="Yes / No" />
+                      <FormField label="Rate Confirmation SS" value={formData.rateConfirmationSS} onChange={(v: string) => handleFieldChange('rateConfirmationSS', v)} placeholder="YES / NO" />
+                      <FormField label="HP Details (Hypothecation)" value={formData.hpDetails} onChange={(v: string) => handleFieldChange('hpDetails', v)} placeholder="as per rc / bank name" />
+                      <FormField label="Vehicle Photo" value={formData.vehiclePhoto} onChange={(v: string) => handleFieldChange('vehiclePhoto', v)} placeholder="available / n.a." />
+                      <FormField label="Body Type Matched" value={formData.bodyTypeMatched} onChange={(v: string) => handleFieldChange('bodyTypeMatched', v)} placeholder="matched / n.a." />
+                      <FormField label="Inspection Status" value={formData.inspectionStatus} onChange={(v: string) => handleFieldChange('inspectionStatus', v)} placeholder="Not Required / Done" />
+                      <FormField label="Description / Remarks" value={formData.description} onChange={(v: string) => handleFieldChange('description', v)} placeholder="Special notes..." multiline />
+                    </>
+                  )}
                 </View>
 
                 <Pressable
@@ -1672,6 +1714,119 @@ export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClo
   );
 }
 
+export const POLICY_TYPE_OPTIONS = [
+  { label: 'Nil Dep (Zero Depreciation)', value: 'nil dep' },
+  { label: 'Comprehensive', value: 'comprehensive' },
+  { label: 'Third Party (TP)', value: 'TP' },
+  { label: 'Own Damage (OD)', value: 'OD' },
+];
+
+export const CUSTOMER_CATEGORY_OPTIONS = [
+  { label: 'MVC (Motor Vehicle Commercial)', value: 'MVC' },
+  { label: 'PVT (Private Vehicle)', value: 'PVT' },
+  { label: 'GCV (Goods Carrying Vehicle)', value: 'GCV' },
+  { label: 'PCV (Passenger Carrying Vehicle)', value: 'PCV' },
+  { label: '2W (Two Wheeler)', value: '2W' },
+  { label: '3W (Three Wheeler)', value: '3W' },
+  { label: 'OTHER', value: 'OTHER' },
+];
+
+export const PAYMENT_MODE_OPTIONS = [
+  { label: 'Cash', value: 'cash' },
+  { label: 'Online / UPI', value: 'online' },
+  { label: 'Cheque', value: 'cheque' },
+  { label: 'Bank Transfer / RTGS', value: 'bank' },
+  { label: 'Credit', value: 'credit' },
+];
+
+export const NCB_OPTIONS = [
+  { label: 'Yes (With NCB)', value: 'with ncb' },
+  { label: 'No (Without NCB)', value: 'without ncb' },
+];
+
+export const YES_NO_OPTIONS = [
+  { label: 'Yes', value: 'Yes' },
+  { label: 'No', value: 'No' },
+];
+
+function DropdownSelect({
+  label,
+  value,
+  options,
+  onSelect,
+  placeholder = 'Select option',
+}: {
+  label: string;
+  value: string;
+  options: Array<{ label: string; value: string }>;
+  onSelect: (value: string) => void;
+  placeholder?: string;
+}) {
+  const [modalVisible, setModalVisible] = useState(false);
+  const selected =
+    options.find((o) => o.value.toLowerCase() === (value || '').toLowerCase()) ||
+    options.find((o) => o.label.toLowerCase() === (value || '').toLowerCase());
+
+  return (
+    <View style={styles.formGroup}>
+      <Text style={styles.formLabel}>{label}</Text>
+      <Pressable
+        style={styles.dropdownTrigger}
+        onPress={() => setModalVisible(true)}
+      >
+        <Text style={[styles.dropdownTriggerText, !value && styles.dropdownPlaceholder]}>
+          {selected ? selected.label : (value || placeholder)}
+        </Text>
+        <Ionicons name="chevron-down" size={18} color={Colors.textMuted} />
+      </Pressable>
+
+      <Modal
+        visible={modalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setModalVisible(false)}
+      >
+        <Pressable
+          style={styles.dropdownModalOverlay}
+          onPress={() => setModalVisible(false)}
+        >
+          <View style={styles.dropdownModalSheet}>
+            <View style={styles.dropdownModalHeader}>
+              <Text style={styles.dropdownModalTitle}>{label}</Text>
+              <Pressable onPress={() => setModalVisible(false)} style={styles.dropdownCloseBtn}>
+                <Ionicons name="close" size={22} color={Colors.text} />
+              </Pressable>
+            </View>
+
+            <ScrollView style={{ maxHeight: 350 }} bounces={false} keyboardShouldPersistTaps="handled">
+              {options.map((opt) => {
+                const isSelected =
+                  opt.value.toLowerCase() === (value || '').toLowerCase() ||
+                  opt.label.toLowerCase() === (value || '').toLowerCase();
+                return (
+                  <Pressable
+                    key={opt.value}
+                    style={[styles.dropdownOptionItem, isSelected && styles.dropdownOptionItemActive]}
+                    onPress={() => {
+                      onSelect(opt.value);
+                      setModalVisible(false);
+                    }}
+                  >
+                    <Text style={[styles.dropdownOptionText, isSelected && styles.dropdownOptionTextActive]}>
+                      {opt.label}
+                    </Text>
+                    {isSelected && <Ionicons name="checkmark-circle" size={20} color={Colors.primary} />}
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </Pressable>
+      </Modal>
+    </View>
+  );
+}
+
 function FormField({ label, value, onChange, placeholder, multiline = false }: any) {
   return (
     <View style={styles.formGroup}>
@@ -1850,6 +2005,83 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     fontSize: FontSize.sm,
     color: Colors.text,
+  },
+  dropdownTrigger: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 10,
+  },
+  dropdownTriggerText: {
+    fontSize: FontSize.sm,
+    color: Colors.text,
+    fontWeight: '600',
+    flex: 1,
+  },
+  dropdownPlaceholder: {
+    color: Colors.textLight,
+    fontWeight: 'normal',
+  },
+  dropdownModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    padding: Spacing.xl,
+  },
+  dropdownModalSheet: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: BorderRadius.xl,
+    overflow: 'hidden',
+    maxHeight: 480,
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 12,
+    elevation: 10,
+  },
+  dropdownModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+    backgroundColor: '#F8FAFC',
+  },
+  dropdownModalTitle: {
+    fontSize: FontSize.md,
+    fontWeight: '800',
+    color: Colors.text,
+  },
+  dropdownCloseBtn: {
+    padding: 4,
+  },
+  dropdownOptionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  dropdownOptionItemActive: {
+    backgroundColor: Colors.primaryLight,
+  },
+  dropdownOptionText: {
+    fontSize: FontSize.sm,
+    color: Colors.text,
+    fontWeight: '600',
+  },
+  dropdownOptionTextActive: {
+    color: Colors.primary,
+    fontWeight: '800',
   },
   primaryActionBtn: {
     flexDirection: 'row',

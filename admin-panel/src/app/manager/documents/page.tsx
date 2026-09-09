@@ -304,14 +304,18 @@ export default function ManagerDocumentsPage() {
           <div className="space-y-1 bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs">
             <h6 className="text-[9px] font-black text-slate-400 uppercase">Checklist & Compliance</h6>
             <div className="flex justify-between"><span className="text-slate-500">NCB Confirmation:</span> <span className="font-bold text-slate-900">{sub.formData?.ncbConfirmation || 'N/A'}</span></div>
-            <div className="flex justify-between"><span className="text-slate-500">IMP Date Message SS:</span> <span className="font-bold text-slate-900">{sub.formData?.impDateMsgSS || 'N/A'}</span></div>
-            <div className="flex justify-between"><span className="text-slate-500">Vehicle Photo Matched:</span> <span className="font-bold text-slate-900">{sub.formData?.vehiclePhoto || 'N/A'}</span></div>
-            <div className="flex justify-between"><span className="text-slate-500">Body Type Matched:</span> <span className="font-bold text-slate-900">{sub.formData?.bodyTypeMatched || 'N/A'}</span></div>
-            <div className="flex justify-between"><span className="text-slate-500">Google Form:</span> <span className="font-bold text-slate-900">{sub.formData?.googleFormSubmitted || 'N/A'}</span></div>
-            <div className="flex justify-between"><span className="text-slate-500">No Jack Cover SS:</span> <span className="font-bold text-slate-900">{sub.formData?.noJackCoverConfirmationSS || 'N/A'}</span></div>
-            <div className="flex justify-between"><span className="text-slate-500">Inspection:</span> <span className="font-bold text-slate-900">{sub.formData?.inspectionStatus || 'N/A'}</span></div>
-            <div className="flex justify-between"><span className="text-slate-500">mParivahan RC Status:</span> <span className="font-bold text-slate-900">{sub.formData?.mparivahanRcStatus || 'N/A'}</span></div>
-            <div className="flex justify-between"><span className="text-slate-500">Amt Due Date Msg SS:</span> <span className="font-bold text-slate-900">{sub.formData?.amountDueDateMsgSS || 'N/A'}</span></div>
+            {(sub.formData?.ncbConfirmation?.toLowerCase() !== 'no' && sub.formData?.ncbConfirmation?.toLowerCase() !== 'without ncb' && sub.formData?.ncb?.toLowerCase() !== 'without ncb' && sub.formData?.ncb?.toLowerCase() !== 'no') && (
+              <>
+                <div className="flex justify-between"><span className="text-slate-500">IMP Date Message SS:</span> <span className="font-bold text-slate-900">{sub.formData?.impDateMsgSS || 'N/A'}</span></div>
+                <div className="flex justify-between"><span className="text-slate-500">Vehicle Photo Matched:</span> <span className="font-bold text-slate-900">{sub.formData?.vehiclePhoto || 'N/A'}</span></div>
+                <div className="flex justify-between"><span className="text-slate-500">Body Type Matched:</span> <span className="font-bold text-slate-900">{sub.formData?.bodyTypeMatched || 'N/A'}</span></div>
+                <div className="flex justify-between"><span className="text-slate-500">Google Form:</span> <span className="font-bold text-slate-900">{sub.formData?.googleFormSubmitted || 'N/A'}</span></div>
+                <div className="flex justify-between"><span className="text-slate-500">No Jack Cover SS:</span> <span className="font-bold text-slate-900">{sub.formData?.noJackCoverConfirmationSS || 'N/A'}</span></div>
+                <div className="flex justify-between"><span className="text-slate-500">Inspection:</span> <span className="font-bold text-slate-900">{sub.formData?.inspectionStatus || 'N/A'}</span></div>
+                <div className="flex justify-between"><span className="text-slate-500">mParivahan RC Status:</span> <span className="font-bold text-slate-900">{sub.formData?.mparivahanRcStatus || 'N/A'}</span></div>
+                <div className="flex justify-between"><span className="text-slate-500">Amt Due Date Msg SS:</span> <span className="font-bold text-slate-900">{sub.formData?.amountDueDateMsgSS || 'N/A'}</span></div>
+              </>
+            )}
           </div>
 
           {/* Notes */}
@@ -833,14 +837,18 @@ export default function ManagerDocumentsPage() {
                               <h5 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider border-b pb-1">Checklist & Compliance</h5>
                               <div className="space-y-2 text-xs">
                                 <div className="flex justify-between"><span className="text-slate-500">NCB Confirmation:</span> <span className="font-bold text-slate-900">{sub.formData?.ncbConfirmation || 'N/A'}</span></div>
-                                <div className="flex justify-between"><span className="text-slate-500">IMP Date Message SS:</span> <span className="font-bold text-slate-900">{sub.formData?.impDateMsgSS || 'N/A'}</span></div>
-                                <div className="flex justify-between"><span className="text-slate-500">Vehicle Photo Matched:</span> <span className="font-bold text-slate-900">{sub.formData?.vehiclePhoto || 'N/A'}</span></div>
-                                <div className="flex justify-between"><span className="text-slate-500">Body Type Matched:</span> <span className="font-bold text-slate-900">{sub.formData?.bodyTypeMatched || 'N/A'}</span></div>
-                                <div className="flex justify-between"><span className="text-slate-500">Google Form Submitted:</span> <span className="font-bold text-slate-900">{sub.formData?.googleFormSubmitted || 'N/A'}</span></div>
-                                <div className="flex justify-between"><span className="text-slate-500">No Jack Cover SS:</span> <span className="font-bold text-slate-900">{sub.formData?.noJackCoverConfirmationSS || 'N/A'}</span></div>
-                                <div className="flex justify-between"><span className="text-slate-500">Inspection Status:</span> <span className="font-bold text-slate-900">{sub.formData?.inspectionStatus || 'N/A'}</span></div>
-                                <div className="flex justify-between"><span className="text-slate-500">mParivahan RC Status:</span> <span className="font-bold text-slate-900">{sub.formData?.mparivahanRcStatus || 'N/A'}</span></div>
-                                <div className="flex justify-between"><span className="text-slate-500">Amt Due Date Msg SS:</span> <span className="font-bold text-slate-900">{sub.formData?.amountDueDateMsgSS || 'N/A'}</span></div>
+                                {(sub.formData?.ncbConfirmation?.toLowerCase() !== 'no' && sub.formData?.ncbConfirmation?.toLowerCase() !== 'without ncb' && sub.formData?.ncb?.toLowerCase() !== 'without ncb' && sub.formData?.ncb?.toLowerCase() !== 'no') && (
+                                  <>
+                                    <div className="flex justify-between"><span className="text-slate-500">IMP Date Message SS:</span> <span className="font-bold text-slate-900">{sub.formData?.impDateMsgSS || 'N/A'}</span></div>
+                                    <div className="flex justify-between"><span className="text-slate-500">Vehicle Photo Matched:</span> <span className="font-bold text-slate-900">{sub.formData?.vehiclePhoto || 'N/A'}</span></div>
+                                    <div className="flex justify-between"><span className="text-slate-500">Body Type Matched:</span> <span className="font-bold text-slate-900">{sub.formData?.bodyTypeMatched || 'N/A'}</span></div>
+                                    <div className="flex justify-between"><span className="text-slate-500">Google Form Submitted:</span> <span className="font-bold text-slate-900">{sub.formData?.googleFormSubmitted || 'N/A'}</span></div>
+                                    <div className="flex justify-between"><span className="text-slate-500">No Jack Cover SS:</span> <span className="font-bold text-slate-900">{sub.formData?.noJackCoverConfirmationSS || 'N/A'}</span></div>
+                                    <div className="flex justify-between"><span className="text-slate-500">Inspection Status:</span> <span className="font-bold text-slate-900">{sub.formData?.inspectionStatus || 'N/A'}</span></div>
+                                    <div className="flex justify-between"><span className="text-slate-500">mParivahan RC Status:</span> <span className="font-bold text-slate-900">{sub.formData?.mparivahanRcStatus || 'N/A'}</span></div>
+                                    <div className="flex justify-between"><span className="text-slate-500">Amt Due Date Msg SS:</span> <span className="font-bold text-slate-900">{sub.formData?.amountDueDateMsgSS || 'N/A'}</span></div>
+                                  </>
+                                )}
                               </div>
                             </div>
 

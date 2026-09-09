@@ -33,6 +33,31 @@ function generateCopyableSummary(formData: any, lead: any): string {
   const mparivahan = d.mparivahanRcStatus || 'NA'
   const amtDueSS = d.amountDueDateMsgSS || 'NA'
 
+  const isWithoutNcb =
+    ncbConf?.toLowerCase() === 'no' ||
+    ncbConf?.toLowerCase() === 'without ncb' ||
+    ncb?.toLowerCase() === 'without ncb' ||
+    ncb?.toLowerCase() === 'no'
+
+  if (isWithoutNcb) {
+    return `POLICY SUBMISSION DETAILS
+----------------------------------------
+Registration No: ${regNo}
+Customer Name: ${customerName}
+Mobile No 1: ${mob1}
+Mobile No 2: ${mob2}
+Policy Type: ${policyType}
+Customer Type: ${customerType}
+Category: ${customerCat}
+Rate: ${rate}
+Rate Confirmation SS: ${rateSS}
+Rs From Customer: ${rsFromCust}
+Payment Mode: ${paymentMode}
+NCB: ${ncb}
+Expiry Date: ${expDate}
+NCB Confirmation: ${ncbConf}`
+  }
+
   return `POLICY SUBMISSION DETAILS
 ----------------------------------------
 Registration No: ${regNo}

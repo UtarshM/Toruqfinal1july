@@ -15,13 +15,17 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
-  // If already logged in, show nothing — the route guard in _layout will redirect
-  if (user && !isLoading) {
+  // While determining auth state or if already logged in, show splash loader — do not flash login form
+  if (isLoading || user) {
     return (
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={Colors.primary} />
-          <Text style={{ marginTop: 16, color: Colors.textMuted }}>Redirecting...</Text>
+          <Image 
+            source={require('../assets/images/logo.png')} 
+            style={styles.logoImage} 
+            resizeMode="contain"
+          />
+          <ActivityIndicator size="large" color={Colors.primary} style={{ marginTop: 24 }} />
         </View>
       </SafeAreaView>
     );

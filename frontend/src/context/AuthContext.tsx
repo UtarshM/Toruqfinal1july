@@ -1,6 +1,9 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../lib/supabase';
 import { useCacheStore } from '../store/cacheStore';
+
+const USER_PROFILE_CACHE_KEY = '@torque_user_profile';
 
 interface User {
   id: string;
@@ -53,12 +56,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Load cache globally on app startup
     useCacheStore.getState().loadCache().catch(() => {});
 
+    // Step 1: Instantly restore cached user profile if available
+    AsyncStorage.getItem(USER_PROFILE_CACHE_KEY)
+      .then((cached) => {
+        if (!mounted) return;
+        if (cached) {
+          try {
+            const parsed = JSON.parse(cached);
+            if (parsed && parsed.id) {
+              setUser(parsed);
+              setIsLoading(false); // Dashboard shows immediately!
+            }
+          } catch (err) {
+            console.warn('Failed to parse cached profile:', err);
+          }
+        }
+      })
+      .catch(() => {});
+
     // Safety timeout: never stay loading forever
     const safetyTimeout = setTimeout(() => {
       if (mounted) setIsLoading(false);
-    }, 5000);
+    }, 4000);
 
-    // On mount: check existing session
+    // Step 2: In parallel, check Supabase session & fetch updated profile in background
     supabase.auth.getSession()
       .then(({ data: { session } }) => {
         if (!mounted) return;
@@ -67,6 +88,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             if (mounted) setIsLoading(false);
           });
         } else {
+          // Genuinely no session: clear cached user
+          AsyncStorage.removeItem(USER_PROFILE_CACHE_KEY).catch(() => {});
+          setUser(null);
           setIsLoading(false);
         }
       })
@@ -81,6 +105,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (session) {
         fetchProfile().catch(() => {});
       } else {
+        AsyncStorage.removeItem(USER_PROFILE_CACHE_KEY).catch(() => {});
         setUser(null);
       }
     });
@@ -96,6 +121,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const token = (await supabase.auth.getSession()).data.session?.access_token;
       if (!token) {
+        await AsyncStorage.removeItem(USER_PROFILE_CACHE_KEY).catch(() => {});
         setUser(null);
         return;
       }
@@ -114,12 +140,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // Attempt to refresh token on 401
           const { data: { session: refreshedSession }, error: refreshError } = await supabase.auth.refreshSession();
           if (refreshedSession && !refreshError) {
-            // Retry fetchProfile with the valid session
             await fetchProfile();
             return;
           }
+          await AsyncStorage.removeItem(USER_PROFILE_CACHE_KEY).catch(() => {});
+          setUser(null);
         }
-        setUser(null);
         return;
       }
 
@@ -145,7 +171,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       if (data && data.id) {
-        setUser({
+        const profileUser: User = {
           id: data.id,
           email: data.email,
           full_name: data.full_name || data.fullName || '',
@@ -161,16 +187,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           dateOfBirth: data.dateOfBirth || '',
           joiningDate: data.joiningDate || '',
           homeMobile: data.homeMobile || '',
-        });
+        };
+        setUser(profileUser);
+        await AsyncStorage.setItem(USER_PROFILE_CACHE_KEY, JSON.stringify(profileUser)).catch(() => {});
       }
     } catch (e) {
       console.warn('Profile fetch error:', e);
-      setUser(null);
     }
   }
 
   async function logout() {
     try {
+      await AsyncStorage.removeItem(USER_PROFILE_CACHE_KEY).catch(() => {});
       await useCacheStore.getState().clearCache();
       await supabase.auth.signOut();
     } catch (e) {
