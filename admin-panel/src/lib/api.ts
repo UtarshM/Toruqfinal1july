@@ -93,9 +93,11 @@ export async function fetchApi(path: string, options: RequestInit = {}, retries 
   let token = await getValidAccessToken()
 
   if (!token) {
-    // Do NOT redirect or clear localStorage here!
-    // AuthContext is the single source of truth for auth state.
-    // Transient token unavailability (tab switch, sleep wake) is normal.
+    if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
+      console.warn('[api] No valid token found, redirecting to login...')
+      try { localStorage.removeItem('toque_user_profile') } catch {}
+      window.location.href = '/login'
+    }
     throw new Error('Missing authorization token')
   }
 
