@@ -118,8 +118,7 @@ export default function LoginScreen() {
         </View>
 
         <View style={styles.footer}>
-          <Text style={styles.footerText}>PROD CREDENTIALS</Text>
-          <Text style={styles.footerCred}>admin@torque.com / Admin@Torque2026</Text>
+          <Text style={styles.footerText}>v2.0.0 · Internal Use Only</Text>
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
