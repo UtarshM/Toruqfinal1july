@@ -12,7 +12,8 @@ import {
   Platform,
   Linking,
   StatusBar,
-  Switch
+  Switch,
+  Clipboard
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
@@ -27,6 +28,54 @@ import { api } from '../utils/api';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { saveFileToDevice } from '../utils/fileSaver';
+import DatePickerSelector from './DatePickerSelector';
+
+export function formatToDateMonthYear(dateVal: any): string {
+  if (!dateVal) return '';
+  const str = String(dateVal).trim();
+  if (!str || str === 'N/A' || str === 'NA') return '';
+
+  const dmyMatch = str.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+  if (dmyMatch) {
+    const dd = dmyMatch[1].padStart(2, '0');
+    const mm = dmyMatch[2].padStart(2, '0');
+    const yyyy = dmyMatch[3];
+    return `${dd}/${mm}/${yyyy}`;
+  }
+
+  const ymdMatch = str.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})/);
+  if (ymdMatch) {
+    const yyyy = ymdMatch[1];
+    const mm = ymdMatch[2].padStart(2, '0');
+    const dd = ymdMatch[3].padStart(2, '0');
+    return `${dd}/${mm}/${yyyy}`;
+  }
+
+  const parsed = new Date(str);
+  if (!isNaN(parsed.getTime())) {
+    const dd = String(parsed.getDate()).padStart(2, '0');
+    const mm = String(parsed.getMonth() + 1).padStart(2, '0');
+    const yyyy = parsed.getFullYear();
+    return `${dd}/${mm}/${yyyy}`;
+  }
+
+  return str;
+}
+
+export function getDefaultCreditPaymentMsg(customerName?: string, vehicleNo?: string, amount?: string, dueDate?: string) {
+  const name = customerName?.trim() || 'Customer name';
+  const veh = vehicleNo?.trim() ? ` ${vehicleNo.trim()}` : '';
+  const amt = amount?.trim() || '48000';
+  const date = dueDate?.trim() || '10-11-2025';
+
+  return `${name}
+આપની ગાડી${veh} ની વીમા પોલિસી આપ એ અમારી પાસે કરાવેલ છે.
+જે ${amt} મા નક્કી કરેલ છે અને ${amt} પેમેન્ટ બાકી રાખેલ છે 
+
+બાકી પેમેન્ટ તારીખ ${date} સુધી માં કરાવી આપવાનું નક્કી થયેલ છે.
+પેમેન્ટ કરતી વખતે નક્કી થયેલ રકમથી કઈ પણ ઓછું નહીં કરવામાં આવે જેની ખાસ નોંધ લેશો.
+સમયસર પેમેન્ટ કરી સહકાર આપશો એવી આપને વિનંતી છે.`;
+}
 
 export const DOCUMENT_CATEGORIES: Record<string, string> = {
   IMP_DATE_SS: 'IMP date Message Screenshot',
@@ -35,7 +84,9 @@ export const DOCUMENT_CATEGORIES: Record<string, string> = {
   PREVIOUS_POLICY: 'Previous Policy (If applicable)',
   QUOTATION: 'Quotation',
   RC_BOOK: 'RC book',
-  VEHICLE_PHOTO: 'Vehicle Photo for body type'
+  VEHICLE_PHOTO: 'Vehicle Photo for body type',
+  INSPECTION_REPORT: 'Inspection Report',
+  AMOUNT_DUE_DATE_SS: 'Amount & Due Date Confirmation Screenshot'
 };
 
 export const REQUIRED_DOCUMENTS = [
@@ -71,10 +122,11 @@ export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClo
   const [uploadingCategory, setUploadingCategory] = useState<string | null>(null);
 
   const [submission, setSubmission] = useState<any>(null);
+  const [hpSelection, setHpSelection] = useState<string>('As per RC');
   const [formData, setFormData] = useState<any>({
     policyType: 'nil dep',
-    customerType: 'existing',
-    customerCategory: 'MVC',
+    customerType: 'Existing',
+    customerCategory: 'OPC-Our Premium Customer',
     regNo: lead?.vehicleNo || lead?.vehicle_number || '',
     rate: '',
     rateConfirmationSS: 'YES',
@@ -83,21 +135,23 @@ export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClo
     otherWorks: '',
     paymentMode: 'cash',
     ncb: 'with ncb',
-    expDate: lead?.expiryDate ? new Date(lead.expiryDate).toISOString().split('T')[0] : '',
+    expDate: lead?.expiryDate ? formatToDateMonthYear(lead.expiryDate) : '',
     mobileNo1: lead?.clientPhone || lead?.phone || '',
     mobileNo2: '',
     ncbConfirmation: 'Yes',
     impDateMsgSS: 'Yes',
-    hpDetails: 'as per rc',
+    hpDetails: 'As per RC',
     vehiclePhoto: 'n.a.',
     bodyTypeMatched: 'n.a.',
     googleFormSubmitted: 'YES',
     noJackCoverConfirmationSS: 'N.A.',
     idvBreakup: '',
     newName: '',
-    inspectionStatus: 'Not Required',
+    dueDate: '',
+    inspectionStatus: 'Not Applicable',
     mparivahanRcStatus: '',
-    amountDueDateMsgSS: ''
+    amountDueDateMsgSS: '',
+    creditPaymentMsg: ''
   });
 
   // Manager action states
@@ -107,6 +161,7 @@ export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClo
   const [providerInput, setProviderInput] = useState('Go Digit General Insurance');
   const [premiumInput, setPremiumInput] = useState('');
   const [issuingPolicy, setIssuingPolicy] = useState(false);
+  const [msgCopied, setMsgCopied] = useState(false);
 
   useEffect(() => {
     if (visible && leadId) {
@@ -147,12 +202,21 @@ export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClo
       if (submissionData) {
         setSubmission(submissionData);
         if (submissionData.formData) {
+          const loadedHp = submissionData.formData.hpDetails || '';
+          const hpType = (!loadedHp || loadedHp.toLowerCase() === 'as per rc')
+            ? 'As per RC'
+            : (loadedHp.toUpperCase() === 'NO HP' || loadedHp.toLowerCase() === 'no hp' ? 'NO HP' : 'Other');
+          setHpSelection(hpType);
           setFormData((prev: any) => ({
             ...prev,
             ...submissionData.formData,
+            hpDetails: loadedHp || 'As per RC',
+            dueDate: formatToDateMonthYear(submissionData.formData.dueDate) || '',
+            inspectionStatus: submissionData.formData.inspectionStatus === 'Not Required' ? 'Not Applicable' : (submissionData.formData.inspectionStatus || 'Not Applicable'),
             regNo: submissionData.formData.regNo || lead?.vehicleNo || lead?.vehicle_number || '',
             mobileNo1: submissionData.formData.mobileNo1 || lead?.clientPhone || lead?.phone || '',
-            expDate: submissionData.formData.expDate || (lead?.expiryDate ? new Date(lead.expiryDate).toISOString().split('T')[0] : '')
+            expDate: formatToDateMonthYear(submissionData.formData.expDate || lead?.expiryDate),
+            creditPaymentMsg: submissionData.formData.creditPaymentMsg || ''
           }));
         }
       }
@@ -610,7 +674,7 @@ export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClo
                 <div class="col"><div class="box"><div class="lbl">No Claim Bonus (NCB %)</div><div class="val">${formData?.ncbPercent || '0'}%</div></div></div>
                 <div class="col"><div class="box"><div class="lbl">Net Premium</div><div class="val">₹${formData?.netPremium || '0'}</div></div></div>
                 <div class="col"><div class="box"><div class="lbl">Final Gross Premium</div><div class="val">₹${formData?.finalGrossPremium || '0'}</div></div></div>
-                <div class="col"><div class="box"><div class="lbl">Policy Expiry Date</div><div class="val">${formData?.expDate || 'N/A'}</div></div></div>
+                <div class="col"><div class="box"><div class="lbl">Policy Expiry Date</div><div class="val">${formatToDateMonthYear(formData?.expDate) || 'N/A'}</div></div></div>
                 <div class="col"><div class="box"><div class="lbl">Hypothecation Bank</div><div class="val">${formData?.hypothecation || 'None'}</div></div></div>
               </div>
 
@@ -1358,7 +1422,13 @@ export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClo
                     onSelect={(v: string) => handleFieldChange('policyType', v)}
                     placeholder="Select Policy Type"
                   />
-                  <FormField label="Customer Type" value={formData.customerType} onChange={(v: string) => handleFieldChange('customerType', v)} placeholder="existing / new" />
+                  <DropdownSelect
+                    label="Customer Type"
+                    value={formData.customerType}
+                    options={CUSTOMER_TYPE_OPTIONS}
+                    onSelect={(v: string) => handleFieldChange('customerType', v)}
+                    placeholder="Select Customer Type"
+                  />
                   <DropdownSelect
                     label="Customer Category"
                     value={formData.customerCategory}
@@ -1366,7 +1436,13 @@ export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClo
                     onSelect={(v: string) => handleFieldChange('customerCategory', v)}
                     placeholder="Select Customer Category"
                   />
-                  <FormField label="Expiry Date" value={formData.expDate} onChange={(v: string) => handleFieldChange('expDate', v)} placeholder="YYYY-MM-DD" />
+                  <DatePickerSelector
+                    label="Expiry Date (Date Month Year)"
+                    value={formData.expDate}
+                    onChange={(v: string) => handleFieldChange('expDate', v)}
+                    placeholder="Select Expiry Date (DD/MM/YYYY)"
+                    format="DD/MM/YYYY"
+                  />
                 </View>
 
                 <View style={styles.sectionCard}>
@@ -1383,6 +1459,132 @@ export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClo
                     onSelect={(v: string) => handleFieldChange('paymentMode', v)}
                     placeholder="Select Payment Mode"
                   />
+
+                  {formData.paymentMode?.toLowerCase() === 'credit' && (
+                    <View style={styles.conditionalCreditCard}>
+                      <View style={styles.conditionalCreditHeader}>
+                        <Ionicons name="calendar" size={16} color="#7C3AED" />
+                        <Text style={styles.conditionalCreditTitle}>Credit Payment Details</Text>
+                      </View>
+
+                      <DatePickerSelector
+                        label="Due date (Date Month Year) *"
+                        value={formData.dueDate}
+                        onChange={(v: string) => handleFieldChange('dueDate', v)}
+                        placeholder="Select Due Date (DD/MM/YYYY)"
+                        format="DD/MM/YYYY"
+                      />
+
+                      <View style={styles.conditionalUploadCard}>
+                        <View style={styles.conditionalUploadHeader}>
+                          <Ionicons name="image-outline" size={16} color="#7C3AED" />
+                          <Text style={styles.conditionalUploadTitle}>Amount & Due Date Confirmation SS *</Text>
+                          {(submission?.documents || []).filter((d: any) => d.category === 'AMOUNT_DUE_DATE_SS').length > 0 && (
+                            <View style={styles.badgeSuccess}>
+                              <Ionicons name="checkmark-circle" size={12} color="#059669" />
+                              <Text style={styles.badgeSuccessText}>Uploaded</Text>
+                            </View>
+                          )}
+                        </View>
+
+                        <Pressable
+                          style={styles.uploadDocBtn}
+                          onPress={() => {
+                            handlePickDocument('AMOUNT_DUE_DATE_SS');
+                            handleFieldChange('amountDueDateMsgSS', 'Yes (Uploaded)');
+                          }}
+                          disabled={uploadingCategory === 'AMOUNT_DUE_DATE_SS'}
+                        >
+                          <Ionicons name="cloud-upload-outline" size={16} color="#7C3AED" />
+                          <Text style={[styles.uploadDocBtnText, { color: '#7C3AED' }]}>
+                            {uploadingCategory === 'AMOUNT_DUE_DATE_SS' ? 'Uploading...' : 'Upload Confirmation Screenshot'}
+                          </Text>
+                        </Pressable>
+
+                        {(submission?.documents || []).filter((d: any) => d.category === 'AMOUNT_DUE_DATE_SS').map((doc: any) => (
+                          <View key={doc.id || doc.filePath} style={styles.uploadedDocRow}>
+                            <Ionicons name="image" size={16} color="#7C3AED" />
+                            <Text style={styles.uploadedDocName} numberOfLines={1}>
+                              {doc.fileName || 'Confirmation_SS.jpg'}
+                            </Text>
+                            <Pressable onPress={() => handleDeleteDoc(doc.id, 'AMOUNT_DUE_DATE_SS')}>
+                              <Ionicons name="trash-outline" size={16} color="#E11D48" />
+                            </Pressable>
+                          </View>
+                        ))}
+                      </View>
+                    </View>
+                  )}
+
+                  {/* Gujarati Payment Confirmation Message (Fully Editable - Visible for ALL payment modes) */}
+                  <View style={styles.editableMsgCard}>
+                    <View style={styles.editableMsgHeader}>
+                      <View style={styles.editableMsgTitleRow}>
+                        <Ionicons name="chatbox-ellipses-outline" size={16} color="#7C3AED" />
+                        <Text style={styles.editableMsgTitle}>Customer Confirmation Msg (Gujarati)</Text>
+                      </View>
+                      <View style={styles.editableMsgActions}>
+                        <Pressable
+                          style={styles.copyMsgBtn}
+                          onPress={() => {
+                            const msg = formData.creditPaymentMsg !== undefined && formData.creditPaymentMsg !== ''
+                              ? formData.creditPaymentMsg
+                              : getDefaultCreditPaymentMsg(lead?.clientName, formData.regNo || lead?.vehicleNo, formData.rate || formData.rsFromCustomer, formData.dueDate);
+                            Clipboard.setString(msg);
+                            setMsgCopied(true);
+                            setTimeout(() => setMsgCopied(false), 2000);
+                            Alert.alert('Copied', 'Gujarati confirmation message copied to clipboard!');
+                          }}
+                        >
+                          <Ionicons name={msgCopied ? 'checkmark-circle' : 'copy-outline'} size={14} color="#7C3AED" />
+                          <Text style={styles.copyMsgBtnText}>{msgCopied ? 'Copied' : 'Copy'}</Text>
+                        </Pressable>
+
+                        <Pressable
+                          style={styles.sendWhatsAppBtn}
+                          onPress={() => {
+                            const msg = formData.creditPaymentMsg !== undefined && formData.creditPaymentMsg !== ''
+                              ? formData.creditPaymentMsg
+                              : getDefaultCreditPaymentMsg(lead?.clientName, formData.regNo || lead?.vehicleNo, formData.rate || formData.rsFromCustomer, formData.dueDate);
+                            const phone = (formData.mobileNo1 || lead?.clientPhone || '').replace(/\D/g, '');
+                            Linking.openURL(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`);
+                          }}
+                        >
+                          <Ionicons name="logo-whatsapp" size={14} color="#FFFFFF" />
+                          <Text style={styles.sendWhatsAppBtnText}>WhatsApp</Text>
+                        </Pressable>
+                      </View>
+                    </View>
+
+                    <TextInput
+                      style={styles.editableMsgInput}
+                      multiline
+                      numberOfLines={6}
+                      textAlignVertical="top"
+                      value={
+                        formData.creditPaymentMsg !== undefined && formData.creditPaymentMsg !== ''
+                          ? formData.creditPaymentMsg
+                          : getDefaultCreditPaymentMsg(lead?.clientName, formData.regNo || lead?.vehicleNo, formData.rate || formData.rsFromCustomer, formData.dueDate)
+                      }
+                      onChangeText={(v: string) => handleFieldChange('creditPaymentMsg', v)}
+                      placeholder="Edit Gujarati confirmation message..."
+                      placeholderTextColor="#94A3B8"
+                    />
+
+                    <View style={styles.msgFooterRow}>
+                      <Text style={styles.editableMsgHelp}>
+                        * You can edit customer name, amount, date or any text above.
+                      </Text>
+                      <Pressable
+                        onPress={() => {
+                          const defaultMsg = getDefaultCreditPaymentMsg(lead?.clientName, formData.regNo || lead?.vehicleNo, formData.rate || formData.rsFromCustomer, formData.dueDate);
+                          handleFieldChange('creditPaymentMsg', defaultMsg);
+                        }}
+                      >
+                        <Text style={styles.resetMsgText}>Reset Template</Text>
+                      </Pressable>
+                    </View>
+                  </View>
                 </View>
 
                 <View style={styles.sectionCard}>
@@ -1414,10 +1616,79 @@ export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClo
                       />
                       <FormField label="IMP Date Message SS" value={formData.impDateMsgSS} onChange={(v: string) => handleFieldChange('impDateMsgSS', v)} placeholder="Yes / No" />
                       <FormField label="Rate Confirmation SS" value={formData.rateConfirmationSS} onChange={(v: string) => handleFieldChange('rateConfirmationSS', v)} placeholder="YES / NO" />
-                      <FormField label="HP Details (Hypothecation)" value={formData.hpDetails} onChange={(v: string) => handleFieldChange('hpDetails', v)} placeholder="as per rc / bank name" />
+                      <DropdownSelect
+                        label="HP (Hypothecation)"
+                        value={hpSelection}
+                        options={HP_OPTIONS}
+                        onSelect={(v: string) => {
+                          setHpSelection(v);
+                          if (v === 'As per RC') {
+                            handleFieldChange('hpDetails', 'As per RC');
+                          } else if (v === 'NO HP') {
+                            handleFieldChange('hpDetails', 'NO HP');
+                          } else {
+                            if (!formData.hpDetails || formData.hpDetails.toLowerCase() === 'as per rc' || formData.hpDetails.toUpperCase() === 'NO HP') {
+                              handleFieldChange('hpDetails', '');
+                            }
+                          }
+                        }}
+                        placeholder="Select HP"
+                      />
+                      {hpSelection === 'Other' && (
+                        <FormField
+                          label="Specify HP Details (Manual Type)"
+                          value={formData.hpDetails && formData.hpDetails.toLowerCase() !== 'as per rc' && formData.hpDetails.toUpperCase() !== 'NO HP' ? formData.hpDetails : ''}
+                          onChange={(v: string) => handleFieldChange('hpDetails', v)}
+                          placeholder="Type Bank or Financier Name"
+                        />
+                      )}
                       <FormField label="Vehicle Photo" value={formData.vehiclePhoto} onChange={(v: string) => handleFieldChange('vehiclePhoto', v)} placeholder="available / n.a." />
                       <FormField label="Body Type Matched" value={formData.bodyTypeMatched} onChange={(v: string) => handleFieldChange('bodyTypeMatched', v)} placeholder="matched / n.a." />
-                      <FormField label="Inspection Status" value={formData.inspectionStatus} onChange={(v: string) => handleFieldChange('inspectionStatus', v)} placeholder="Not Required / Done" />
+                      <DropdownSelect
+                        label="Inspection"
+                        value={formData.inspectionStatus || 'Not Applicable'}
+                        options={INSPECTION_STATUS_OPTIONS}
+                        onSelect={(v: string) => handleFieldChange('inspectionStatus', v)}
+                        placeholder="Select Inspection Status"
+                      />
+
+                      {(formData.inspectionStatus === 'Approved' || formData.inspectionStatus === 'Approved on Declaration') && (
+                        <View style={styles.conditionalUploadCard}>
+                          <View style={styles.conditionalUploadHeader}>
+                            <Ionicons name="document-attach-outline" size={16} color={Colors.primary} />
+                            <Text style={styles.conditionalUploadTitle}>Inspection Report (PDF or Image) *</Text>
+                            {(submission?.documents || []).filter((d: any) => d.category === 'INSPECTION_REPORT').length > 0 && (
+                              <View style={styles.badgeSuccess}>
+                                <Ionicons name="checkmark-circle" size={12} color="#059669" />
+                                <Text style={styles.badgeSuccessText}>Uploaded</Text>
+                              </View>
+                            )}
+                          </View>
+
+                          <Pressable
+                            style={styles.uploadDocBtn}
+                            onPress={() => handlePickDocument('INSPECTION_REPORT')}
+                            disabled={uploadingCategory === 'INSPECTION_REPORT'}
+                          >
+                            <Ionicons name="cloud-upload-outline" size={16} color={Colors.primary} />
+                            <Text style={styles.uploadDocBtnText}>
+                              {uploadingCategory === 'INSPECTION_REPORT' ? 'Uploading...' : 'Upload Inspection Report (PDF/Image)'}
+                            </Text>
+                          </Pressable>
+
+                          {(submission?.documents || []).filter((d: any) => d.category === 'INSPECTION_REPORT').map((doc: any) => (
+                            <View key={doc.id || doc.filePath} style={styles.uploadedDocRow}>
+                              <Ionicons name="document-text" size={16} color={Colors.primary} />
+                              <Text style={styles.uploadedDocName} numberOfLines={1}>
+                                {doc.fileName || 'Inspection_Report.pdf'}
+                              </Text>
+                              <Pressable onPress={() => handleDeleteDoc(doc.id, 'INSPECTION_REPORT')}>
+                                <Ionicons name="trash-outline" size={16} color="#E11D48" />
+                              </Pressable>
+                            </View>
+                          ))}
+                        </View>
+                      )}
                       <FormField label="Description / Remarks" value={formData.description} onChange={(v: string) => handleFieldChange('description', v)} placeholder="Special notes..." multiline />
                     </>
                   )}
@@ -1721,14 +1992,30 @@ export const POLICY_TYPE_OPTIONS = [
   { label: 'Own Damage (OD)', value: 'OD' },
 ];
 
+export const CUSTOMER_TYPE_OPTIONS = [
+  { label: 'New', value: 'New' },
+  { label: 'Existing', value: 'Existing' },
+];
+
 export const CUSTOMER_CATEGORY_OPTIONS = [
-  { label: 'MVC (Motor Vehicle Commercial)', value: 'MVC' },
-  { label: 'PVT (Private Vehicle)', value: 'PVT' },
-  { label: 'GCV (Goods Carrying Vehicle)', value: 'GCV' },
-  { label: 'PCV (Passenger Carrying Vehicle)', value: 'PCV' },
-  { label: '2W (Two Wheeler)', value: '2W' },
-  { label: '3W (Three Wheeler)', value: '3W' },
-  { label: 'OTHER', value: 'OTHER' },
+  { label: 'OPC-Our Premium Customer', value: 'OPC-Our Premium Customer' },
+  { label: 'SVC Single Vehicle Customer', value: 'SVC Single Vehicle Customer' },
+  { label: 'MVC Multiple Vehicle Customer', value: 'MVC Multiple Vehicle Customer' },
+  { label: 'FC- Firm/Company', value: 'FC- Firm/Company' },
+  { label: 'Sub- Sub Agent', value: 'Sub- Sub Agent' },
+  { label: 'BDG- Broker/Dealer/Garage', value: 'BDG- Broker/Dealer/Garage' },
+];
+
+export const HP_OPTIONS = [
+  { label: 'As per RC', value: 'As per RC' },
+  { label: 'NO HP', value: 'NO HP' },
+  { label: 'Other', value: 'Other' },
+];
+
+export const INSPECTION_STATUS_OPTIONS = [
+  { label: 'Not Applicable', value: 'Not Applicable' },
+  { label: 'Approved', value: 'Approved' },
+  { label: 'Approved on Declaration', value: 'Approved on Declaration' },
 ];
 
 export const PAYMENT_MODE_OPTIONS = [
@@ -2377,5 +2664,193 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: '800',
     fontSize: FontSize.sm,
+  },
+  conditionalCreditCard: {
+    backgroundColor: '#F5F3FF',
+    borderWidth: 1,
+    borderColor: '#DDD6FE',
+    borderRadius: BorderRadius.md,
+    padding: Spacing.md,
+    marginTop: Spacing.xs,
+    marginBottom: Spacing.sm,
+    gap: Spacing.sm,
+  },
+  conditionalCreditHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 4,
+  },
+  conditionalCreditTitle: {
+    fontSize: FontSize.xs,
+    fontWeight: '800',
+    color: '#6D28D9',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  conditionalUploadCard: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: BorderRadius.md,
+    padding: Spacing.sm,
+    gap: 8,
+    marginTop: 4,
+  },
+  conditionalUploadHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 6,
+  },
+  conditionalUploadTitle: {
+    fontSize: FontSize.xs,
+    fontWeight: '700',
+    color: Colors.text,
+    flex: 1,
+  },
+  badgeSuccess: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#ECFDF5',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+  },
+  badgeSuccessText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#059669',
+  },
+  uploadDocBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderStyle: 'dashed',
+    paddingVertical: 10,
+    borderRadius: BorderRadius.md,
+  },
+  uploadDocBtnText: {
+    fontSize: FontSize.xs,
+    fontWeight: '700',
+    color: Colors.primary,
+  },
+  uploadedDocRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: BorderRadius.sm,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 8,
+  },
+  uploadedDocName: {
+    fontSize: FontSize.xs,
+    fontWeight: '600',
+    color: Colors.text,
+    flex: 1,
+  },
+  editableMsgCard: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E9D5FF',
+    borderRadius: BorderRadius.md,
+    padding: Spacing.sm,
+    gap: 8,
+    marginTop: 8,
+  },
+  editableMsgHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3E8FF',
+    paddingBottom: 6,
+  },
+  editableMsgTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flex: 1,
+  },
+  editableMsgTitle: {
+    fontSize: FontSize.xs,
+    fontWeight: '700',
+    color: '#581C87',
+  },
+  editableMsgActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  copyMsgBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#F5F3FF',
+    borderWidth: 1,
+    borderColor: '#DDD6FE',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: BorderRadius.sm,
+  },
+  copyMsgBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#7C3AED',
+  },
+  sendWhatsAppBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#059669',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: BorderRadius.sm,
+  },
+  sendWhatsAppBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  editableMsgInput: {
+    backgroundColor: '#FAF5FF',
+    borderWidth: 1,
+    borderColor: '#E9D5FF',
+    borderRadius: BorderRadius.sm,
+    padding: Spacing.sm,
+    fontSize: FontSize.xs,
+    color: Colors.text,
+    minHeight: 110,
+    lineHeight: 18,
+  },
+  msgFooterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 6,
+  },
+  editableMsgHelp: {
+    fontSize: 10,
+    color: Colors.textMuted,
+    flex: 1,
+  },
+  resetMsgText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#7C3AED',
+    textDecorationLine: 'underline',
   },
 });

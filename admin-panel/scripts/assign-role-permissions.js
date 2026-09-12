@@ -17,39 +17,17 @@ async function main() {
   const adminFullAccess = allPermNames // Super Admin & Admin get everything
 
   const hrManagerPerms = [
-    // Dashboard & Reports
-    'dashboard.view_admin', 'dashboard.view_manager', 'dashboard.view_agent', 'dashboard.export',
-    // Leads (Full permissions so HR Manager can create/edit/manage leads)
-    'leads.view', 'lead.view', 'leads.create', 'lead.create', 'leads.edit', 'lead.edit', 'leads.delete', 'lead.delete', 'leads.assign', 'lead.assign', 'leads.import', 'lead.import', 'leads.export', 'lead.export', 'leads.change_status', 'lead.change_status',
-    // CRM
-    'crm.view', 'crm.create', 'crm.edit', 'crm.delete', 'crm.manage_followups', 'crm.view_revenue',
-    // Quotations
-    'quotations.create', 'quotation.create', 'quotations.edit', 'quotation.edit', 'quotations.delete', 'quotation.delete', 'quotations.share', 'quotation.share', 'quotation.view', 'quotations.approve',
-    // Policies
-    'policy.view', 'policy.create', 'policy.edit', 'policy.delete',
-    // Workflow & Operations (Claims, Loans, RTO Work, Fitness, Vahan Work)
-    'claims.view', 'claims.create', 'claims.edit', 'claims.delete', 'claims.update_status', 'claims.upload_documents',
-    'loan.view', 'loan.create', 'loan.edit', 'loan.delete', 'loan.update_status', 'loan.track_conversion',
-    'rto.view', 'rto.create', 'rto.edit', 'rto.delete', 'rto.update_status', 'rto.track_payment',
-    'fitness.view', 'fitness.create', 'fitness.edit', 'fitness.delete', 'fitness.update_status', 'fitness.track_payment',
-    'vahan.view', 'vahan.create', 'vahan.edit', 'vahan.delete', 'vahan.update_status', 'vahan.track_payment',
-    // Customer Visits
-    'visit.view', 'visit.create', 'visit.edit', 'visit.delete', 'visit.track_location', 'visit.manage_followups',
-    // Users, Roles & Onboarding
-    'users.view', 'users.create', 'users.edit', 'users.delete',
-    'role.view', 'role.create', 'role.edit', 'role.delete', 'role.assign_permissions', 'role.manage_users',
-    'roles.view', 'roles.manage',
-    // HR & Salary
+    // Dashboard
+    'dashboard.view_admin',
+    // Users & Onboarding
+    'users.view', 'users.create', 'users.edit',
+    'roles.view',
+    // HR, Attendance, Leaves & Salaries
     'hr.view', 'hr.create', 'hr.edit', 'hr.delete', 'hr.manage_attendance', 'hr.manage_leave', 'hr.view_performance',
-    'accounts.manage_salary', 'accounts.view_reports', 'accounts.view', 'accounts.create_entry', 'accounts.edit_entry', 'accounts.delete_entry', 'accounts.export',
-    // Data & Documents
-    'data.view', 'data.create', 'data.edit', 'data.delete', 'data.approve_changes', 'data.manage_documents',
-    // Templates & Remarks
-    'template.view', 'template.create', 'template.edit', 'template.delete',
-    'whatsapp.send', 'whatsapp.manage_templates', 'remarks.manage_presets',
-    // Settings & Notifications
-    'settings.view', 'settings.manage', 'system.settings_manage', 'system.audit_logs_view',
-    'notification.view', 'notification.send', 'notification.manage', 'notification.configure'
+    'accounts.manage_salary',
+    // Notifications & Settings
+    'notification.view',
+    'settings.view'
   ]
 
   const managerPerms = [

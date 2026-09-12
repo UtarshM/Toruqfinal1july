@@ -98,7 +98,10 @@ export default function DashboardScreen() {
     setRefreshing(false);
   };
 
-  const isAdmin = user?.role?.toUpperCase() === 'ADMIN' || user?.role?.toUpperCase() === 'SUPER ADMIN';
+  const roleUpper = (typeof user?.role === 'object' ? (user?.role as any)?.name : user?.role)?.toUpperCase() || '';
+  const isAdmin = roleUpper === 'ADMIN' || roleUpper === 'SUPER ADMIN';
+  const isManager = roleUpper === 'MANAGER';
+  const isHr = roleUpper === 'HR MANAGER' || roleUpper === 'HR';
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -126,7 +129,7 @@ export default function DashboardScreen() {
         <View style={styles.headerActions}>
           <Pressable onPress={() => router.push('/(protected)/notifications')} style={styles.iconBtn}>
             <Ionicons name="notifications-outline" size={22} color={Colors.text} />
-            <View style={styles.notifDot} />
+            {items.length > 0 && <View style={styles.notifDot} />}
           </Pressable>
         </View>
       </View>
@@ -136,6 +139,7 @@ export default function DashboardScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
         showsVerticalScrollIndicator={false}
       >
+
         {!user?.is_active && (
           <View style={styles.pendingBanner}>
             <Ionicons name="time-outline" size={20} color={Colors.warning} />
@@ -162,11 +166,19 @@ export default function DashboardScreen() {
               <StatCard icon="fitness"          value={stats.pending_fitness ?? 0} label="Pending Fitness" color="#06b6d4" onPress={() => router.push('/(protected)/fitness' as any)} />
               <StatCard icon="cash"             value={stats.active_loans ?? 0}    label="Active Loans"   color="#84cc16" onPress={() => router.push('/(protected)/loans' as any)} />
             </>
-          ) : user?.role?.toUpperCase() === 'MANAGER' ? (
+          ) : isHr ? (
+            <>
+              <StatCard icon="people-circle"    value={stats.total_employees ?? 'Staff'} label="Total Staff" color="#3b82f6" onPress={() => router.push('/(protected)/users' as any)} />
+              <StatCard icon="checkmark-circle" value={stats.pending_onboardings ?? 'Review'} label="Onboarding Approvals" color="#ec4899" onPress={() => router.push('/(protected)/onboarding-approvals' as any)} />
+              <StatCard icon="people"           value="Directory"                label="HR Management" color="#10b981" onPress={() => router.push('/(protected)/hr' as any)} />
+              <StatCard icon="wallet"           value="Payroll"                  label="Salaries & Slips" color="#f59e0b" onPress={() => router.push('/(protected)/payroll' as any)} />
+            </>
+          ) : isManager ? (
             <>
               <StatCard icon="people"           value={stats.total_leads ?? stats.leads ?? 0} label="Team Leads"   color="#3b82f6" onPress={() => router.push('/(protected)/leads' as any)} />
-              <StatCard icon="document-text"    value={stats.active_policies ?? 0} label="Active Policies" color="#10b981" onPress={() => router.push('/(protected)/policies' as any)} />
               <StatCard icon="shield-checkmark" value={stats.pending_policy_approvals ?? 'Review'} label="Policy Approvals" color="#6366f1" onPress={() => router.push('/(protected)/policy-approvals' as any)} />
+              <StatCard icon="person-add"       value={stats.pending_onboardings ?? 'Review'} label="Onboarding Approvals" color="#ec4899" onPress={() => router.push('/(protected)/onboarding-approvals' as any)} />
+              <StatCard icon="document-text"    value={stats.active_policies ?? 0} label="Active Policies" color="#10b981" onPress={() => router.push('/(protected)/policies' as any)} />
               <StatCard icon="refresh"          value="Renewals"                 label="Renewals"   color="#059669" onPress={() => router.push('/(protected)/renewals' as any)} />
               <StatCard icon="time"             value={stats.pending_followups ?? stats.pending ?? 0} label="Open Followups" color="#f59e0b" onPress={() => router.push('/(protected)/follow-ups' as any)} />
             </>
@@ -208,9 +220,12 @@ export default function DashboardScreen() {
                 const leadId = data.leadId || entityId;
 
                 const roleStr = (typeof (user?.role as any) === 'object' ? (user?.role as any)?.name : user?.role)?.toUpperCase() || '';
-                const userIsManager = roleStr.includes('MANAGER');
+                const userIsHr = roleStr.includes('HR');
+                const userIsSalesManager = (roleStr === 'MANAGER' || roleStr.includes('MANAGER')) && !userIsHr;
 
-                if (userIsManager) {
+                if (userIsHr) {
+                  router.push('/(protected)/onboarding-approvals' as any);
+                } else if (userIsSalesManager) {
                   // Managers should always go to policy approvals - they only review documents
                   router.push('/(protected)/policy-approvals' as any);
                 } else if (entityType === 'lead' && leadId) {

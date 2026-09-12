@@ -188,7 +188,18 @@ export default function HRScreen() {
   }, []);
 
   const load = useCallback(async () => {
-    if (!isAdmin) return;
+    if (!isAdmin) {
+      if (!user?.id) return;
+      try {
+        const leavesRes = await api.get<any>(`/hr/leaves?userId=${user.id}`).catch(() => []);
+        const leavesList = Array.isArray(leavesRes) ? leavesRes : leavesRes.items || [];
+        setItems(leavesList);
+        setTotal(leavesList.length);
+      } catch (err) {
+        console.warn('Failed to load user leaves:', err);
+      }
+      return;
+    }
     try {
       const [uData, rData] = await Promise.all([
         api.get<any[]>('/users/'),
@@ -224,7 +235,7 @@ export default function HRScreen() {
     } catch (e) {
       console.error('[HRScreen] Failed to load HR users', e);
     }
-  }, [isAdmin, setCache]);
+  }, [isAdmin, user?.id, setCache]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
   const onRefresh = async () => { setRefreshing(true); await load(); setRefreshing(false); };
@@ -343,19 +354,142 @@ export default function HRScreen() {
   if (!isAdmin) {
     return (
       <SafeAreaView style={styles.safe} edges={['top']}>
-        {/* Sidebar Component */}
         <Sidebar visible={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
         <View style={styles.header}>
           <Pressable onPress={() => setSidebarOpen(true)} style={styles.menuBtn}>
             <Ionicons name="menu-outline" size={26} color={Colors.text} />
           </Pressable>
-          <Text style={styles.title}>Access Denied</Text>
+          <Text style={styles.title}>My Leave Applications</Text>
+          <Pressable
+            style={styles.addBtn}
+            onPress={() => openLeaveModal({ id: user?.id, fullName: user?.name || user?.full_name })}
+          >
+            <Ionicons name="add" size={22} color={Colors.primary} />
+          </Pressable>
         </View>
-        <View style={styles.empty}>
-          <Ionicons name="lock-closed" size={48} color={Colors.error} />
-          <Text style={styles.emptyText}>You do not have permission to view this screen.</Text>
+
+        <View style={styles.statsContainer}>
+          <View style={styles.statCard}>
+            <Text style={styles.statLabel}>My Leaves</Text>
+            <Text style={styles.statVal}>{items.length}</Text>
+          </View>
+          <View style={styles.statCard}>
+            <Text style={styles.statLabel}>Approved</Text>
+            <Text style={[styles.statVal, { color: Colors.success }]}>
+              {items.filter(l => l.status?.toLowerCase() === 'approved').length}
+            </Text>
+          </View>
+          <View style={styles.statCard}>
+            <Text style={styles.statLabel}>Pending HR</Text>
+            <Text style={[styles.statVal, { color: Colors.warning }]}>
+              {items.filter(l => l.status?.toLowerCase() === 'pending').length}
+            </Text>
+          </View>
         </View>
+
+        <FlatList
+          data={items}
+          keyExtractor={i => i.id}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
+          contentContainerStyle={{ padding: Spacing.md, gap: Spacing.sm }}
+          ListEmptyComponent={
+            <View style={styles.empty}>
+              <Ionicons name="calendar-outline" size={48} color={Colors.textLight} />
+              <Text style={styles.emptyText}>No leave applications submitted yet.</Text>
+            </View>
+          }
+          renderItem={({ item }) => (
+            <View style={styles.card}>
+              <View style={styles.cardRow}>
+                <View style={[styles.avatar, { backgroundColor: Colors.primaryLight }]}>
+                  <Ionicons name="calendar-outline" size={20} color={Colors.primary} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.cardName}>{item.type?.toUpperCase() || 'CASUAL'} LEAVE</Text>
+                  <Text style={styles.cardMeta}>
+                    {new Date(item.startDate).toLocaleDateString()} → {new Date(item.endDate).toLocaleDateString()}
+                  </Text>
+                  {item.reason ? <Text style={[styles.cardMeta, { color: Colors.text }]}>{item.reason}</Text> : null}
+                </View>
+                <View style={[styles.badge, { backgroundColor: item.status?.toLowerCase() === 'approved' ? '#ECFDF5' : item.status?.toLowerCase() === 'pending' ? '#FEF3C7' : '#FEF2F2' }]}>
+                  <Text style={[styles.badgeText, { color: item.status?.toLowerCase() === 'approved' ? '#047857' : item.status?.toLowerCase() === 'pending' ? '#D97706' : '#B91C1C' }]}>
+                    {item.status || 'Pending'}
+                  </Text>
+                </View>
+              </View>
+            </View>
+          )}
+        />
+
+        {/* Apply Leave Modal */}
+        <Modal
+          visible={leaveModalVisible}
+          animationType="slide"
+          transparent={true}
+          onRequestClose={() => setLeaveModalVisible(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Apply for Leave</Text>
+                <Pressable onPress={() => setLeaveModalVisible(false)} style={styles.closeBtn}>
+                  <Ionicons name="close" size={24} color={Colors.text} />
+                </Pressable>
+              </View>
+
+              <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+                <DropdownSelector
+                  label="Leave Type"
+                  placeholder="Choose type"
+                  options={[
+                    { label: 'Casual Leave', value: 'Casual' },
+                    { label: 'Medical / Sick Leave', value: 'Medical' },
+                    { label: 'Emergency Leave', value: 'Emergency' },
+                    { label: 'Paid Leave', value: 'Paid' },
+                    { label: 'Unpaid Leave', value: 'Unpaid' },
+                  ]}
+                  selectedValue={leaveForm.type}
+                  onSelect={(val) => setLeaveForm(p => ({ ...p, type: val }))}
+                />
+
+                <DatePickerSelector
+                  label="Start Date *"
+                  value={leaveForm.startDate}
+                  onChange={(val) => setLeaveForm(p => ({ ...p, startDate: val }))}
+                  placeholder="Select start date"
+                />
+
+                <DatePickerSelector
+                  label="End Date *"
+                  value={leaveForm.endDate}
+                  onChange={(val) => setLeaveForm(p => ({ ...p, endDate: val }))}
+                  placeholder="Select end date"
+                />
+
+                <View style={styles.field}>
+                  <Text style={styles.label}>REASON *</Text>
+                  <TextInput
+                    style={[styles.input, { height: 80, textAlignVertical: 'top' }]}
+                    placeholder="Describe reason for leave..."
+                    placeholderTextColor={Colors.textLight}
+                    multiline
+                    value={leaveForm.reason}
+                    onChangeText={(val) => setLeaveForm(p => ({ ...p, reason: val }))}
+                  />
+                </View>
+
+                <Pressable style={styles.submitBtn} onPress={handleMarkLeave} disabled={leaveSaving}>
+                  {leaveSaving ? (
+                    <ActivityIndicator color={Colors.white} />
+                  ) : (
+                    <Text style={styles.submitBtnText}>Submit Application to HR</Text>
+                  )}
+                </Pressable>
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
       </SafeAreaView>
     );
   }

@@ -10,6 +10,7 @@ interface DatePickerSelectorProps {
   placeholder?: string;
   minYear?: number;
   maxYear?: number;
+  format?: 'YYYY-MM-DD' | 'DD/MM/YYYY';
 }
 
 const getDaysInMonth = (year: number, month: number) => {
@@ -20,30 +21,48 @@ const getFirstDayOfMonth = (year: number, month: number) => {
   return new Date(year, month, 1).getDay();
 };
 
+export const parseDateValue = (val?: string): Date | null => {
+  if (!val) return null;
+  const str = String(val).trim();
+  // Check DD/MM/YYYY or DD-MM-YYYY
+  const dmy = str.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+  if (dmy) {
+    const d = new Date(Number(dmy[3]), Number(dmy[2]) - 1, Number(dmy[1]));
+    if (!isNaN(d.getTime())) return d;
+  }
+  // Check YYYY-MM-DD
+  const ymd = str.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})/);
+  if (ymd) {
+    const d = new Date(Number(ymd[1]), Number(ymd[2]) - 1, Number(ymd[3]));
+    if (!isNaN(d.getTime())) return d;
+  }
+  const d = new Date(str);
+  if (!isNaN(d.getTime())) return d;
+  return null;
+};
+
 export default function DatePickerSelector({
   label,
   value,
   onChange,
   placeholder = 'Select Date',
   minYear = 1960,
-  maxYear = new Date().getFullYear() + 5
+  maxYear = new Date().getFullYear() + 5,
+  format = 'YYYY-MM-DD'
 }: DatePickerSelectorProps) {
   const [modalVisible, setModalVisible] = useState(false);
   const [currentDate, setCurrentDate] = useState(() => {
-    if (value) {
-      const d = new Date(value);
-      if (!isNaN(d.getTime())) return d;
-    }
-    return new Date();
+    const parsed = parseDateValue(value);
+    return parsed || new Date();
   });
   
   const [viewMode, setViewMode] = useState<'days' | 'months' | 'years'>('days');
 
   useEffect(() => {
     if (value) {
-      const d = new Date(value);
-      if (!isNaN(d.getTime())) {
-        setCurrentDate(d);
+      const parsed = parseDateValue(value);
+      if (parsed) {
+        setCurrentDate(parsed);
       }
     }
   }, [value]);
@@ -86,8 +105,32 @@ export default function DatePickerSelector({
     const yyyy = d.getFullYear();
     const mm = String(d.getMonth() + 1).padStart(2, '0');
     const dd = String(d.getDate()).padStart(2, '0');
-    onChange(`${yyyy}-${mm}-${dd}`);
+    if (format === 'DD/MM/YYYY') {
+      onChange(`${dd}/${mm}/${yyyy}`);
+    } else {
+      onChange(`${yyyy}-${mm}-${dd}`);
+    }
     setModalVisible(false);
+  };
+
+  const isDaySelected = (d: number) => {
+    const parsed = parseDateValue(value);
+    if (!parsed) return false;
+    return parsed.getFullYear() === year && parsed.getMonth() === month && parsed.getDate() === d;
+  };
+
+  const getDisplayText = () => {
+    if (!value) return placeholder;
+    if (format === 'DD/MM/YYYY') {
+      const parsed = parseDateValue(value);
+      if (parsed) {
+        const dd = String(parsed.getDate()).padStart(2, '0');
+        const mm = String(parsed.getMonth() + 1).padStart(2, '0');
+        const yyyy = parsed.getFullYear();
+        return `${dd}/${mm}/${yyyy}`;
+      }
+    }
+    return value;
   };
 
   const gridItems = [];
@@ -95,7 +138,7 @@ export default function DatePickerSelector({
     gridItems.push(<View key={`empty-${i}`} style={styles.calendarCellEmpty} />);
   }
   for (let d = 1; d <= daysInMonth; d++) {
-    const isSelected = value && new Date(value).getFullYear() === year && new Date(value).getMonth() === month && new Date(value).getDate() === d;
+    const isSelected = isDaySelected(d);
     gridItems.push(
       <Pressable
         key={`day-${d}`}
@@ -114,7 +157,7 @@ export default function DatePickerSelector({
       <Text style={styles.label}>{label.toUpperCase()}</Text>
       <Pressable style={styles.pickerTrigger} onPress={() => { setViewMode('days'); setModalVisible(true); }}>
         <Text style={[styles.pickerTriggerText, !value && styles.placeholderText]}>
-          {value ? value : placeholder}
+          {getDisplayText()}
         </Text>
         <Ionicons name="calendar-outline" size={20} color={Colors.textMuted} />
       </Pressable>

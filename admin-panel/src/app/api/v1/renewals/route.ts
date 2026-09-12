@@ -48,7 +48,7 @@ export async function GET(req: NextRequest) {
 
     // For sales executives, only show their assigned renewals
     const userRole = context.role?.toUpperCase() || ''
-    if (!['SUPER ADMIN', 'ADMIN', 'MANAGER', 'HR MANAGER'].includes(userRole)) {
+    if (!['SUPER ADMIN', 'ADMIN', 'MANAGER'].includes(userRole)) {
       where.assignedTo = context.userId
     }
 

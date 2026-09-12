@@ -28,40 +28,72 @@ export default function AdminLayout({
     setMounted(true)
   }, [])
 
-  // Poll background import status
+  // Poll background import status ONLY if an import job is active on this browser
   useEffect(() => {
     if (!user || typeof window === 'undefined') return
 
+    const userPerms = user.permissions || []
+    const roleName = user.role?.name?.toUpperCase() || ''
+    const canImport = roleName.includes('ADMIN') || userPerms.includes('leads.import')
+    if (!canImport) return
+
+    let interval: NodeJS.Timeout | null = null
+
     const checkImportStatus = async () => {
+      const storedJobId = localStorage.getItem('torque_active_import_job_id')
+      if (!storedJobId) {
+        if (interval) {
+          clearInterval(interval)
+          interval = null
+        }
+        return
+      }
+
       try {
-        const storedJobId = localStorage.getItem('torque_active_import_job_id')
-        const url = storedJobId ? `/api/v1/leads/import/status?jobId=${storedJobId}` : '/api/v1/leads/import/status'
-        const res = await fetchApi(url, {}, 1)
+        const res = await fetchApi(`/api/v1/leads/import/status?jobId=${storedJobId}`, {}, 1)
 
         if (res?.job) {
           setActiveImportJobs([res.job])
           if (res.job.status === 'completed' || res.job.status === 'failed') {
-            // Keep completed job for 12 seconds then remove from localStorage
+            if (interval) {
+              clearInterval(interval)
+              interval = null
+            }
             setTimeout(() => {
               localStorage.removeItem('torque_active_import_job_id')
             }, 12000)
           }
-        } else if (res?.activeJobs) {
-          setActiveImportJobs(res.activeJobs)
         }
-      } catch (err) {
+      } catch {
         // Silently catch background poll errors
       }
     }
 
-    checkImportStatus()
-    const interval = setInterval(checkImportStatus, 3000)
-    return () => clearInterval(interval)
+    const storedJobId = localStorage.getItem('torque_active_import_job_id')
+    if (storedJobId) {
+      checkImportStatus()
+      interval = setInterval(checkImportStatus, 5000)
+    }
+
+    return () => {
+      if (interval) clearInterval(interval)
+    }
   }, [user])
 
   useEffect(() => {
     if (!isLoading && mounted) {
       if (!user) {
+        // Before redirecting, check if there's a cached profile.
+        // If cached profile exists, AuthContext might still be recovering the session.
+        // Give it more time before force-redirecting.
+        if (typeof window !== 'undefined') {
+          const cached = localStorage.getItem('toque_user_profile')
+          if (cached) {
+            // Cached profile exists — don't redirect immediately.
+            // AuthContext will either recover or the user stays on page with stale cache.
+            return
+          }
+        }
         router.push('/login')
       } else {
         const roleName = user.role?.name?.toUpperCase() || ''

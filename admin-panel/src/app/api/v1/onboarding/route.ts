@@ -97,8 +97,17 @@ export async function POST(req: NextRequest) {
         entityId: user.id,
         data: { action: 'onboarding_approval', userId: user.id, fullName, email }
       })
+      // Also notify MANAGER role
+      await notifyRole('MANAGER', {
+        title: '🆕 New Employee Onboarding',
+        body: `${fullName} (${email}) has submitted an onboarding application and is awaiting approval.`,
+        type: 'action',
+        entityType: 'User',
+        entityId: user.id,
+        data: { action: 'onboarding_approval', userId: user.id, fullName, email }
+      })
     } catch (notifyErr) {
-      console.error('[onboarding] Failed to send admin notifications:', notifyErr)
+      console.error('[onboarding] Failed to send admin/manager notifications:', notifyErr)
       // Don't fail the request if notifications fail
     }
 

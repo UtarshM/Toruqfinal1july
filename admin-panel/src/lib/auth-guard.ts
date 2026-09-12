@@ -17,9 +17,9 @@ interface CachedAuthContext {
   timestamp: number
 }
 
-// In-memory cache for validated tokens (15-second TTL)
+// In-memory cache for validated tokens (60-second TTL to eliminate repeated auth roundtrips)
 const authCache = new Map<string, CachedAuthContext>()
-const AUTH_CACHE_TTL_MS = 15000
+const AUTH_CACHE_TTL_MS = 60000
 
 export function invalidateAuthCache(token?: string) {
   if (token) {

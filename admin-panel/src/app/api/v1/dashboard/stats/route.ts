@@ -50,14 +50,19 @@ export async function GET(req: NextRequest) {
     const userId = context!.userId
     const role = context!.role
     const perms = context!.permissions
+    const isHr = (role || '').toUpperCase().includes('HR')
 
     const effectiveView = view === 'auto'
-      ? perms.includes('dashboard.view_admin') ? 'admin'
+      ? isHr ? 'hr'
+        : perms.includes('dashboard.view_admin') ? 'admin'
         : perms.includes('dashboard.view_manager') ? 'manager'
         : 'agent'
       : view
 
     // Enforce permission checks for each view
+    if (effectiveView === 'hr' && !isHr && !perms.includes('dashboard.view_admin')) {
+      return NextResponse.json({ error: 'Forbidden: Missing HR dashboard permission' }, { status: 403 })
+    }
     if (effectiveView === 'admin' && !perms.includes('dashboard.view_admin')) {
       return NextResponse.json({ error: 'Forbidden: Missing dashboard.view_admin permission' }, { status: 403 })
     }
@@ -66,6 +71,42 @@ export async function GET(req: NextRequest) {
     }
     if (effectiveView === 'agent' && !perms.includes('dashboard.view_agent')) {
       return NextResponse.json({ error: 'Forbidden: Missing dashboard.view_agent permission' }, { status: 403 })
+    }
+
+    // ── HR view ─────────────────────────────────────────
+    if (effectiveView === 'hr') {
+      const todayDate = new Date()
+      todayDate.setHours(0, 0, 0, 0)
+      const endOfToday = new Date()
+      endOfToday.setHours(23, 59, 59, 999)
+
+      const [totalUsers, activeUsers, pendingOnboardings, todayAttendance, leavesToday] = await Promise.all([
+        prisma.user.count({ where: { deletedAt: null } }),
+        prisma.user.count({ where: { isActive: true, deletedAt: null } }),
+        prisma.user.count({ where: { isActive: false, deletedAt: null } }),
+        prisma.attendance.count({
+          where: {
+            date: { gte: todayDate, lte: endOfToday },
+            status: { in: ['present', 'Present'] }
+          }
+        }).catch(() => 0),
+        prisma.leaveRequest.count({
+          where: {
+            status: 'approved',
+            startDate: { lte: endOfToday },
+            endDate: { gte: todayDate }
+          }
+        }).catch(() => 0)
+      ])
+
+      return NextResponse.json({
+        view: 'hr',
+        total_employees: totalUsers,
+        active_employees: activeUsers,
+        pending_onboardings: pendingOnboardings,
+        present_today: todayAttendance,
+        leaves_today: leavesToday
+      })
     }
 
     // ── Agent view ─────────────────────────────────────
@@ -117,15 +158,23 @@ export async function GET(req: NextRequest) {
         _count: { _all: true }
       })
 
-      // Count pending policy approvals from team leads
-      const allTeamLeads = await prisma.lead.findMany({
-        where: { assignedTo: { in: teamIds }, status: { not: 'Trashed' }, deletedAt: null },
-        select: { customFields: true }
+      // Count pending policy approvals from team leads directly in database
+      const pendingPolicyApprovals = await prisma.lead.count({
+        where: {
+          assignedTo: { in: teamIds },
+          status: { not: 'Trashed' },
+          deletedAt: null,
+          customFields: {
+            path: ['policySubmission', 'status'],
+            equals: 'Pending_Review'
+          }
+        }
       })
-      const pendingPolicyApprovals = allTeamLeads.filter(l => {
-        const cf = (l.customFields && typeof l.customFields === 'object') ? (l.customFields as any) : {}
-        return cf.policySubmission?.status === 'Pending_Review'
-      }).length
+
+      // Count pending user onboardings awaiting approval
+      const pendingOnboardings = await prisma.user.count({
+        where: { isActive: false, deletedAt: null }
+      })
 
       return NextResponse.json({
         view: 'manager',
@@ -139,6 +188,7 @@ export async function GET(req: NextRequest) {
         total_quotations: totalQuotations,
         sent_quotations: sentQuotations,
         pending_policy_approvals: pendingPolicyApprovals,
+        pending_onboardings: pendingOnboardings,
         pipeline: pipeline.map(p => ({ status: p.status, count: p._count._all }))
       })
     }
@@ -203,14 +253,16 @@ export async function GET(req: NextRequest) {
       })
     ])
 
-    const allSysLeads = await prisma.lead.findMany({
-      where: { status: { not: 'Trashed' }, deletedAt: null },
-      select: { customFields: true }
+    const pendingPolicyApprovals = await prisma.lead.count({
+      where: {
+        status: { not: 'Trashed' },
+        deletedAt: null,
+        customFields: {
+          path: ['policySubmission', 'status'],
+          equals: 'Pending_Review'
+        }
+      }
     })
-    const pendingPolicyApprovals = allSysLeads.filter(l => {
-      const cf = (l.customFields && typeof l.customFields === 'object') ? (l.customFields as any) : {}
-      return cf.policySubmission?.status === 'Pending_Review'
-    }).length
 
     return NextResponse.json({
       view: 'admin',

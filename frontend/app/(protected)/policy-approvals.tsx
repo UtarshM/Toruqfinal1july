@@ -33,7 +33,7 @@ import { supabase } from '../../src/lib/supabase';
 import { Colors, Spacing, FontSize, BorderRadius } from '../../src/utils/theme';
 import { useAuth } from '../../src/context/AuthContext';
 import AppFooter from '../../src/components/AppFooter';
-import LeadPolicySubmissionModal from '../../src/components/LeadPolicySubmissionModal';
+import LeadPolicySubmissionModal, { formatToDateMonthYear } from '../../src/components/LeadPolicySubmissionModal';
 import { saveFileToDevice } from '../../src/utils/fileSaver';
 
 const LIVE_BASE_URL = 'https://admin-panel-delta-steel.vercel.app';
@@ -73,7 +73,11 @@ const DOCUMENT_CATEGORIES: Record<string, string> = {
   vehicle_photo: 'Vehicle Photo',
   ncb_confirmation: 'NCB Confirmation',
   quotation_copy: 'Quotation',
-  imp_date_message: 'IMP Date Msg SS'
+  imp_date_message: 'IMP Date Msg SS',
+  INSPECTION_REPORT: 'Inspection Report',
+  AMOUNT_DUE_DATE_SS: 'Amount & Due Date Confirmation Screenshot',
+  inspection_report: 'Inspection Report',
+  amount_due_date_ss: 'Amount & Due Date Confirmation Screenshot',
 };
 
 export default function PolicyApprovalsScreen() {
@@ -949,12 +953,13 @@ export default function PolicyApprovalsScreen() {
                         { label: 'Policy Type', value: formData.policyType },
                         { label: 'Customer Type', value: formData.customerType },
                         { label: 'Category', value: formData.customerCategory },
-                        { label: 'Expiry Date', value: formData.expDate || (item.expiryDate ? new Date(item.expiryDate).toLocaleDateString() : '') },
+                        { label: 'Expiry Date', value: formatToDateMonthYear(formData.expDate || item.expiryDate) || 'N/A' },
                         { label: 'Mobile No 1', value: formData.mobileNo1 || item.clientPhone },
                         { label: 'Mobile No 2', value: formData.mobileNo2 },
                         { label: 'Approved Rate', value: formData.rate },
                         { label: 'Rs From Customer', value: formData.rsFromCustomer },
                         { label: 'Payment Mode', value: formData.paymentMode },
+                        ...(formData.paymentMode?.toLowerCase() === 'credit' ? [{ label: 'Due Date', value: formatToDateMonthYear(formData.dueDate) || formData.dueDate || 'N/A' }] : []),
                         { label: 'NCB', value: formData.ncb },
                         { label: 'NCB Confirmation SS', value: formData.ncbConfirmation },
                         { label: 'IMP Date Msg SS', value: formData.impDateMsgSS },

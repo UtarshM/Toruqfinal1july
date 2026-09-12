@@ -10,6 +10,7 @@ import {
 } from 'lucide-react'
 import { fetchApi } from '@/lib/api'
 import { useAuth } from '@/context/AuthContext'
+import { formatToDateMonthYear } from '@/components/leads/LeadPolicySubmissionModal'
 
 interface PolicySubmissionItem {
   leadId: string
@@ -285,7 +286,7 @@ export default function ManagerDocumentsPage() {
             <h6 className="text-[9px] font-black text-slate-400 uppercase">Policy Parameters</h6>
             <div className="flex justify-between"><span className="text-slate-500">Policy Type:</span> <span className="font-bold text-slate-900">{sub.formData?.policyType || 'N/A'}</span></div>
             <div className="flex justify-between"><span className="text-slate-500">Category:</span> <span className="font-bold text-slate-900">{sub.formData?.customerCategory || 'N/A'}</span></div>
-            <div className="flex justify-between"><span className="text-slate-500">Expiry Date:</span> <span className="font-bold text-slate-900">{sub.formData?.expDate || 'N/A'}</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">Expiry Date:</span> <span className="font-bold text-slate-900">{formatToDateMonthYear(sub.formData?.expDate) || 'N/A'}</span></div>
             <div className="flex justify-between"><span className="text-slate-500">NCB Status:</span> <span className="font-bold text-slate-900">{sub.formData?.ncb || 'N/A'}</span></div>
             <div className="flex justify-between"><span className="text-slate-500">HP Details:</span> <span className="font-bold text-slate-900">{sub.formData?.hpDetails || 'N/A'}</span></div>
           </div>
@@ -297,6 +298,12 @@ export default function ManagerDocumentsPage() {
             <div className="flex justify-between"><span className="text-slate-500">Rate Confirm Screenshot:</span> <span className="font-bold text-slate-900">{sub.formData?.rateConfirmationSS || 'N/A'}</span></div>
             <div className="flex justify-between"><span className="text-slate-500">Premium From Customer:</span> <span className="font-bold text-emerald-700">₹{sub.formData?.rsFromCustomer || 'N/A'}</span></div>
             <div className="flex justify-between"><span className="text-slate-500">Payment Mode:</span> <span className="font-bold text-slate-900 capitalize">{sub.formData?.paymentMode || 'N/A'}</span></div>
+            {sub.formData?.paymentMode?.toLowerCase() === 'credit' && (
+              <div className="flex justify-between bg-purple-50 px-2 py-0.5 rounded border border-purple-200">
+                <span className="text-purple-700 font-bold">Due Date:</span>
+                <span className="font-bold text-purple-900">{formatToDateMonthYear(sub.formData?.dueDate) || 'N/A'}</span>
+              </div>
+            )}
             <div className="flex justify-between"><span className="text-slate-500">IDV Breakup:</span> <span className="font-bold text-slate-900">{sub.formData?.idvBreakup || 'N/A'}</span></div>
           </div>
 
@@ -814,7 +821,7 @@ export default function ManagerDocumentsPage() {
                               <div className="space-y-2 text-xs">
                                 <div className="flex justify-between"><span className="text-slate-500">Policy Type:</span> <span className="font-bold text-slate-900">{sub.formData?.policyType || 'N/A'}</span></div>
                                 <div className="flex justify-between"><span className="text-slate-500">Category:</span> <span className="font-bold text-slate-900">{sub.formData?.customerCategory || 'N/A'}</span></div>
-                                <div className="flex justify-between"><span className="text-slate-500">Expiry Date:</span> <span className="font-bold text-slate-900">{sub.formData?.expDate || 'N/A'}</span></div>
+                                <div className="flex justify-between"><span className="text-slate-500">Expiry Date:</span> <span className="font-bold text-slate-900">{formatToDateMonthYear(sub.formData?.expDate) || 'N/A'}</span></div>
                                 <div className="flex justify-between"><span className="text-slate-500">NCB Status:</span> <span className="font-bold text-slate-900">{sub.formData?.ncb || 'N/A'}</span></div>
                                 <div className="flex justify-between"><span className="text-slate-500">HP Details:</span> <span className="font-bold text-slate-900">{sub.formData?.hpDetails || 'N/A'}</span></div>
                               </div>
@@ -828,6 +835,12 @@ export default function ManagerDocumentsPage() {
                                 <div className="flex justify-between"><span className="text-slate-500">Rate Confirm Screenshot:</span> <span className="font-bold text-slate-900">{sub.formData?.rateConfirmationSS || 'N/A'}</span></div>
                                 <div className="flex justify-between"><span className="text-slate-500">Premium From Customer:</span> <span className="font-bold text-emerald-700">₹{sub.formData?.rsFromCustomer || 'N/A'}</span></div>
                                 <div className="flex justify-between"><span className="text-slate-500">Payment Mode:</span> <span className="font-bold text-slate-900 capitalize">{sub.formData?.paymentMode || 'N/A'}</span></div>
+                                {sub.formData?.paymentMode?.toLowerCase() === 'credit' && (
+                                  <div className="flex justify-between bg-purple-50 px-2 py-0.5 rounded border border-purple-200">
+                                    <span className="text-purple-700 font-bold">Due Date:</span>
+                                    <span className="font-bold text-purple-900">{formatToDateMonthYear(sub.formData?.dueDate) || 'N/A'}</span>
+                                  </div>
+                                )}
                                 <div className="flex justify-between"><span className="text-slate-500">IDV Breakup:</span> <span className="font-bold text-slate-900">{sub.formData?.idvBreakup || 'N/A'}</span></div>
                               </div>
                             </div>

@@ -128,11 +128,13 @@ export default function DashboardPage() {
               <h1 className="text-3xl font-black text-gray-900 tracking-tight">
                 {stats?.view === 'agent' ? 'Sales Performance' :
                  stats?.view === 'manager' ? 'Team Leadership' :
+                 stats?.view === 'hr' ? 'Human Resources Oversight' :
                  "Control Center"}
               </h1>
               <p className="text-gray-500 mt-1.5 font-medium">
                 {stats?.view === 'agent' ? `Welcome back! Tracking your daily sales targets.` :
                  stats?.view === 'manager' ? 'Real-time oversight of your team pipeline.' :
+                 stats?.view === 'hr' ? 'Manage staff directory, onboarding document approvals, attendance, and leaves.' :
                  "Global operations and system management insights."}
               </p>
             </div>
@@ -192,6 +194,36 @@ export default function DashboardPage() {
             </div>
           ) : (
             <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+              {/* HR View */}
+              {stats.view === 'hr' && (
+                <>
+                  {stats.pending_onboardings > 0 && (
+                    <div className="mb-6 bg-pink-50 border border-pink-200 text-pink-900 p-5 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm">
+                      <div className="flex items-center gap-3">
+                        <UserCheck className="text-pink-600 shrink-0" size={24} />
+                        <div>
+                          <p className="font-extrabold text-sm">🆕 {stats.pending_onboardings} Pending Employee Onboarding Applications</p>
+                          <p className="text-xs text-pink-700 font-semibold mt-0.5">New employees have submitted registration documents awaiting HR verification and approval.</p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => router.push('/users/onboarding')}
+                        className="px-5 py-2.5 bg-pink-600 text-white rounded-xl text-xs font-bold hover:bg-pink-700 transition-all shrink-0 shadow-sm cursor-pointer"
+                      >
+                        Review Documents →
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
+                    <StatCard label="Total Staff" value={stats.total_employees} icon={Users2} color="text-blue-600" bg="bg-blue-50" onClick={() => router.push('/users')} />
+                    <StatCard label="Active Staff" value={stats.active_employees} icon={UserCheck} color="text-green-600" bg="bg-green-50" onClick={() => router.push('/users')} />
+                    <StatCard label="Onboarding Applications" value={stats.pending_onboardings} icon={Plus} color="text-pink-600" bg="bg-pink-50" onClick={() => router.push('/users/onboarding')} />
+                    <StatCard label="On Leave Today" value={stats.leaves_today} icon={Calendar} color="text-amber-600" bg="bg-amber-50" onClick={() => router.push('/hr')} />
+                  </div>
+                </>
+              )}
+
               {/* Agent View */}
               {stats.view === 'agent' && (
                 <div className="grid grid-cols-2 lg:grid-cols-5 gap-6">
@@ -206,10 +238,29 @@ export default function DashboardPage() {
               {/* Manager View */}
               {stats.view === 'manager' && (
                 <>
-                  <div className="grid grid-cols-2 lg:grid-cols-5 gap-6">
+                  {stats.pending_onboardings > 0 && (
+                    <div className="mb-6 bg-pink-50 border border-pink-200 text-pink-900 p-5 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm">
+                      <div className="flex items-center gap-3">
+                        <UserCheck className="text-pink-600 shrink-0" size={24} />
+                        <div>
+                          <p className="font-extrabold text-sm">🆕 {stats.pending_onboardings} Pending Employee Onboarding Applications</p>
+                          <p className="text-xs text-pink-700 font-semibold mt-0.5">New employees have submitted registration documents awaiting manager verification and approval.</p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => router.push('/users/onboarding')}
+                        className="px-5 py-2.5 bg-pink-600 text-white rounded-xl text-xs font-bold hover:bg-pink-700 transition-all shrink-0 shadow-sm cursor-pointer"
+                      >
+                        Review Documents →
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-5">
                     <StatCard label="Team Leads" value={stats.total_leads} icon={Users2} color="text-blue-600" bg="bg-blue-50" onClick={() => router.push('/leads')} />
                     <StatCard label="Policy Approvals" value={stats.pending_policy_approvals ?? 0} icon={ShieldCheck} color="text-indigo-600" bg="bg-indigo-50" onClick={() => router.push('/manager/documents')} />
-                    <StatCard label="Conversions" value={stats.won_leads} icon={UserCheck} color="text-green-600" bg="bg-green-50" onClick={() => router.push('/leads')} />
+                    <StatCard label="Onboarding Approvals" value={stats.pending_onboardings ?? 0} icon={UserCheck} color="text-pink-600" bg="bg-pink-50" onClick={() => router.push('/users/onboarding')} />
+                    <StatCard label="Conversions" value={stats.won_leads} icon={TrendingUp} color="text-green-600" bg="bg-green-50" onClick={() => router.push('/leads')} />
                     <StatCard label="Open Followups" value={stats.pending_followups} icon={Clock} color="text-amber-600" bg="bg-amber-50" onClick={() => router.push('/follow-ups')} />
                     <StatCard label="Overdue Items" value={stats.overdue_followups} icon={AlertCircle} color="text-red-600" bg="bg-red-50" onClick={() => router.push('/follow-ups')} />
                   </div>

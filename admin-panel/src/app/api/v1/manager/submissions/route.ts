@@ -3,6 +3,38 @@ import prisma from '@/lib/prisma'
 import { validateAuth } from '@/lib/auth-guard'
 import { updateMonthlyMasterSheet } from '../monthly-sheet/route'
 
+function formatToDateMonthYear(dateVal: any): string {
+  if (!dateVal) return ''
+  const str = String(dateVal).trim()
+  if (!str || str === 'N/A' || str === 'NA') return ''
+
+  const dmyMatch = str.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/)
+  if (dmyMatch) {
+    const dd = dmyMatch[1].padStart(2, '0')
+    const mm = dmyMatch[2].padStart(2, '0')
+    const yyyy = dmyMatch[3]
+    return `${dd}/${mm}/${yyyy}`
+  }
+
+  const ymdMatch = str.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})/)
+  if (ymdMatch) {
+    const yyyy = ymdMatch[1]
+    const mm = ymdMatch[2].padStart(2, '0')
+    const dd = ymdMatch[3].padStart(2, '0')
+    return `${dd}/${mm}/${yyyy}`
+  }
+
+  const parsed = new Date(str)
+  if (!isNaN(parsed.getTime())) {
+    const dd = String(parsed.getDate()).padStart(2, '0')
+    const mm = String(parsed.getMonth() + 1).padStart(2, '0')
+    const yyyy = parsed.getFullYear()
+    return `${dd}/${mm}/${yyyy}`
+  }
+
+  return str
+}
+
 function generateCopyableSummary(formData: any, lead: any): string {
   const d = formData || {}
   const regNo = d.regNo || lead?.vehicleNo || 'NA'
@@ -10,17 +42,17 @@ function generateCopyableSummary(formData: any, lead: any): string {
   const mob2 = d.mobileNo2 || 'NA'
   const customerName = lead?.clientName || 'NA'
   const policyType = d.policyType || 'nil dep'
-  const customerType = d.customerType || 'existing'
-  const customerCat = d.customerCategory || 'MVC'
+  const customerType = d.customerType || 'Existing'
+  const customerCat = d.customerCategory || 'OPC-Our Premium Customer'
   const rate = d.rate || 'NA'
   const rateSS = d.rateConfirmationSS || 'YES'
   const rsFromCust = d.rsFromCustomer || 'NA'
   const paymentMode = d.paymentMode || 'cash'
   const ncb = d.ncb || 'with ncb'
-  const expDate = d.expDate || (lead?.expiryDate ? new Date(lead.expiryDate).toLocaleDateString('en-GB') : 'NA')
+  const expDate = formatToDateMonthYear(d.expDate || lead?.expiryDate) || 'NA'
   const ncbConf = d.ncbConfirmation || 'Yes'
   const impDateSS = d.impDateMsgSS || 'Yes'
-  const hpDetails = d.hpDetails || 'as per rc'
+  const hpDetails = d.hpDetails || 'As per RC'
   const vehPhoto = d.vehiclePhoto || 'n.a.'
   const bodyMatch = d.bodyTypeMatched || 'n.a.'
   const gForm = d.googleFormSubmitted || 'YES'
@@ -29,9 +61,10 @@ function generateCopyableSummary(formData: any, lead: any): string {
   const desc = d.description || 'NA'
   const otherWorks = d.otherWorks || 'NA'
   const newName = d.newName || 'NA'
-  const inspStatus = d.inspectionStatus || 'Not Required'
+  const inspStatus = d.inspectionStatus || 'Not Applicable'
   const mparivahan = d.mparivahanRcStatus || 'NA'
-  const amtDueSS = d.amountDueDateMsgSS || 'NA'
+  const dueDate = d.dueDate ? formatToDateMonthYear(d.dueDate) : ''
+  const amtDueSS = d.amountDueDateMsgSS || (paymentMode.toLowerCase() === 'credit' ? 'Uploaded' : 'NA')
 
   const isWithoutNcb =
     ncbConf?.toLowerCase() === 'no' ||
@@ -53,7 +86,7 @@ Rate: ${rate}
 Rate Confirmation SS: ${rateSS}
 Rs From Customer: ${rsFromCust}
 Payment Mode: ${paymentMode}
-NCB: ${ncb}
+${paymentMode.toLowerCase() === 'credit' && dueDate ? `Due Date: ${dueDate}\n` : ''}NCB: ${ncb}
 Expiry Date: ${expDate}
 NCB Confirmation: ${ncbConf}`
   }
@@ -71,7 +104,7 @@ Rate: ${rate}
 Rate Confirmation SS: ${rateSS}
 Rs From Customer: ${rsFromCust}
 Payment Mode: ${paymentMode}
-NCB: ${ncb}
+${paymentMode.toLowerCase() === 'credit' && dueDate ? `Due Date: ${dueDate}\n` : ''}NCB: ${ncb}
 Expiry Date: ${expDate}
 NCB Confirmation: ${ncbConf}
 IMP Date Msg SS: ${impDateSS}
@@ -99,13 +132,21 @@ export async function GET(req: NextRequest) {
     const search = (searchParams.get('search') || '').trim().toLowerCase()
 
     const roleUpper = (context.role || '').toUpperCase()
+    const isHr = roleUpper.includes('HR')
+    if (isHr) {
+      return NextResponse.json({ error: 'Forbidden: HR role cannot access policy submissions' }, { status: 403 })
+    }
     const isAdmin = roleUpper.includes('ADMIN') || roleUpper.includes('SUPER')
-    const isManager = roleUpper.includes('MANAGER')
+    const isManager = roleUpper === 'MANAGER' || (roleUpper.includes('MANAGER') && !isHr)
     const isExecutive = !isAdmin && !isManager
 
     const where: any = {
       status: { not: 'Trashed' },
-      deletedAt: null
+      deletedAt: null,
+      customFields: {
+        path: ['policySubmission'],
+        not: 'null'
+      }
     }
 
     if (isExecutive) {
@@ -205,7 +246,8 @@ export async function POST(req: NextRequest) {
   if (error || !context) return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const roleUpper = (context.role || '').toUpperCase()
-  const isManagerOrAdmin = roleUpper.includes('MANAGER') || roleUpper.includes('ADMIN') || roleUpper.includes('SUPER')
+  const isHr = roleUpper.includes('HR')
+  const isManagerOrAdmin = !isHr && (roleUpper === 'MANAGER' || (roleUpper.includes('MANAGER') && !isHr) || roleUpper.includes('ADMIN') || roleUpper.includes('SUPER'))
 
   if (!isManagerOrAdmin) {
     return NextResponse.json({ error: 'Forbidden: Only Managers and Admins can approve documents or upload issued policies.' }, { status: 403 })

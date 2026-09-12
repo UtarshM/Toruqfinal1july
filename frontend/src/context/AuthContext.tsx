@@ -1,9 +1,11 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { AppState, AppStateStatus } from 'react-native';
 import { supabase } from '../lib/supabase';
 import { useCacheStore } from '../store/cacheStore';
 
 const USER_PROFILE_CACHE_KEY = '@torque_user_profile';
+const EXPLICIT_LOGOUT_KEY = '@torque_explicit_logout';
 
 interface User {
   id: string;
@@ -49,6 +51,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isPinAuthenticated, setIsPinAuthenticated] = useState(false);
+  const appStateRef = useRef<AppStateStatus>(AppState.currentState);
 
   useEffect(() => {
     let mounted = true;
@@ -88,9 +91,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             if (mounted) setIsLoading(false);
           });
         } else {
-          // Genuinely no session: clear cached user
-          AsyncStorage.removeItem(USER_PROFILE_CACHE_KEY).catch(() => {});
-          setUser(null);
+          // Genuinely no session: only clear if nothing cached
+          AsyncStorage.getItem(USER_PROFILE_CACHE_KEY).then(c => {
+            if (!c && mounted) {
+              setUser(null);
+            }
+          }).catch(() => {});
           setIsLoading(false);
         }
       })
@@ -100,13 +106,75 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
 
     // Listen to auth state changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!mounted) return;
-      if (session) {
+      if (event === 'SIGNED_OUT') {
+        // Check if this is an explicit logout
+        const flag = await AsyncStorage.getItem(EXPLICIT_LOGOUT_KEY).catch(() => null);
+        if (flag === 'true') {
+          // ====== EXPLICIT LOGOUT: Clear everything ======
+          await AsyncStorage.removeItem(EXPLICIT_LOGOUT_KEY).catch(() => {});
+          await AsyncStorage.removeItem(USER_PROFILE_CACHE_KEY).catch(() => {});
+          setUser(null);
+        } else {
+          // ====== UNEXPECTED SIGNED_OUT (app backgrounded, multi-device race, etc.) ======
+          // Do NOT clear user state immediately. Attempt recovery.
+          console.warn('[auth] Unexpected SIGNED_OUT — attempting silent recovery...');
+          
+          // Wait a moment for Supabase to settle
+          await new Promise(r => setTimeout(r, 2000));
+          
+          try {
+            const { data: { session: recoveredSession } } = await supabase.auth.getSession();
+            if (recoveredSession?.user) {
+              console.log('[auth] Session recovered after unexpected SIGNED_OUT');
+              fetchProfile().catch(() => {});
+              return;
+            }
+          } catch {}
+
+          // Try an active refresh as last resort
+          try {
+            const { data, error } = await supabase.auth.refreshSession();
+            if (data?.session?.user && !error) {
+              console.log('[auth] Session recovered via active refresh');
+              fetchProfile().catch(() => {});
+              return;
+            }
+          } catch {}
+
+          // Even if all recovery failed, keep the cached profile.
+          // The user won't be kicked out, but API calls may fail with 401.
+          console.warn('[auth] Session recovery failed, keeping cached profile.');
+        }
+      } else if (session) {
         fetchProfile().catch(() => {});
-      } else {
-        AsyncStorage.removeItem(USER_PROFILE_CACHE_KEY).catch(() => {});
-        setUser(null);
+      }
+    });
+
+    // Step 3: Handle app state changes (iOS/Android backgrounding)
+    const appStateSubscription = AppState.addEventListener('change', async (nextState: AppStateStatus) => {
+      const prevState = appStateRef.current;
+      appStateRef.current = nextState;
+
+      // App came back to foreground from background/inactive
+      if (prevState.match(/inactive|background/) && nextState === 'active') {
+        console.log('[auth] App resumed from background, refreshing session...');
+        // Wait a moment for network to stabilize
+        await new Promise(r => setTimeout(r, 1500));
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session) {
+            // Check if token is expiring soon and refresh proactively
+            const nowSec = Math.floor(Date.now() / 1000);
+            if (session.expires_at && session.expires_at - nowSec < 120) {
+              await supabase.auth.refreshSession();
+            }
+            fetchProfile().catch(() => {});
+          }
+        } catch (err) {
+          console.warn('[auth] Background resume session check failed:', err);
+        }
       }
     });
 
@@ -114,15 +182,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       mounted = false;
       clearTimeout(safetyTimeout);
       subscription.unsubscribe();
+      appStateSubscription.remove();
     };
   }, []);
 
-  async function fetchProfile() {
+  let lastProfileFetchTime = 0;
+
+  async function fetchProfile(force = false) {
     try {
-      const token = (await supabase.auth.getSession()).data.session?.access_token;
+      const now = Date.now();
+      if (!force && lastProfileFetchTime && (now - lastProfileFetchTime < 45000)) {
+        return;
+      }
+
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
       if (!token) {
-        await AsyncStorage.removeItem(USER_PROFILE_CACHE_KEY).catch(() => {});
-        setUser(null);
         return;
       }
 
@@ -135,19 +210,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
 
       if (!response.ok) {
-        console.warn('Profile fetch failed:', response.status);
-        if (response.status === 401 || response.status === 404) {
+        if (response.status === 401) {
           // Attempt to refresh token on 401
           const { data: { session: refreshedSession }, error: refreshError } = await supabase.auth.refreshSession();
           if (refreshedSession && !refreshError) {
-            await fetchProfile();
+            await fetchProfile(true);
             return;
           }
-          await AsyncStorage.removeItem(USER_PROFILE_CACHE_KEY).catch(() => {});
-          setUser(null);
         }
         return;
       }
+
+      lastProfileFetchTime = Date.now();
 
       const data = await response.json();
 
@@ -198,6 +272,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function logout() {
     try {
+      // Set explicit logout flag BEFORE signing out
+      // so onAuthStateChange knows to clear everything
+      await AsyncStorage.setItem(EXPLICIT_LOGOUT_KEY, 'true').catch(() => {});
       await AsyncStorage.removeItem(USER_PROFILE_CACHE_KEY).catch(() => {});
       await useCacheStore.getState().clearCache();
       await supabase.auth.signOut();

@@ -72,10 +72,34 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No valid active executives found' }, { status: 400 })
     }
 
+    // Smart Leave Guard: Filter out executives who are on approved leave for this month
+    let activeExecutivesForAssignment = executives
+    let skippedExecutivesOnLeave: string[] = []
+
+    if (month && year) {
+      const monthStart = new Date(year, month - 1, 1)
+      const monthEnd = new Date(year, month, 0, 23, 59, 59, 999)
+      const approvedLeaves = await prisma.leaveRequest.findMany({
+        where: {
+          userId: { in: executives.map(e => e.id) },
+          status: { in: ['approved', 'Approved'] },
+          startDate: { lte: monthEnd },
+          endDate: { gte: monthStart }
+        },
+        select: { userId: true, user: { select: { fullName: true } } }
+      })
+
+      const onLeaveUserIds = new Set(approvedLeaves.map(l => l.userId))
+      if (onLeaveUserIds.size > 0 && executives.length > onLeaveUserIds.size) {
+        activeExecutivesForAssignment = executives.filter(e => !onLeaveUserIds.has(e.id))
+        skippedExecutivesOnLeave = executives.filter(e => onLeaveUserIds.has(e.id)).map(e => e.fullName)
+      }
+    }
+
     // Group lead IDs by executive ID for fast bulk updates (1 query per executive)
     const execLeadIds: Record<string, string[]> = {}
     const assignmentCounts: Record<string, number> = {}
-    executives.forEach(e => {
+    activeExecutivesForAssignment.forEach(e => {
       execLeadIds[e.id] = []
       assignmentCounts[e.id] = 0
     })
@@ -84,7 +108,7 @@ export async function POST(req: NextRequest) {
 
     for (let i = 0; i < leadsToAssign.length; i++) {
       const lead = leadsToAssign[i]
-      const exec = executives[i % executives.length]
+      const exec = activeExecutivesForAssignment[i % activeExecutivesForAssignment.length]
       execLeadIds[exec.id].push(lead.id)
       assignments.push({
         leadId: lead.id,
@@ -184,8 +208,9 @@ export async function POST(req: NextRequest) {
       year,
       totalAssigned: leadsToAssign.length,
       distribution,
+      skippedOnLeave: skippedExecutivesOnLeave,
       importName: importName || null,
-      message: `${leadsToAssign.length} leads for ${monthName} ${year} assigned successfully via round-robin.`
+      message: `${leadsToAssign.length} leads for ${monthName} ${year} assigned successfully via round-robin.${skippedExecutivesOnLeave.length > 0 ? ` (Skipped ${skippedExecutivesOnLeave.join(', ')} due to approved leave)` : ''}`
     })
   } catch (err: any) {
     console.error('[assign-monthly] Error:', err)

@@ -39,39 +39,39 @@ export default function Sidebar({ visible, onClose }: SidebarProps) {
   const roleUpper = user?.role?.toUpperCase() || '';
   const isAdmin = roleUpper === 'SUPER ADMIN' || roleUpper === 'ADMIN';
   const isManager = roleUpper === 'MANAGER';
-  const isHrManager = roleUpper === 'HR MANAGER';
+  const isHrManager = roleUpper === 'HR MANAGER' || roleUpper === 'HR';
 
   const MENU_GROUPS = [
     {
       label: 'OVERVIEW',
       items: [
         { name: 'Dashboard', icon: 'home-outline', route: '/(protected)/dashboard', visible: true },
-        { name: 'Reports', icon: 'bar-chart-outline', route: '/(protected)/reports', visible: isAdmin || isManager || isHrManager },
+        { name: 'Reports', icon: 'bar-chart-outline', route: '/(protected)/reports', visible: isAdmin || isManager },
       ]
     },
     {
       label: 'SALES',
       items: [
-        { name: 'Leads', icon: 'people-outline', route: '/(protected)/leads', visible: true },
+        { name: 'Leads', icon: 'people-outline', route: '/(protected)/leads', visible: !isHrManager },
         { name: 'Import Leads', icon: 'cloud-upload-outline', route: '/(protected)/leads/import', visible: isAdmin },
         { name: 'Imported Sheets', icon: 'grid-outline', route: '/(protected)/sheets', visible: isAdmin },
-        { name: 'CRM', icon: 'person-add-outline', route: '/(protected)/crm', visible: !['ACCOUNTANT'].includes(roleUpper) },
+        { name: 'CRM', icon: 'person-add-outline', route: '/(protected)/crm', visible: !['ACCOUNTANT'].includes(roleUpper) && !isHrManager },
         { name: 'Rate Calculator', icon: 'calculator-outline', route: '/(protected)/rate-calculator', visible: isAdmin },
-        { name: 'Quotations', icon: 'clipboard-outline', route: '/(protected)/quotations', visible: isAdmin || isManager || isHrManager },
-        { name: 'Policies', icon: 'shield-checkmark-outline', route: '/(protected)/policies', visible: isAdmin || isManager || isHrManager },
-        { name: 'Follow-ups', icon: 'calendar-outline', route: '/(protected)/follow-ups', visible: !['ACCOUNTANT'].includes(roleUpper) },
+        { name: 'Quotations', icon: 'clipboard-outline', route: '/(protected)/quotations', visible: isAdmin || isManager },
+        { name: 'Policies', icon: 'shield-checkmark-outline', route: '/(protected)/policies', visible: isAdmin || isManager },
+        { name: 'Follow-ups', icon: 'calendar-outline', route: '/(protected)/follow-ups', visible: !['ACCOUNTANT'].includes(roleUpper) && !isHrManager },
       ]
     },
     {
       label: 'OPERATIONS',
       items: [
-        { name: 'Claims', icon: 'document-text-outline', route: '/(protected)/claims', visible: isAdmin || isHrManager || isManager || roleUpper.includes('CLAIM') },
-        { name: 'Loans', icon: 'cash-outline', route: '/(protected)/loans', visible: isAdmin || isHrManager || isManager || roleUpper.includes('LOAN') },
-        { name: 'RTO Work', icon: 'car-outline', route: '/(protected)/rto', visible: isAdmin || isHrManager || isManager || roleUpper.includes('RTO') },
-        { name: 'Fitness', icon: 'fitness-outline', route: '/(protected)/fitness', visible: isAdmin || isHrManager || isManager || roleUpper.includes('FITNESS') },
-        { name: 'Cheques', icon: 'card-outline', route: '/(protected)/cheques', visible: isAdmin || isManager || roleUpper === 'ACCOUNTANT' },
-        { name: 'Ughrani (Collections)', icon: 'list-outline', route: '/(protected)/ughrani', visible: !['ACCOUNTANT'].includes(roleUpper) },
-        { name: 'Taken Documents', icon: 'folder-open-outline', route: '/(protected)/taken', visible: !['ACCOUNTANT'].includes(roleUpper) },
+        { name: 'Claims', icon: 'document-text-outline', route: '/(protected)/claims', visible: !isHrManager && (isAdmin || isManager || roleUpper.includes('CLAIM')) },
+        { name: 'Loans', icon: 'cash-outline', route: '/(protected)/loans', visible: !isHrManager && (isAdmin || isManager || roleUpper.includes('LOAN')) },
+        { name: 'RTO Work', icon: 'car-outline', route: '/(protected)/rto', visible: !isHrManager && (isAdmin || isManager || roleUpper.includes('RTO')) },
+        { name: 'Fitness', icon: 'fitness-outline', route: '/(protected)/fitness', visible: !isHrManager && (isAdmin || isManager || roleUpper.includes('FITNESS')) },
+        { name: 'Cheques', icon: 'card-outline', route: '/(protected)/cheques', visible: !isHrManager && (isAdmin || isManager || roleUpper === 'ACCOUNTANT') },
+        { name: 'Ughrani (Collections)', icon: 'list-outline', route: '/(protected)/ughrani', visible: !['ACCOUNTANT'].includes(roleUpper) && !isHrManager },
+        { name: 'Taken Documents', icon: 'folder-open-outline', route: '/(protected)/taken', visible: !['ACCOUNTANT'].includes(roleUpper) && !isHrManager },
       ]
     },
     {
@@ -80,13 +80,13 @@ export default function Sidebar({ visible, onClose }: SidebarProps) {
         { name: 'Policy Approvals', icon: 'shield-checkmark-outline', route: '/(protected)/policy-approvals', visible: isAdmin || isManager },
         { name: 'Quotation Rates', icon: 'options-outline', route: '/(protected)/rates-management', visible: isAdmin },
         { name: 'Users', icon: 'person-outline', route: '/(protected)/users', visible: isAdmin || isHrManager },
-        { name: 'Onboarding Approvals', icon: 'checkmark-circle-outline', route: '/(protected)/onboarding-approvals', visible: isAdmin || isHrManager },
+        { name: 'Onboarding Approvals', icon: 'checkmark-circle-outline', route: '/(protected)/onboarding-approvals', visible: isAdmin || isHrManager || isManager },
         { name: 'Roles & Permissions', icon: 'ribbon-outline', route: '/(protected)/roles', visible: isAdmin },
-        { name: 'Data Approvals', icon: 'checkbox-outline', route: '/(protected)/data-approvals', visible: isAdmin || isHrManager },
+        { name: 'Data Approvals', icon: 'checkbox-outline', route: '/(protected)/data-approvals', visible: isAdmin },
         { name: 'Finance', icon: 'wallet-outline', route: '/(protected)/finance', visible: isAdmin || roleUpper === 'ACCOUNTANT' },
-        { name: 'HR/Employee management', icon: 'people-circle-outline', route: '/(protected)/hr', visible: isAdmin || isHrManager },
+        { name: 'My Leaves / HR', icon: 'people-circle-outline', route: '/(protected)/hr', visible: true },
         { name: 'Payroll & Salaries', icon: 'people-outline', route: '/(protected)/payroll', visible: isAdmin || isHrManager },
-        { name: 'Lead Responses', icon: 'chatbubble-ellipses-outline', route: '/(protected)/responses', visible: isAdmin || isHrManager },
+        { name: 'Lead Responses', icon: 'chatbubble-ellipses-outline', route: '/(protected)/responses', visible: isAdmin },
         { name: 'Settings', icon: 'settings-outline', route: '/(protected)/settings', visible: true },
       ]
     }

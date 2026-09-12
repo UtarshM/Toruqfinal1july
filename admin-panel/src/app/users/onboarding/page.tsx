@@ -59,9 +59,11 @@ export default function OnboardingApprovalsPage() {
     }
   }
 
-  const isAdmin = currentUser?.role?.name?.toUpperCase() === 'SUPER ADMIN' || 
-    currentUser?.role?.name?.toUpperCase() === 'ADMIN' || 
-    currentUser?.role?.name?.toUpperCase() === 'HR MANAGER'
+  const roleUpper = (currentUser?.role?.name || (typeof currentUser?.role === 'string' ? currentUser.role : '')).toUpperCase()
+  const isAuthorized = roleUpper === 'SUPER ADMIN' || 
+    roleUpper === 'ADMIN' || 
+    roleUpper === 'HR MANAGER' ||
+    roleUpper === 'MANAGER'
 
   const fetchPendingUsers = useCallback(async () => {
     setIsLoading(true)
@@ -429,7 +431,7 @@ export default function OnboardingApprovalsPage() {
                 </div>
 
                 {/* Approve/Reject Controls */}
-                {isAdmin && (
+                {isAuthorized && (
                   <div className="flex flex-col gap-2 pt-4 border-t border-slate-100">
                     <button
                       onClick={() => handleApprove(selectedUser.id)}

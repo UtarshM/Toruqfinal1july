@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react'
 import {
-  FileText, UploadCloud, CheckCircle2, AlertCircle, Eye, Download,
+  FileText, UploadCloud, Upload, CheckCircle2, AlertCircle, Eye, Download,
   Send, Trash2, RefreshCw, X, Copy, Check, MessageSquare, Shield,
   Car, User, Phone, Calendar, ArrowRight, Sparkles, ExternalLink
 } from 'lucide-react'
@@ -37,6 +37,53 @@ export const REQUIRED_DOCUMENTS = [
   { key: 'VEHICLE_PHOTO', label: '7. Vehicle Photo for Body Type', desc: 'Live vehicle photo confirming body type match' },
 ]
 
+export function formatToDateMonthYear(dateVal: any): string {
+  if (!dateVal) return ''
+  const str = String(dateVal).trim()
+  if (!str || str === 'N/A' || str === 'NA') return ''
+
+  const dmyMatch = str.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/)
+  if (dmyMatch) {
+    const dd = dmyMatch[1].padStart(2, '0')
+    const mm = dmyMatch[2].padStart(2, '0')
+    const yyyy = dmyMatch[3]
+    return `${dd}/${mm}/${yyyy}`
+  }
+
+  const ymdMatch = str.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})/)
+  if (ymdMatch) {
+    const yyyy = ymdMatch[1]
+    const mm = ymdMatch[2].padStart(2, '0')
+    const dd = ymdMatch[3].padStart(2, '0')
+    return `${dd}/${mm}/${yyyy}`
+  }
+
+  const parsed = new Date(str)
+  if (!isNaN(parsed.getTime())) {
+    const dd = String(parsed.getDate()).padStart(2, '0')
+    const mm = String(parsed.getMonth() + 1).padStart(2, '0')
+    const yyyy = parsed.getFullYear()
+    return `${dd}/${mm}/${yyyy}`
+  }
+
+  return str
+}
+
+export function getDefaultCreditPaymentMsg(customerName?: string, vehicleNo?: string, amount?: string, dueDate?: string) {
+  const name = customerName?.trim() || 'Customer name'
+  const veh = vehicleNo?.trim() ? ` ${vehicleNo.trim()}` : ''
+  const amt = amount?.trim() || '48000'
+  const date = dueDate?.trim() || '10-11-2025'
+
+  return `${name}
+આપની ગાડી${veh} ની વીમા પોલિસી આપ એ અમારી પાસે કરાવેલ છે.
+જે ${amt} મા નક્કી કરેલ છે અને ${amt} પેમેન્ટ બાકી રાખેલ છે 
+
+બાકી પેમેન્ટ તારીખ ${date} સુધી માં કરાવી આપવાનું નક્કી થયેલ છે.
+પેમેન્ટ કરતી વખતે નક્કી થયેલ રકમથી કઈ પણ ઓછું નહીં કરવામાં આવે જેની ખાસ નોંધ લેશો.
+સમયસર પેમેન્ટ કરી સહકાર આપશો એવી આપને વિનંતી છે.`
+}
+
 export default function LeadPolicySubmissionModal({ leadId, lead, onClose, onUpdated }: LeadPolicySubmissionProps) {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -44,14 +91,16 @@ export default function LeadPolicySubmissionModal({ leadId, lead, onClose, onUpd
   const [submitting, setSubmitting] = useState(false)
   const [uploadingCategory, setUploadingCategory] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const [msgCopied, setMsgCopied] = useState(false)
   const [previewPdfModal, setPreviewPdfModal] = useState(false)
   const [activeTab, setActiveTab] = useState<'form' | 'documents' | 'preview'>('form')
 
   const [submission, setSubmission] = useState<any>(null)
+  const [hpSelection, setHpSelection] = useState<string>('As per RC')
   const [formData, setFormData] = useState<any>({
     policyType: 'nil dep',
-    customerType: 'existing',
-    customerCategory: 'MVC',
+    customerType: 'Existing',
+    customerCategory: 'OPC-Our Premium Customer',
     regNo: lead?.vehicleNo || '',
     rate: '',
     rateConfirmationSS: 'YES',
@@ -60,21 +109,23 @@ export default function LeadPolicySubmissionModal({ leadId, lead, onClose, onUpd
     otherWorks: '',
     paymentMode: 'cash',
     ncb: 'with ncb',
-    expDate: lead?.expiryDate ? new Date(lead.expiryDate).toISOString().split('T')[0] : '',
+    expDate: lead?.expiryDate ? formatToDateMonthYear(lead.expiryDate) : '',
     mobileNo1: lead?.clientPhone || '',
     mobileNo2: '',
     ncbConfirmation: 'Yes',
     impDateMsgSS: 'Yes',
-    hpDetails: 'as per rc',
+    hpDetails: 'As per RC',
     vehiclePhoto: 'n.a.',
     bodyTypeMatched: 'n.a.',
     googleFormSubmitted: 'YES',
     noJackCoverConfirmationSS: 'N.A.',
     idvBreakup: '',
     newName: '',
-    inspectionStatus: 'Not Required',
+    dueDate: '',
+    inspectionStatus: 'Not Applicable',
     mparivahanRcStatus: '',
-    amountDueDateMsgSS: ''
+    amountDueDateMsgSS: '',
+    creditPaymentMsg: ''
   })
 
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({})
@@ -87,9 +138,18 @@ export default function LeadPolicySubmissionModal({ leadId, lead, onClose, onUpd
       if (res?.submission) {
         setSubmission(res.submission)
         if (res.submission.formData) {
+          const loadedHp = res.submission.formData.hpDetails || ''
+          const hpType = (!loadedHp || loadedHp.toLowerCase() === 'as per rc')
+            ? 'As per RC'
+            : (loadedHp.toUpperCase() === 'NO HP' || loadedHp.toLowerCase() === 'no hp' ? 'NO HP' : 'Other')
+          setHpSelection(hpType)
           setFormData((prev: any) => ({
             ...prev,
             ...res.submission.formData,
+            hpDetails: loadedHp || 'As per RC',
+            dueDate: formatToDateMonthYear(res.submission.formData.dueDate) || '',
+            inspectionStatus: res.submission.formData.inspectionStatus === 'Not Required' ? 'Not Applicable' : (res.submission.formData.inspectionStatus || 'Not Applicable'),
+            expDate: formatToDateMonthYear(res.submission.formData.expDate || lead?.expiryDate),
             regNo: res.submission.formData.regNo || lead?.vehicleNo || '',
             mobileNo1: res.submission.formData.mobileNo1 || lead?.clientPhone || ''
           }))
@@ -273,8 +333,8 @@ export default function LeadPolicySubmissionModal({ leadId, lead, onClose, onUpd
 
     if (isWithoutNcb) {
       return `*Policy Type:* ${formData.policyType || 'nil dep'}
-*Customer Type:* ${formData.customerType || 'existing'}
-*Customer Category:* ${formData.customerCategory || 'MVC'}
+*Customer Type:* ${formData.customerType || 'Existing'}
+*Customer Category:* ${formData.customerCategory || 'OPC-Our Premium Customer'}
 *Reg No:* ${formData.regNo || lead?.vehicleNo || ''}
 *Rate:* ${formData.rate || ''}
 *Rate Confirmation SS:* ${formData.rateConfirmationSS || 'YES'}
@@ -283,15 +343,15 @@ export default function LeadPolicySubmissionModal({ leadId, lead, onClose, onUpd
 *Other Works:* ${formData.otherWorks || ''}
 *Payment mode*:- ${formData.paymentMode || 'cash'}
 *NCB:* ${formData.ncb || 'without ncb'}
-*Exp Date:* ${formData.expDate || ''}
+*Exp Date:* ${formatToDateMonthYear(formData.expDate)}
 *Mobile No. 1:* ${formData.mobileNo1 || lead?.clientPhone || ''}
 *Mobile No. 2:* ${formData.mobileNo2 || ''}
 *NCB Confirmation:* ${formData.ncbConfirmation || 'No'}`
     }
 
     return `*Policy Type:* ${formData.policyType || 'nil dep'}
-*Customer Type:* ${formData.customerType || 'existing'}
-*Customer Category:* ${formData.customerCategory || 'MVC'}
+*Customer Type:* ${formData.customerType || 'Existing'}
+*Customer Category:* ${formData.customerCategory || 'OPC-Our Premium Customer'}
 *Reg No:* ${formData.regNo || lead?.vehicleNo || ''}
 *Rate:* ${formData.rate || ''}
 *Rate Confirmation SS:* ${formData.rateConfirmationSS || 'YES'}
@@ -300,12 +360,12 @@ export default function LeadPolicySubmissionModal({ leadId, lead, onClose, onUpd
 *Other Works:* ${formData.otherWorks || ''}
 *Payment mode*:- ${formData.paymentMode || 'cash'}
 *NCB:* ${formData.ncb || 'with ncb'}
-*Exp Date:* ${formData.expDate || ''}
+*Exp Date:* ${formatToDateMonthYear(formData.expDate)}
 *Mobile No. 1:* ${formData.mobileNo1 || lead?.clientPhone || ''}
 *Mobile No. 2:* ${formData.mobileNo2 || ''}
 *NCB Confirmation:* ${formData.ncbConfirmation || 'Yes'}
 *Imp Date msg SS:* ${formData.impDateMsgSS || 'Yes'}
-*HP Details*:- ${formData.hpDetails || 'as per rc'}
+*HP Details*:- ${formData.hpDetails || 'As per RC'}
 *Vehicle Photo:* ${formData.vehiclePhoto || 'n.a.'}
 *Body Type Matched:* ${formData.bodyTypeMatched || 'n.a.'}
 *Google Form Submitted:* ${formData.googleFormSubmitted || 'YES'}
@@ -313,9 +373,9 @@ export default function LeadPolicySubmissionModal({ leadId, lead, onClose, onUpd
 *No-Jack Cover Confirmation SS:* ${formData.noJackCoverConfirmationSS || 'N.A.'}
 *IDV Break up:* ${formData.idvBreakup || ''}
 *New name:* ${formData.newName || ''}
-*Inspection status:* ${formData.inspectionStatus || 'Not Required'}
-*Mparivahan RC / RC Status:* ${formData.mparivahanRcStatus || ''}
-*Amount and Due Date confirmation msg SS:* ${formData.amountDueDateMsgSS || ''}`
+*Inspection status:* ${formData.inspectionStatus || 'Not Applicable'}
+${formData.paymentMode?.toLowerCase() === 'credit' && formData.dueDate ? `*Due Date:* ${formData.dueDate}\n` : ''}*Mparivahan RC / RC Status:* ${formData.mparivahanRcStatus || ''}
+*Amount and Due Date confirmation msg SS:* ${formData.amountDueDateMsgSS || (formData.paymentMode?.toLowerCase() === 'credit' ? 'Uploaded' : 'N.A.')}`
   }
 
   const handleCopyText = () => {
@@ -500,8 +560,8 @@ export default function LeadPolicySubmissionModal({ leadId, lead, onClose, onUpd
                       onChange={e => setFormData({ ...formData, customerType: e.target.value })}
                       className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500"
                     >
-                      <option value="existing">existing</option>
-                      <option value="new">new</option>
+                      <option value="New">New</option>
+                      <option value="Existing">Existing</option>
                     </select>
                   </div>
 
@@ -512,13 +572,12 @@ export default function LeadPolicySubmissionModal({ leadId, lead, onClose, onUpd
                       onChange={e => setFormData({ ...formData, customerCategory: e.target.value })}
                       className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500"
                     >
-                      <option value="MVC">MVC (Motor Vehicle Commercial)</option>
-                      <option value="PVT">PVT (Private Vehicle)</option>
-                      <option value="GCV">GCV (Goods Carrying Vehicle)</option>
-                      <option value="PCV">PCV (Passenger Carrying Vehicle)</option>
-                      <option value="2W">2W (Two Wheeler)</option>
-                      <option value="3W">3W (Three Wheeler)</option>
-                      <option value="OTHER">OTHER</option>
+                      <option value="OPC-Our Premium Customer">OPC-Our Premium Customer</option>
+                      <option value="SVC Single Vehicle Customer">SVC Single Vehicle Customer</option>
+                      <option value="MVC Multiple Vehicle Customer">MVC Multiple Vehicle Customer</option>
+                      <option value="FC- Firm/Company">FC- Firm/Company</option>
+                      <option value="Sub- Sub Agent">Sub- Sub Agent</option>
+                      <option value="BDG- Broker/Dealer/Garage">BDG- Broker/Dealer/Garage</option>
                     </select>
                   </div>
 
@@ -534,13 +593,28 @@ export default function LeadPolicySubmissionModal({ leadId, lead, onClose, onUpd
                   </div>
 
                   <div>
-                    <label className="text-[11px] font-bold text-slate-600 block mb-1">Expiry Date (Exp Date)</label>
-                    <input
-                      type="date"
-                      value={formData.expDate}
-                      onChange={e => setFormData({ ...formData, expDate: e.target.value })}
-                      className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500"
-                    />
+                    <label className="text-[11px] font-bold text-slate-600 block mb-1">Expiry Date (Date Month Year - DD/MM/YYYY) *</label>
+                    <div className="relative flex items-center">
+                      <input
+                        type="text"
+                        placeholder="DD/MM/YYYY"
+                        value={formData.expDate || ''}
+                        onChange={e => setFormData({ ...formData, expDate: e.target.value })}
+                        className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500 pr-10"
+                      />
+                      <input
+                        type="date"
+                        title="Pick Date"
+                        className="absolute right-2 w-6 h-6 opacity-40 hover:opacity-100 cursor-pointer bg-transparent border-none text-transparent"
+                        onChange={e => {
+                          const val = e.target.value
+                          if (val) {
+                            const [y, m, d] = val.split('-')
+                            setFormData({ ...formData, expDate: `${d}/${m}/${y}` })
+                          }
+                        }}
+                      />
+                    </div>
                   </div>
 
                   <div>
@@ -585,14 +659,42 @@ export default function LeadPolicySubmissionModal({ leadId, lead, onClose, onUpd
                   </div>
 
                   <div>
-                    <label className="text-[11px] font-bold text-slate-600 block mb-1">HP Details</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. as per rc"
-                      value={formData.hpDetails}
-                      onChange={e => setFormData({ ...formData, hpDetails: e.target.value })}
+                    <label className="text-[11px] font-bold text-slate-600 block mb-1">HP (Hypothecation)</label>
+                    <select
+                      value={hpSelection}
+                      onChange={e => {
+                        const v = e.target.value
+                        setHpSelection(v)
+                        if (v === 'As per RC') {
+                          setFormData({ ...formData, hpDetails: 'As per RC' })
+                        } else if (v === 'NO HP') {
+                          setFormData({ ...formData, hpDetails: 'NO HP' })
+                        } else {
+                          // Other selected - if it was previously As per RC or NO HP, clear for typing
+                          if (!formData.hpDetails || formData.hpDetails.toLowerCase() === 'as per rc' || formData.hpDetails.toUpperCase() === 'NO HP') {
+                            setFormData({ ...formData, hpDetails: '' })
+                          }
+                        }
+                      }}
                       className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500"
-                    />
+                    >
+                      <option value="As per RC">As per RC</option>
+                      <option value="NO HP">NO HP</option>
+                      <option value="Other">Other - Manual type</option>
+                    </select>
+
+                    {hpSelection === 'Other' && (
+                      <div className="mt-2">
+                        <input
+                          type="text"
+                          placeholder="Type HP / Bank details manually..."
+                          value={formData.hpDetails && formData.hpDetails.toLowerCase() !== 'as per rc' && formData.hpDetails.toUpperCase() !== 'NO HP' ? formData.hpDetails : ''}
+                          onChange={e => setFormData({ ...formData, hpDetails: e.target.value })}
+                          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500"
+                          autoFocus
+                        />
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -651,6 +753,145 @@ export default function LeadPolicySubmissionModal({ leadId, lead, onClose, onUpd
                       <option value="cheque">cheque</option>
                       <option value="credit">credit</option>
                     </select>
+                  </div>
+                </div>
+
+                {/* Credit Payment Fields (Due Date & Confirmation SS Upload) */}
+                {formData.paymentMode?.toLowerCase() === 'credit' && (
+                  <div className="bg-purple-50/80 border border-purple-200 rounded-2xl p-4 space-y-3">
+                    <div className="flex items-center gap-2 text-xs font-black text-purple-900 uppercase tracking-wide">
+                      <Calendar size={15} className="text-purple-600" />
+                      Credit Payment Details
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                      {/* Due Date Calendar Picker */}
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-700 block mb-1">Due date (Date Month Year - DD/MM/YYYY) *</label>
+                        <div className="relative flex items-center">
+                          <input
+                            type="text"
+                            placeholder="DD/MM/YYYY"
+                            value={formData.dueDate || ''}
+                            onChange={e => setFormData({ ...formData, dueDate: e.target.value })}
+                            className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-purple-500 pr-10"
+                          />
+                          <input
+                            type="date"
+                            title="Pick Due Date"
+                            className="absolute right-2 w-6 h-6 opacity-40 hover:opacity-100 cursor-pointer bg-transparent border-none text-transparent"
+                            onChange={e => {
+                              const val = e.target.value
+                              if (val) {
+                                const [y, m, d] = val.split('-')
+                                setFormData({ ...formData, dueDate: `${d}/${m}/${y}` })
+                              }
+                            }}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Upload Amount & Due Date Confirmation Screenshot */}
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                          Amount & Due Date Confirmation Screenshot *
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="file"
+                            id="amount_due_ss_file_input"
+                            accept="application/pdf,image/*"
+                            className="hidden"
+                            onChange={e => {
+                              const file = e.target.files?.[0]
+                              if (file) {
+                                handleUploadFile('AMOUNT_DUE_DATE_SS', file)
+                                setFormData({ ...formData, amountDueDateMsgSS: 'Yes (Uploaded)' })
+                                e.target.value = ''
+                              }
+                            }}
+                          />
+                          <label
+                            htmlFor="amount_due_ss_file_input"
+                            className="cursor-pointer inline-flex items-center gap-1.5 bg-white hover:bg-slate-50 border border-purple-300 text-purple-900 px-3 py-2 rounded-xl text-xs font-bold shadow-2xs transition-colors flex-1 justify-center"
+                          >
+                            <Upload size={13} />
+                            {uploadingCategory === 'AMOUNT_DUE_DATE_SS' ? 'Uploading...' : 'Upload Confirmation Screenshot (PDF / Image)'}
+                          </label>
+                        </div>
+
+                        {getCategoryDocs('AMOUNT_DUE_DATE_SS').map((doc: any) => (
+                          <div key={doc.id || doc.filePath} className="flex items-center justify-between bg-white border border-purple-200 rounded-lg px-2.5 py-1.5 mt-2 text-xs">
+                            <a href={doc.filePath} target="_blank" rel="noreferrer" className="text-purple-700 font-bold hover:underline truncate max-w-[220px] flex items-center gap-1">
+                              <ExternalLink size={12} /> {doc.fileName || 'Confirmation_SS.jpg'}
+                            </a>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteDoc(doc.id, 'AMOUNT_DUE_DATE_SS')}
+                              className="text-red-500 hover:text-red-700 font-bold text-xs ml-2 cursor-pointer"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Autogenerated Editable Confirmation Message for Customer (Visible for ALL payment modes) */}
+                <div className="bg-white border border-purple-200 rounded-xl p-3.5 space-y-2 mt-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-purple-100 pb-2">
+                    <label className="text-[11px] font-bold text-purple-950 flex items-center gap-1.5">
+                      <MessageSquare size={14} className="text-purple-600" />
+                      Customer Confirmation Message (Gujarati - Fully Editable)
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const msg = formData.creditPaymentMsg || getDefaultCreditPaymentMsg(lead?.clientName, formData.regNo || lead?.vehicleNo, formData.rate || formData.rsFromCustomer, formData.dueDate)
+                          navigator.clipboard.writeText(msg)
+                          setMsgCopied(true)
+                          setTimeout(() => setMsgCopied(false), 2000)
+                        }}
+                        className="px-2.5 py-1 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-lg text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                      >
+                        {msgCopied ? <Check size={12} className="text-emerald-600" /> : <Copy size={12} />}
+                        {msgCopied ? 'Copied!' : 'Copy Message'}
+                      </button>
+                      <a
+                        href={`https://wa.me/${(formData.mobileNo1 || lead?.clientPhone || '').replace(/\D/g, '')}?text=${encodeURIComponent(formData.creditPaymentMsg || getDefaultCreditPaymentMsg(lead?.clientName, formData.regNo || lead?.vehicleNo, formData.rate || formData.rsFromCustomer, formData.dueDate))}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                      >
+                        <MessageSquare size={12} />
+                        Send on WhatsApp
+                      </a>
+                    </div>
+                  </div>
+
+                  <textarea
+                    rows={7}
+                    value={formData.creditPaymentMsg !== undefined && formData.creditPaymentMsg !== '' ? formData.creditPaymentMsg : getDefaultCreditPaymentMsg(lead?.clientName, formData.regNo || lead?.vehicleNo, formData.rate || formData.rsFromCustomer, formData.dueDate)}
+                    onChange={e => setFormData({ ...formData, creditPaymentMsg: e.target.value })}
+                    className="w-full bg-slate-50/70 border border-purple-100 rounded-lg p-3 text-xs text-slate-800 font-medium outline-none focus:ring-2 focus:ring-purple-500 leading-relaxed font-sans"
+                    placeholder="Edit Gujarati confirmation message..."
+                  />
+                  <div className="flex items-center justify-between text-[11px] text-slate-500">
+                    <span>* Edit customer name, amount, date or any text above before sending.</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFormData({
+                          ...formData,
+                          creditPaymentMsg: getDefaultCreditPaymentMsg(lead?.clientName, formData.regNo || lead?.vehicleNo, formData.rate || formData.rsFromCustomer, formData.dueDate)
+                        })
+                      }}
+                      className="text-purple-600 hover:text-purple-800 font-bold hover:underline cursor-pointer"
+                    >
+                      Reset to Template
+                    </button>
                   </div>
                 </div>
 
@@ -784,15 +1025,72 @@ export default function LeadPolicySubmissionModal({ leadId, lead, onClose, onUpd
                         />
                       </div>
 
-                      <div>
-                        <label className="text-[11px] font-bold text-slate-600 block mb-1">Inspection Status</label>
-                        <input
-                          type="text"
-                          placeholder="e.g. Not Required / Done"
-                          value={formData.inspectionStatus}
+                      <div className="sm:col-span-2">
+                        <label className="text-[11px] font-bold text-slate-600 block mb-1">Inspection *</label>
+                        <select
+                          value={formData.inspectionStatus || 'Not Applicable'}
                           onChange={e => setFormData({ ...formData, inspectionStatus: e.target.value })}
                           className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500"
-                        />
+                        >
+                          <option value="Not Applicable">Not Applicable</option>
+                          <option value="Approved">Approved</option>
+                          <option value="Approved on Declaration">Approved on Declaration</option>
+                        </select>
+
+                        {/* Upload option for Approved & Approved on Declaration */}
+                        {(formData.inspectionStatus === 'Approved' || formData.inspectionStatus === 'Approved on Declaration') && (
+                          <div className="bg-amber-50/70 border border-amber-200 rounded-xl p-3 mt-2.5">
+                            <div className="flex items-center justify-between mb-1.5">
+                              <label className="text-[11px] font-bold text-amber-900 flex items-center gap-1.5">
+                                <FileText size={13} className="text-amber-600" />
+                                Inspection Report (PDF or Image) *
+                              </label>
+                              {getCategoryDocs('INSPECTION_REPORT').length > 0 && (
+                                <span className="text-[10px] font-bold bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full flex items-center gap-1">
+                                  <CheckCircle2 size={11} /> Uploaded ({getCategoryDocs('INSPECTION_REPORT').length})
+                                </span>
+                              )}
+                            </div>
+                            
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="file"
+                                id="inspection_report_file_input"
+                                accept="application/pdf,image/*"
+                                className="hidden"
+                                onChange={e => {
+                                  const file = e.target.files?.[0]
+                                  if (file) {
+                                    handleUploadFile('INSPECTION_REPORT', file)
+                                    e.target.value = ''
+                                  }
+                                }}
+                              />
+                              <label
+                                htmlFor="inspection_report_file_input"
+                                className="cursor-pointer inline-flex items-center gap-1.5 bg-white hover:bg-slate-50 border border-amber-300 text-amber-900 px-3 py-1.5 rounded-lg text-xs font-bold shadow-2xs transition-colors"
+                              >
+                                <Upload size={13} />
+                                {uploadingCategory === 'INSPECTION_REPORT' ? 'Uploading...' : 'Upload Inspection Report (PDF / Image)'}
+                              </label>
+                            </div>
+
+                            {getCategoryDocs('INSPECTION_REPORT').map((doc: any) => (
+                              <div key={doc.id || doc.filePath} className="flex items-center justify-between bg-white border border-amber-200 rounded-lg px-2.5 py-1.5 mt-2 text-xs">
+                                <a href={doc.filePath} target="_blank" rel="noreferrer" className="text-blue-600 font-bold hover:underline truncate max-w-[280px] flex items-center gap-1">
+                                  <ExternalLink size={12} /> {doc.fileName || 'Inspection_Report.pdf'}
+                                </a>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteDoc(doc.id, 'INSPECTION_REPORT')}
+                                  className="text-red-500 hover:text-red-700 font-bold text-xs ml-2 cursor-pointer"
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
 
                       <div>
@@ -802,17 +1100,6 @@ export default function LeadPolicySubmissionModal({ leadId, lead, onClose, onUpd
                           placeholder="e.g. Verified on Mparivahan"
                           value={formData.mparivahanRcStatus}
                           onChange={e => setFormData({ ...formData, mparivahanRcStatus: e.target.value })}
-                          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                      </div>
-
-                      <div className="sm:col-span-2">
-                        <label className="text-[11px] font-bold text-slate-600 block mb-1">Amount & Due Date msg SS (Only Baki wala case ma)</label>
-                        <input
-                          type="text"
-                          placeholder="e.g. SS confirmed / N.A."
-                          value={formData.amountDueDateMsgSS}
-                          onChange={e => setFormData({ ...formData, amountDueDateMsgSS: e.target.value })}
                           className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500"
                         />
                       </div>

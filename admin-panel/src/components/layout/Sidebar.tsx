@@ -67,8 +67,9 @@ export default function Sidebar() {
 
   const role = (user?.role?.name || (typeof user?.role === 'string' ? user.role : 'EXECUTIVE')).toUpperCase()
   const isAdmin = role.includes('ADMIN') || role.includes('SUPER')
-  const isManager = role.includes('MANAGER')
-  const isExecutive = !isAdmin && !isManager
+  const isHr = role.includes('HR')
+  const isManager = role === 'MANAGER' || (role.includes('MANAGER') && !isHr)
+  const isExecutive = !isAdmin && !isManager && !isHr
 
   const filteredGroups = MENU_GROUPS.map(group => {
     let items = group.items
@@ -78,7 +79,16 @@ export default function Sidebar() {
       items = items.filter(i => i.name !== 'Imported Spreadsheets')
     }
 
-    if (isExecutive) {
+    if (isHr) {
+      // HR only manages Users, Onboarding Approvals, HR (staff/attendance/leaves), and Settings
+      if (group.label === 'SALES' || group.label === 'OPERATIONS') return null
+      if (group.label === 'OVERVIEW') {
+        items = items.filter(i => i.name === 'Dashboard')
+      }
+      if (group.label === 'MANAGEMENT') {
+        items = items.filter(i => ['Users', 'Onboarding Approvals', 'HR', 'Settings'].includes(i.name))
+      }
+    } else if (isExecutive) {
       // Hide all management oversight items and policy approvals for Executives
       if (group.label === 'MANAGEMENT') return null
       if (group.label === 'OPERATIONS') {
@@ -92,7 +102,7 @@ export default function Sidebar() {
         items = items.filter(i => ['Leads', 'CRM', 'Quotations', 'Policies', 'Renewals', 'Follow-ups'].includes(i.name))
       }
       if (group.label === 'MANAGEMENT') {
-        items = items.filter(i => ['Policy Approvals', 'Users', 'Settings'].includes(i.name))
+        items = items.filter(i => ['Policy Approvals', 'Onboarding Approvals', 'Users', 'Settings'].includes(i.name))
       }
     }
 
@@ -172,7 +182,13 @@ export default function Sidebar() {
             )}
           </div>
           <button 
-            onClick={() => supabase.auth.signOut().then(() => window.location.href = '/login')}
+            onClick={() => {
+              if (typeof window !== 'undefined') {
+                sessionStorage.setItem('torque_explicit_logout', 'true')
+                try { localStorage.removeItem('toque_user_profile') } catch {}
+              }
+              supabase.auth.signOut().then(() => window.location.href = '/login')
+            }}
             className="w-full flex items-center gap-3 px-4 py-3 text-sm font-semibold text-red-600 hover:bg-red-50 rounded-xl transition-all"
           >
             Logout

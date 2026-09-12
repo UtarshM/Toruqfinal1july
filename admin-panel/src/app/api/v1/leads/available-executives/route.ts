@@ -47,7 +47,7 @@ export async function GET(req: NextRequest) {
 
     const leaveRequests = await prisma.leaveRequest.findMany({
       where: {
-        status: 'approved',
+        status: { in: ['approved', 'Approved'] },
         OR: [
           {
             startDate: { lte: monthEnd },

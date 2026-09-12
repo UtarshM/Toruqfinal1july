@@ -17,6 +17,7 @@ export default function Header() {
   const notifRef = useRef<HTMLDivElement>(null)
   const prevCountRef = useRef<number | null>(null)
   const knownIdsRef = useRef<Set<string>>(new Set())
+  const visTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   // Web Audio Notification Chime (Crystal clear ding-dong)
   const playNotificationSound = () => {
@@ -54,7 +55,7 @@ export default function Header() {
   }
 
   const fetchNotifications = async () => {
-    if (typeof window !== 'undefined' && !navigator.onLine) return
+    if (typeof window !== 'undefined' && (!navigator.onLine || document.hidden)) return
     try {
       setLoadingNotifs(true)
       const data = await fetchApi('/api/v1/notifications?limit=20', {}, 1)
@@ -63,9 +64,9 @@ export default function Header() {
         const currentUnread = data.unreadCount || 0
 
         // Check if new unread notification arrived
-        if (prevCountRef.current !== null && currentUnread > prevCountRef.current) {
+        if (prevCountRef.current !== null && currentUnread > prevCountRef.current && !document.hidden) {
           playNotificationSound()
-        } else if (prevCountRef.current !== null) {
+        } else if (prevCountRef.current !== null && !document.hidden) {
           // Also check if any new notification id appeared
           const hasNewId = notifs.some((n: any) => !knownIdsRef.current.has(n.id))
           if (hasNewId && currentUnread > 0) {
@@ -82,18 +83,34 @@ export default function Header() {
     } catch (error: any) {
       // Quietly ignore network offline errors during dev server restart or sleep
       if (error?.name !== 'AbortError') {
-        console.warn('[notifications] Notification sync paused (server reconnecting)')
+        console.warn('[notifications] Notification sync paused')
       }
     } finally {
       setLoadingNotifs(false)
     }
   }
 
-  // Fetch notifications on mount and poll every 10 seconds for real-time responsiveness
+  // Fetch notifications on mount, poll every 30s when active, and fetch with debounce when tab becomes visible
   useEffect(() => {
     fetchNotifications()
-    const interval = setInterval(fetchNotifications, 10000)
-    return () => clearInterval(interval)
+    const interval = setInterval(fetchNotifications, 30000)
+
+    const handleVisibilityChange = () => {
+      if (!document.hidden && typeof navigator !== 'undefined' && navigator.onLine) {
+        // Debounce slightly to allow network stack and session sync to settle
+        if (visTimeoutRef.current) clearTimeout(visTimeoutRef.current)
+        visTimeoutRef.current = setTimeout(() => {
+          fetchNotifications()
+        }, 3000)
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    return () => {
+      clearInterval(interval)
+      if (visTimeoutRef.current) clearTimeout(visTimeoutRef.current)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
   }, [])
 
   // Close dropdown on outside click
@@ -152,6 +169,10 @@ export default function Header() {
 
   const handleLogout = async () => {
     try {
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('torque_explicit_logout', 'true')
+        try { localStorage.removeItem('toque_user_profile') } catch {}
+      }
       await supabase.auth.signOut()
       router.push('/login')
     } catch (error) {

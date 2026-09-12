@@ -43,8 +43,8 @@ export default function OnboardingApprovalsScreen() {
   const [remarkVisible, setRemarkVisible] = useState(false);
   const [remarkText, setRemarkText] = useState('');
 
-  const roleUpper = currentUser?.role?.toUpperCase();
-  const isAdmin = roleUpper === 'SUPER ADMIN' || roleUpper === 'ADMIN' || roleUpper === 'HR';
+  const roleUpper = (currentUser?.role || '').toUpperCase();
+  const isAdmin = roleUpper === 'SUPER ADMIN' || roleUpper === 'ADMIN' || roleUpper === 'HR' || roleUpper === 'HR MANAGER' || roleUpper === 'MANAGER';
 
   // Load cache on mount
   useEffect(() => {

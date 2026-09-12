@@ -2,6 +2,38 @@ import { NextRequest, NextResponse } from 'next/server'
 import { validateAuth } from '@/lib/auth-guard'
 import prisma from '@/lib/prisma'
 
+function formatToDateMonthYear(dateVal: any): string {
+  if (!dateVal) return ''
+  const str = String(dateVal).trim()
+  if (!str || str === 'N/A' || str === 'NA') return ''
+
+  const dmyMatch = str.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/)
+  if (dmyMatch) {
+    const dd = dmyMatch[1].padStart(2, '0')
+    const mm = dmyMatch[2].padStart(2, '0')
+    const yyyy = dmyMatch[3]
+    return `${dd}/${mm}/${yyyy}`
+  }
+
+  const ymdMatch = str.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})/)
+  if (ymdMatch) {
+    const yyyy = ymdMatch[1]
+    const mm = ymdMatch[2].padStart(2, '0')
+    const dd = ymdMatch[3].padStart(2, '0')
+    return `${dd}/${mm}/${yyyy}`
+  }
+
+  const parsed = new Date(str)
+  if (!isNaN(parsed.getTime())) {
+    const dd = String(parsed.getDate()).padStart(2, '0')
+    const mm = String(parsed.getMonth() + 1).padStart(2, '0')
+    const yyyy = parsed.getFullYear()
+    return `${dd}/${mm}/${yyyy}`
+  }
+
+  return str
+}
+
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -51,8 +83,8 @@ export async function GET(
         status: 'Draft',
         formData: {
           policyType: '',
-          customerType: 'existing',
-          customerCategory: 'MVC',
+          customerType: 'Existing',
+          customerCategory: 'OPC-Our Premium Customer',
           regNo: lead.vehicleNo || '',
           rate: '',
           rateConfirmationSS: 'YES',
@@ -61,21 +93,23 @@ export async function GET(
           otherWorks: '',
           paymentMode: 'cash',
           ncb: 'with ncb',
-          expDate: lead.expiryDate ? new Date(lead.expiryDate).toISOString().split('T')[0] : '',
+          expDate: lead.expiryDate ? formatToDateMonthYear(lead.expiryDate) : '',
           mobileNo1: lead.clientPhone || '',
           mobileNo2: cf.phone2 || cf.mobile2 || '',
           ncbConfirmation: 'Yes',
           impDateMsgSS: 'Yes',
-          hpDetails: 'as per rc',
+          hpDetails: 'As per RC',
           vehiclePhoto: 'n.a.',
           bodyTypeMatched: 'n.a.',
           googleFormSubmitted: 'YES',
           noJackCoverConfirmationSS: 'N.A.',
           idvBreakup: '',
           newName: '',
-          inspectionStatus: 'Not Required',
+          dueDate: '',
+          inspectionStatus: 'Not Applicable',
           mparivahanRcStatus: '',
-          amountDueDateMsgSS: ''
+          amountDueDateMsgSS: '',
+          creditPaymentMsg: ''
         },
         documents: [],
         compiledPdfUrl: null,

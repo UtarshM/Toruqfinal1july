@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
       const altAuth = await validateAuth(req)
       if (!altAuth.error && altAuth.context) {
         const role = altAuth.context.role?.toUpperCase()
-        if (role === 'SUPER ADMIN' || role === 'ADMIN' || role === 'HR MANAGER') {
+        if (role === 'SUPER ADMIN' || role === 'ADMIN' || role === 'HR MANAGER' || role === 'MANAGER') {
           context = altAuth.context
           error = undefined
           isMinimized = false
@@ -48,8 +48,8 @@ export async function GET(req: NextRequest) {
     const isManager = context?.role?.toUpperCase() === 'MANAGER'
     const where: any = {}
     
-    // If user is a manager, only show their team
-    if (isManager) {
+    // If user is a manager, only show their team (unless viewing onboarding requests who don't have an assigned manager yet)
+    if (isManager && !isOnboarding) {
       where.managerId = context!.userId
     }
 

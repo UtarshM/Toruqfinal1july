@@ -13,7 +13,7 @@ export async function GET(
   try {
     const { id } = await params;
     const userRole = context.role?.toUpperCase()
-    const isAllowedRole = userRole === 'SUPER ADMIN' || userRole === 'ADMIN' || userRole === 'HR MANAGER'
+    const isAllowedRole = userRole === 'SUPER ADMIN' || userRole === 'ADMIN' || userRole === 'HR MANAGER' || userRole === 'MANAGER'
 
     if (context.userId !== id && !context.permissions.includes('users.view') && !isAllowedRole) {
       return NextResponse.json({ error: 'Forbidden: Missing users.view permission' }, { status: 403 })
@@ -59,11 +59,13 @@ export async function PATCH(
 
     const isSelf = context.userId === id;
     const isEditingSensitiveFields = roleId !== undefined || managerId !== undefined || isActive !== undefined || extraPermissionIds !== undefined;
+    const userRole = context.role?.toUpperCase()
+    const isAllowedRole = userRole === 'SUPER ADMIN' || userRole === 'ADMIN' || userRole === 'HR MANAGER' || userRole === 'MANAGER'
 
-    if (isSelf && isEditingSensitiveFields && !context.permissions.includes('users.edit')) {
+    if (isSelf && isEditingSensitiveFields && !context.permissions.includes('users.edit') && !isAllowedRole) {
       return NextResponse.json({ error: 'Forbidden: Cannot modify own role or administrative fields' }, { status: 403 })
     }
-    if (!isSelf && !context.permissions.includes('users.edit')) {
+    if (!isSelf && !context.permissions.includes('users.edit') && !isAllowedRole) {
       return NextResponse.json({ error: 'Forbidden: Missing users.edit permission' }, { status: 403 })
     }
 
@@ -125,7 +127,17 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { error } = await validateAuth(req, 'users.delete')
+  let { error, context } = await validateAuth(req, 'users.delete')
+  if (error) {
+    const altAuth = await validateAuth(req)
+    if (!altAuth.error && altAuth.context) {
+      const userRole = altAuth.context.role?.toUpperCase()
+      if (userRole === 'SUPER ADMIN' || userRole === 'ADMIN' || userRole === 'HR MANAGER' || userRole === 'MANAGER') {
+        error = undefined
+        context = altAuth.context
+      }
+    }
+  }
   if (error) return error
 
   try {
