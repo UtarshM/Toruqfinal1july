@@ -338,6 +338,15 @@ function inferHeaderFromColumnData(values: any[], colIndex: number): string {
     })
   }
 
+  // Import progress state for large spreadsheets (e.g. 70k+ rows)
+  const [importProgress, setImportProgress] = useState<{
+    current: number
+    total: number
+    percent: number
+    batch: number
+    totalBatches: number
+  } | null>(null)
+
   const executeImport = async () => {
     const mappedLeads = getMappedData()
     const requiredMapping = mappings.find(m => m.required && !m.mappedHeader)
@@ -371,32 +380,66 @@ function inferHeaderFromColumnData(values: any[], colIndex: number): string {
       localStorage.setItem('torque_active_import_name', batchName)
     }
 
-    try {
-      const res = await apiFetch('/api/v1/leads/import', {
-        method: 'POST',
-        headers: {
-          'x-import-job-id': jobId
-        },
-        body: JSON.stringify({
-          leads: validLeads,
-          importName: batchName
-        })
-      })
+    // Chunk size: 2,000 leads per HTTP payload to stay well within 4.5MB limits on Vercel/Next.js
+    const CHUNK_SIZE = 2000
+    const totalBatches = Math.ceil(validLeads.length / CHUNK_SIZE)
+    let totalImported = 0
+    let totalUpdated = 0
 
-      const data = await res.json()
-      if (!res.ok) {
-        throw new Error(data.error || 'Import transaction failed.')
+    try {
+      for (let i = 0; i < validLeads.length; i += CHUNK_SIZE) {
+        const chunk = validLeads.slice(i, i + CHUNK_SIZE)
+        const currentBatch = Math.floor(i / CHUNK_SIZE) + 1
+        const processedSoFar = Math.min(i + chunk.length, validLeads.length)
+        const percent = Math.round((processedSoFar / validLeads.length) * 100)
+
+        setImportProgress({
+          current: processedSoFar,
+          total: validLeads.length,
+          percent,
+          batch: currentBatch,
+          totalBatches
+        })
+
+        const res = await apiFetch('/api/v1/leads/import', {
+          method: 'POST',
+          headers: {
+            'x-import-job-id': `${jobId}_b${currentBatch}`
+          },
+          body: JSON.stringify({
+            leads: chunk,
+            importName: batchName
+          })
+        })
+
+        // Defensive response reading: get body as text first to prevent JSON parse errors on HTML / 413
+        const resText = await res.text()
+        let data: any = {}
+        try {
+          data = JSON.parse(resText)
+        } catch {
+          throw new Error(resText || `Server returned error status: ${res.status}`)
+        }
+
+        if (!res.ok) {
+          throw new Error(data.error || `Import failed on batch ${currentBatch}/${totalBatches}.`)
+        }
+
+        totalImported += data.stats?.valid ?? data.importedCount ?? chunk.length
+        totalUpdated += data.stats?.duplicates ?? data.updatedCount ?? 0
       }
 
       setImportResult({
         total: validLeads.length,
-        importedCount: data.stats?.valid ?? data.importedCount ?? validLeads.length,
-        updatedCount: data.stats?.duplicates ?? data.updatedCount ?? 0
+        importedCount: totalImported,
+        updatedCount: totalUpdated
       })
+      setImportProgress(null)
       setStep(3)
     } catch (err: any) {
-      console.error(err)
+      console.error('Import error:', err)
       setError(err.message || 'An error occurred during import.')
+      setImportProgress(null)
     } finally {
       setLoading(false)
     }
@@ -836,24 +879,53 @@ function inferHeaderFromColumnData(values: any[], colIndex: number): string {
                 ))}
               </div>
 
-              {/* Action Buttons */}
-              <div className="pt-4 border-t border-slate-100 flex gap-3">
-                <button
-                  onClick={() => setStep(1)}
-                  className="flex-1 py-3 text-xs font-bold text-slate-400 hover:bg-slate-50 rounded-xl transition-all cursor-pointer"
-                  disabled={loading}
-                >
-                  Change File
-                </button>
-                
-                <button
-                  onClick={executeImport}
-                  disabled={loading}
-                  className="flex-[2] flex items-center justify-center gap-2 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-md shadow-blue-100 transition-all disabled:opacity-50 cursor-pointer"
-                >
-                  {loading ? 'Syncing...' : 'Run Import'}
-                  {!loading && <ArrowRight size={14} />}
-                </button>
+              {/* Action Buttons & Progress Bar */}
+              <div className="pt-4 border-t border-slate-100 space-y-3">
+                {importProgress && (
+                  <div className="bg-blue-50/70 border border-blue-100 rounded-2xl p-4 space-y-2 animate-in fade-in duration-200">
+                    <div className="flex justify-between items-center text-xs font-bold text-blue-900">
+                      <span>Importing Batch {importProgress.batch} of {importProgress.totalBatches}</span>
+                      <span>{importProgress.percent}% ({importProgress.current.toLocaleString()} / {importProgress.total.toLocaleString()} rows)</span>
+                    </div>
+                    <div className="w-full bg-blue-200/50 rounded-full h-2 overflow-hidden">
+                      <div
+                        className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                        style={{ width: `${importProgress.percent}%` }}
+                      />
+                    </div>
+                    <p className="text-[11px] text-blue-600/80 text-center font-medium">
+                      Chunking data securely to prevent server payload timeouts. Please do not close this window.
+                    </p>
+                  </div>
+                )}
+
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setStep(1)}
+                    className="flex-1 py-3 text-xs font-bold text-slate-400 hover:bg-slate-50 rounded-xl transition-all cursor-pointer"
+                    disabled={loading}
+                  >
+                    Change File
+                  </button>
+                  
+                  <button
+                    onClick={executeImport}
+                    disabled={loading}
+                    className="flex-[2] flex items-center justify-center gap-2 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-md shadow-blue-100 transition-all disabled:opacity-50 cursor-pointer"
+                  >
+                    {loading ? (
+                      <span className="flex items-center gap-2">
+                        <RefreshCw size={14} className="animate-spin" />
+                        {importProgress ? `Importing ${importProgress.percent}%...` : 'Syncing...'}
+                      </span>
+                    ) : (
+                      <>
+                        Run Import
+                        <ArrowRight size={14} />
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
             </div>
 
