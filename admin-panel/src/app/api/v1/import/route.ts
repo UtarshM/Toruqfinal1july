@@ -8,44 +8,102 @@ import { getUploadDir } from '@/lib/upload-helper'
 function parseImportedDate(dateVal: any): Date | null {
   if (!dateVal) return null
 
-  // If it's already a Date object
+  // If already a Date object
   if (dateVal instanceof Date) {
-    return isNaN(dateVal.getTime()) ? null : dateVal
+    if (isNaN(dateVal.getTime())) return null
+    let ms = dateVal.getTime()
+    const utcHours = dateVal.getUTCHours()
+    const utcMins = dateVal.getUTCMinutes()
+    // SheetJS IST artifact: 18:28-18:30 UTC represents midnight (00:00) IST
+    if (utcHours === 18 && utcMins >= 28 && utcMins <= 30) {
+      ms += (30 - utcMins) * 60 * 1000 + 1000
+    }
+    const d = new Date(ms)
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Kolkata',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).format(d).split('-')
+    const y = parseInt(parts[0], 10)
+    const m = parseInt(parts[1], 10) - 1
+    const day = parseInt(parts[2], 10)
+    return new Date(Date.UTC(y, m, day, 12, 0, 0))
   }
 
-  // If it is a string representing a Date
-  if (typeof dateVal === 'string') {
-    const trimmed = dateVal.trim()
-    if (!trimmed) return null
-
-    // Check if it's in DD/MM/YYYY or DD-MM-YYYY format
-    const slashOrDashRegex = /^(\d{1,2})[/\-](\d{1,2})[/\-](\d{4})$/
-    const match = trimmed.match(slashOrDashRegex)
-    if (match) {
-      const day = parseInt(match[1], 10)
-      const month = parseInt(match[2], 10) - 1 // JS months are 0-11
-      const year = parseInt(match[3], 10)
-      
-      const d = new Date(year, month, day)
+  // If numeric Excel serial (e.g. 46322)
+  if (typeof dateVal === 'number') {
+    if (dateVal > 10000 && dateVal < 80000) {
+      const d = new Date(Math.round((dateVal - 25569) * 86400 * 1000))
       if (!isNaN(d.getTime())) {
-        return d
+        const y = d.getUTCFullYear()
+        const m = d.getUTCMonth()
+        const day = d.getUTCDate()
+        return new Date(Date.UTC(y, m, day, 12, 0, 0))
       }
     }
+  }
 
-    // Try standard JavaScript date parsing
-    const d = new Date(trimmed)
-    if (!isNaN(d.getTime())) {
-      return d
+  const str = String(dateVal).trim()
+  if (!str || str === 'N/A' || str === 'NA') return null
+
+  // Numeric excel serial in string form (e.g. "46322")
+  if (/^\d{5}$/.test(str)) {
+    const num = parseInt(str, 10)
+    if (num > 10000 && num < 80000) {
+      const d = new Date(Math.round((num - 25569) * 86400 * 1000))
+      if (!isNaN(d.getTime())) {
+        const y = d.getUTCFullYear()
+        const m = d.getUTCMonth()
+        const day = d.getUTCDate()
+        return new Date(Date.UTC(y, m, day, 12, 0, 0))
+      }
     }
   }
 
-  // If it's a number (Excel serial date representation, e.g. 45138)
-  if (typeof dateVal === 'number') {
-    // Excel base date is Dec 30, 1899
-    const d = new Date((dateVal - 25569) * 86400 * 1000)
-    if (!isNaN(d.getTime())) {
-      return d
+  // DD/MM/YYYY or DD-MM-YYYY (or with 2-digit year)
+  const dmyMatch = str.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2,4})/)
+  if (dmyMatch) {
+    const day = parseInt(dmyMatch[1], 10)
+    const month = parseInt(dmyMatch[2], 10) - 1
+    let year = parseInt(dmyMatch[3], 10)
+    if (year < 100) year += year < 50 ? 2000 : 1900
+    if (month >= 0 && month < 12 && day >= 1 && day <= 31) {
+      return new Date(Date.UTC(year, month, day, 12, 0, 0))
     }
+  }
+
+  // Pure YYYY-MM-DD or YYYY/MM/DD
+  const pureYmdMatch = str.match(/^(\d{4})[/\-.](\d{1,2})[/\-.](\d{1,2})(?:$|\s)/)
+  if (pureYmdMatch) {
+    const year = parseInt(pureYmdMatch[1], 10)
+    const month = parseInt(pureYmdMatch[2], 10) - 1
+    const day = parseInt(pureYmdMatch[3], 10)
+    if (month >= 0 && month < 12 && day >= 1 && day <= 31) {
+      return new Date(Date.UTC(year, month, day, 12, 0, 0))
+    }
+  }
+
+  // ISO string or other date formats (evaluate in Asia/Kolkata IST)
+  const nativeParsed = new Date(str)
+  if (!isNaN(nativeParsed.getTime())) {
+    let ms = nativeParsed.getTime()
+    const utcHours = nativeParsed.getUTCHours()
+    const utcMins = nativeParsed.getUTCMinutes()
+    if (utcHours === 18 && utcMins >= 28 && utcMins <= 30) {
+      ms += (30 - utcMins) * 60 * 1000 + 1000
+    }
+    const d = new Date(ms)
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Kolkata',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).format(d).split('-')
+    const y = parseInt(parts[0], 10)
+    const m = parseInt(parts[1], 10) - 1
+    const day = parseInt(parts[2], 10)
+    return new Date(Date.UTC(y, m, day, 12, 0, 0))
   }
 
   return null

@@ -15,24 +15,58 @@ export const maxDuration = 60
 
 function parseImportedDate(dateVal: any): Date | null {
   if (!dateVal) return null
+
+  // If already a Date object
   if (dateVal instanceof Date) {
-    return isNaN(dateVal.getTime()) ? null : dateVal
+    if (isNaN(dateVal.getTime())) return null
+    let ms = dateVal.getTime()
+    const utcHours = dateVal.getUTCHours()
+    const utcMins = dateVal.getUTCMinutes()
+    // SheetJS IST artifact: 18:28-18:30 UTC represents midnight (00:00) IST
+    if (utcHours === 18 && utcMins >= 28 && utcMins <= 30) {
+      ms += (30 - utcMins) * 60 * 1000 + 1000
+    }
+    const d = new Date(ms)
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Kolkata',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).format(d).split('-')
+    const y = parseInt(parts[0], 10)
+    const m = parseInt(parts[1], 10) - 1
+    const day = parseInt(parts[2], 10)
+    return new Date(Date.UTC(y, m, day, 12, 0, 0))
   }
+
+  // If numeric Excel serial (e.g. 46322)
   if (typeof dateVal === 'number') {
     if (dateVal > 10000 && dateVal < 80000) {
       const d = new Date(Math.round((dateVal - 25569) * 86400 * 1000))
-      return isNaN(d.getTime()) ? null : d
+      if (!isNaN(d.getTime())) {
+        const y = d.getUTCFullYear()
+        const m = d.getUTCMonth()
+        const day = d.getUTCDate()
+        return new Date(Date.UTC(y, m, day, 12, 0, 0))
+      }
     }
   }
 
   const str = String(dateVal).trim()
-  if (!str) return null
+  if (!str || str === 'N/A' || str === 'NA') return null
 
-  // Check numeric excel serial in string form (e.g. "45678")
+  // Numeric excel serial in string form (e.g. "46322")
   if (/^\d{5}$/.test(str)) {
     const num = parseInt(str, 10)
-    const d = new Date(Math.round((num - 25569) * 86400 * 1000))
-    if (!isNaN(d.getTime())) return d
+    if (num > 10000 && num < 80000) {
+      const d = new Date(Math.round((num - 25569) * 86400 * 1000))
+      if (!isNaN(d.getTime())) {
+        const y = d.getUTCFullYear()
+        const m = d.getUTCMonth()
+        const day = d.getUTCDate()
+        return new Date(Date.UTC(y, m, day, 12, 0, 0))
+      }
+    }
   }
 
   // DD/MM/YYYY or DD-MM-YYYY (or with 2-digit year)
@@ -43,27 +77,41 @@ function parseImportedDate(dateVal: any): Date | null {
     let year = parseInt(dmyMatch[3], 10)
     if (year < 100) year += year < 50 ? 2000 : 1900
     if (month >= 0 && month < 12 && day >= 1 && day <= 31) {
-      const d = new Date(year, month, day)
-      if (!isNaN(d.getTime())) return d
+      return new Date(Date.UTC(year, month, day, 12, 0, 0))
     }
   }
 
-  // YYYY-MM-DD or YYYY/MM/DD
-  const ymdMatch = str.match(/^(\d{4})[/\-.](\d{1,2})[/\-.](\d{1,2})/)
-  if (ymdMatch) {
-    const year = parseInt(ymdMatch[1], 10)
-    const month = parseInt(ymdMatch[2], 10) - 1
-    const day = parseInt(ymdMatch[3], 10)
+  // Pure YYYY-MM-DD or YYYY/MM/DD
+  const pureYmdMatch = str.match(/^(\d{4})[/\-.](\d{1,2})[/\-.](\d{1,2})(?:$|\s)/)
+  if (pureYmdMatch) {
+    const year = parseInt(pureYmdMatch[1], 10)
+    const month = parseInt(pureYmdMatch[2], 10) - 1
+    const day = parseInt(pureYmdMatch[3], 10)
     if (month >= 0 && month < 12 && day >= 1 && day <= 31) {
-      const d = new Date(year, month, day)
-      if (!isNaN(d.getTime())) return d
+      return new Date(Date.UTC(year, month, day, 12, 0, 0))
     }
   }
 
-  // Fallback native Date.parse
+  // ISO string or other date formats (evaluate in Asia/Kolkata IST)
   const nativeParsed = new Date(str)
   if (!isNaN(nativeParsed.getTime())) {
-    return nativeParsed
+    let ms = nativeParsed.getTime()
+    const utcHours = nativeParsed.getUTCHours()
+    const utcMins = nativeParsed.getUTCMinutes()
+    if (utcHours === 18 && utcMins >= 28 && utcMins <= 30) {
+      ms += (30 - utcMins) * 60 * 1000 + 1000
+    }
+    const d = new Date(ms)
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Kolkata',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).format(d).split('-')
+    const y = parseInt(parts[0], 10)
+    const m = parseInt(parts[1], 10) - 1
+    const day = parseInt(parts[2], 10)
+    return new Date(Date.UTC(y, m, day, 12, 0, 0))
   }
 
   return null
@@ -228,9 +276,9 @@ export async function POST(req: NextRequest) {
           })
         }
       } else if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
-        const workbook = XLSX.read(buffer, { type: 'buffer' })
+        const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: false })
         const firstSheet = workbook.SheetNames[0]
-        const rawAoa: any[][] = XLSX.utils.sheet_to_json(workbook.Sheets[firstSheet], { header: 1, defval: '' })
+        const rawAoa: any[][] = XLSX.utils.sheet_to_json(workbook.Sheets[firstSheet], { header: 1, defval: '', raw: false })
         if (rawAoa.length > 1) {
           const headers: string[] = rawAoa[0].map((h: any) => String(h || '').trim())
           for (let c = 0; c < headers.length; c++) {

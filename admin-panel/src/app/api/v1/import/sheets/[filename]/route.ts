@@ -44,7 +44,18 @@ export async function GET(
       try {
         const d = new Date(date)
         if (isNaN(d.getTime())) return '—'
-        return d.toLocaleDateString('en-IN')
+        let ms = d.getTime()
+        const utcHours = d.getUTCHours()
+        const utcMinutes = d.getUTCMinutes()
+        if (utcHours === 18 && utcMinutes >= 28 && utcMinutes <= 30) {
+          ms += (30 - utcMinutes) * 60 * 1000 + 1000
+        }
+        return new Intl.DateTimeFormat('en-IN', {
+          timeZone: 'Asia/Kolkata',
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric'
+        }).format(new Date(ms))
       } catch {
         return '—'
       }

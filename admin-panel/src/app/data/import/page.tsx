@@ -233,10 +233,12 @@ function inferHeaderFromColumnData(values: any[], colIndex: number): string {
     reader.onload = (e) => {
       try {
         const data = e.target?.result
-        const workbook = XLSX.read(data, { type: 'binary', cellDates: true })
+        // Read without cellDates to avoid SheetJS subtracting browser timezone offset (e.g. -5.5h in IST)
+        // raw: false ensures formatted date strings (e.g. 27-10-2026 or 27/10/2026) are preserved exactly
+        const workbook = XLSX.read(data, { type: 'binary', cellDates: false })
         const firstSheetName = workbook.SheetNames[0]
         const worksheet = workbook.Sheets[firstSheetName]
-        const rawAoa: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' })
+        const rawAoa: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '', raw: false })
 
         if (rawAoa.length > 1) {
           const headers: string[] = rawAoa[0].map((h: any) => String(h || '').trim())

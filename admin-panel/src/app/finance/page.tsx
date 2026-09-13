@@ -229,8 +229,8 @@ export default function FinancePage() {
       r.pendingAmount,
       `"${r.paymentStatus}"`,
       `"${r.paymentMode}"`,
-      r.issueDate ? new Date(r.issueDate).toLocaleDateString() : '',
-      r.expiryDate ? new Date(r.expiryDate).toLocaleDateString() : ''
+      r.issueDate ? new Date(r.issueDate).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' }) : '',
+      r.expiryDate ? new Date(r.expiryDate).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' }) : ''
     ].join(','))
 
     const csvContent = [headers.join(','), ...rows].join('\n')
@@ -514,7 +514,7 @@ export default function FinancePage() {
                         <td className="px-6 py-4 font-semibold text-slate-600">
                           {item.expiryDate ? (
                             <div>
-                              <p className="font-bold text-slate-800">{new Date(item.expiryDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</p>
+                              <p className="font-bold text-slate-800">{new Date(item.expiryDate).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric' })}</p>
                               <p className="text-[10px] text-blue-600 font-bold">1-Year Term</p>
                             </div>
                           ) : 'N/A'}

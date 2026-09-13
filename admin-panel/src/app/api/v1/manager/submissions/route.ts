@@ -8,6 +8,7 @@ function formatToDateMonthYear(dateVal: any): string {
   const str = String(dateVal).trim()
   if (!str || str === 'N/A' || str === 'NA') return ''
 
+  // Pure DD/MM/YYYY or DD-MM-YYYY
   const dmyMatch = str.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/)
   if (dmyMatch) {
     const dd = dmyMatch[1].padStart(2, '0')
@@ -16,20 +17,30 @@ function formatToDateMonthYear(dateVal: any): string {
     return `${dd}/${mm}/${yyyy}`
   }
 
-  const ymdMatch = str.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})/)
-  if (ymdMatch) {
-    const yyyy = ymdMatch[1]
-    const mm = ymdMatch[2].padStart(2, '0')
-    const dd = ymdMatch[3].padStart(2, '0')
+  // Pure YYYY-MM-DD
+  const pureYmdMatch = str.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})$/)
+  if (pureYmdMatch) {
+    const yyyy = pureYmdMatch[1]
+    const mm = pureYmdMatch[2].padStart(2, '0')
+    const dd = pureYmdMatch[3].padStart(2, '0')
     return `${dd}/${mm}/${yyyy}`
   }
 
-  const parsed = new Date(str)
-  if (!isNaN(parsed.getTime())) {
-    const dd = String(parsed.getDate()).padStart(2, '0')
-    const mm = String(parsed.getMonth() + 1).padStart(2, '0')
-    const yyyy = parsed.getFullYear()
-    return `${dd}/${mm}/${yyyy}`
+  // Parse as Date with IST (Asia/Kolkata) timezone
+  const d = new Date(dateVal)
+  if (!isNaN(d.getTime())) {
+    let ms = d.getTime()
+    const utcHours = d.getUTCHours()
+    const utcMinutes = d.getUTCMinutes()
+    if (utcHours === 18 && utcMinutes >= 28 && utcMinutes <= 30) {
+      ms += (30 - utcMinutes) * 60 * 1000 + 1000
+    }
+    return new Intl.DateTimeFormat('en-IN', {
+      timeZone: 'Asia/Kolkata',
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric'
+    }).format(new Date(ms))
   }
 
   return str

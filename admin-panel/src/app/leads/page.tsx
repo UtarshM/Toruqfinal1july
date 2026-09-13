@@ -34,6 +34,43 @@ const WHATSAPP_TEMPLATES = [
   }
 ]
 
+export function formatDateIST(dateVal: any): string {
+  if (!dateVal) return '—'
+  const d = new Date(dateVal)
+  if (isNaN(d.getTime())) return String(dateVal)
+  let ms = d.getTime()
+  const utcHours = d.getUTCHours()
+  const utcMins = d.getUTCMinutes()
+  // Adjust for legacy SheetJS IST artifact (18:28-18:30 UTC represents midnight IST)
+  if (utcHours === 18 && utcMins >= 28 && utcMins <= 30) {
+    ms += (30 - utcMins) * 60 * 1000 + 1000
+  }
+  return new Intl.DateTimeFormat('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric'
+  }).format(new Date(ms))
+}
+
+export function toISTDateInput(dateVal: any): string {
+  if (!dateVal) return ''
+  const d = new Date(dateVal)
+  if (isNaN(d.getTime())) return ''
+  let ms = d.getTime()
+  const utcHours = d.getUTCHours()
+  const utcMins = d.getUTCMinutes()
+  if (utcHours === 18 && utcMins >= 28 && utcMins <= 30) {
+    ms += (30 - utcMins) * 60 * 1000 + 1000
+  }
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).format(new Date(ms))
+}
+
 export default function LeadsPage() {
   const { user } = useAuth()
   const router = useRouter()
@@ -350,8 +387,8 @@ export default function LeadsPage() {
       clientPhone: detailedLead.clientPhone || '',
       clientEmail: detailedLead.clientEmail || '',
       vehicleNo: detailedLead.vehicleNo || '',
-      registrationDate: detailedLead.registrationDate ? new Date(detailedLead.registrationDate).toISOString().split('T')[0] : '',
-      expiryDate: detailedLead.expiryDate ? new Date(detailedLead.expiryDate).toISOString().split('T')[0] : '',
+      registrationDate: toISTDateInput(detailedLead.registrationDate),
+      expiryDate: toISTDateInput(detailedLead.expiryDate),
       gvw: detailedLead.gvw || '',
       existingAgent: detailedLead.existingAgent || '',
       city: detailedLead.city || '',
@@ -534,7 +571,7 @@ export default function LeadsPage() {
       return '—'
     }
     if (colKey === 'regNo') return lead.vehicleNo || '—'
-    if (colKey === 'expiryDate') return lead.expiryDate ? new Date(lead.expiryDate).toLocaleDateString() : '—'
+    if (colKey === 'expiryDate') return formatDateIST(lead.expiryDate)
     if (colKey === 'gvw') return lead.gvw || '—'
     if (colKey === 'cat') return lead.customFields?.cat || lead.customFields?.category || lead.messageTemplate || '—'
     if (colKey === 'model') return lead.customFields?.model || lead.customFields?.vehicleModel || '—'
@@ -668,7 +705,7 @@ export default function LeadsPage() {
     if (!template) return ''
     
     const formattedExpiry = detailedLead.expiryDate 
-      ? new Date(detailedLead.expiryDate).toLocaleDateString()
+      ? formatDateIST(detailedLead.expiryDate)
       : 'N/A'
       
     if (template.id === 'renewal') {
@@ -1590,8 +1627,8 @@ export default function LeadsPage() {
                                   <DetailItem label="Mo No. 2" value={getLeadColumnValue(detailedLead, 'phone2')} isCopyable />
                                   <DetailItem label="Gross Vehicle Weight (GVW)" value={detailedLead.gvw || 'N/A'} />
                                   <DetailItem label="City / VIA" value={getLeadColumnValue(detailedLead, 'via')} />
-                                  <DetailItem label="Previous Policy Expiry Date" value={detailedLead.expiryDate ? new Date(detailedLead.expiryDate).toLocaleDateString() : 'N/A'} />
-                                  <DetailItem label="Created On" value={new Date(detailedLead.createdAt).toLocaleDateString()} />
+                                  <DetailItem label="Previous Policy Expiry Date" value={formatDateIST(detailedLead.expiryDate)} />
+                                  <DetailItem label="Created On" value={formatDateIST(detailedLead.createdAt)} />
                                 </div>
                               </div>
                             )
