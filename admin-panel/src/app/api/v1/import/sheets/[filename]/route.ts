@@ -3,6 +3,7 @@ import { validateAuth } from '@/lib/auth-guard'
 import prisma from '@/lib/prisma'
 import path from 'path'
 import fs from 'fs'
+import * as XLSX from 'xlsx'
 import { getUploadDir } from '@/lib/upload-helper'
 
 export async function GET(
@@ -23,17 +24,18 @@ export async function GET(
     const safeFileName = path.basename(filename)
 
     // Extract batch name
-    const batchSlug = safeFileName
+    const batchName = safeFileName
       .replace(/^import_/, '')
       .replace(/\.(xlsx|csv)$/, '')
 
     const url = new URL(req.url)
     const pageParam = url.searchParams.get('page')
     const limitParam = url.searchParams.get('limit')
+    const allParam = url.searchParams.get('all')
     const searchParam = url.searchParams.get('search')?.toLowerCase().trim() || ''
 
+    const shouldPaginate = pageParam || allParam !== 'true'
     const page = Math.max(1, parseInt(pageParam || '1') || 1)
-    // Cap limit at 200 to guarantee fast sub-100ms response time
     const limit = Math.min(200, Math.max(10, parseInt(limitParam || '100') || 100))
 
     const formatDate = (date: any) => {
@@ -47,37 +49,20 @@ export async function GET(
       }
     }
 
-    if (batchSlug === 'renewals') {
-      const renewalWhere: any = {}
-      if (searchParam) {
-        renewalWhere.OR = [
-          { clientName: { contains: searchParam, mode: 'insensitive' } },
-          { clientPhone: { contains: searchParam, mode: 'insensitive' } },
-          { vehicleNo: { contains: searchParam, mode: 'insensitive' } },
-          { policyNumber: { contains: searchParam, mode: 'insensitive' } },
-          { provider: { contains: searchParam, mode: 'insensitive' } }
-        ]
-      }
-
-      const [totalRows, renewals] = await Promise.all([
-        prisma.renewalRecord.count({ where: renewalWhere }),
-        prisma.renewalRecord.findMany({
-          where: renewalWhere,
-          include: {
-            assignee: true,
-            createdBy: true,
-            lead: {
-              include: {
-                assignee: true
-              }
-            },
-            policy: true
+    if (batchName === 'renewals') {
+      const renewals = await prisma.renewalRecord.findMany({
+        include: {
+          assignee: true,
+          createdBy: true,
+          lead: {
+            include: {
+              assignee: true
+            }
           },
-          orderBy: { policyEndDate: 'asc' },
-          skip: (page - 1) * limit,
-          take: limit
-        })
-      ])
+          policy: true
+        },
+        orderBy: { policyEndDate: 'asc' }
+      })
 
       const headers = [
         'Client Name', 'Phone Number', 'Vehicle No', 'Policy Number', 'Provider / Insurer',
@@ -86,7 +71,7 @@ export async function GET(
         'Assigned Year', 'Renewed Date', 'Refused Date', 'Created At'
       ]
 
-      const dataRows = renewals.map(r => {
+      let dataRows = renewals.map(r => {
         const leadCf = r.lead?.customFields as any
         const pdfUrl = (Array.isArray(r.documents) && r.documents[0]) || 
                        leadCf?.policySubmission?.issuedPolicyPdfUrl || 
@@ -114,6 +99,32 @@ export async function GET(
         ]
       })
 
+      if (searchParam) {
+        dataRows = dataRows.filter(r =>
+          r.some(c => String(c || '').toLowerCase().includes(searchParam))
+        )
+      }
+
+      if (shouldPaginate) {
+        const totalRows = dataRows.length
+        const totalPages = Math.ceil(totalRows / limit)
+        const start = (page - 1) * limit
+        const paginatedRows = dataRows.slice(start, start + limit)
+
+        return NextResponse.json({
+          fileName: safeFileName,
+          downloadUrl: `/api/v1/import/sheets/download?file=${safeFileName}`,
+          headers,
+          rows: paginatedRows,
+          agentColIdx: -1,
+          agentRowsCount: 0,
+          totalRows,
+          totalPages,
+          page,
+          limit
+        })
+      }
+
       return NextResponse.json({
         fileName: safeFileName,
         downloadUrl: `/api/v1/import/sheets/download?file=${safeFileName}`,
@@ -121,35 +132,29 @@ export async function GET(
         rows: dataRows,
         agentColIdx: -1,
         agentRowsCount: 0,
-        totalRows,
-        totalPages: Math.ceil(totalRows / limit) || 1,
-        page,
-        limit
+        totalRows: dataRows.length
       })
     }
 
-    // Standard Leads Mode
+    // Default leads mode
     const whereClause: any = { status: { not: 'Trashed' }, deletedAt: null }
-
-    if (batchSlug !== 'leads' && batchSlug !== 'all_leads' && batchSlug !== 'direct_entry') {
+    
+    if (batchName !== 'leads' && batchName !== 'all_leads' && batchName !== 'direct_entry') {
       const dbBatches = await prisma.lead.groupBy({
         by: ['importName'],
         where: { status: { not: 'Trashed' }, deletedAt: null }
       })
-      let actualImportName = batchSlug
+      let actualImportName = batchName
       for (const b of dbBatches) {
         if (!b.importName) continue
         const clean = String(b.importName).trim().replace(/[^a-zA-Z0-9_-]/g, '_')
-        if (clean === batchSlug || b.importName === batchSlug || b.importName.toLowerCase() === batchSlug.toLowerCase()) {
+        if (clean === batchName) {
           actualImportName = b.importName
           whereClause.importName = actualImportName
           break
         }
       }
-      if (!whereClause.importName) {
-        whereClause.importName = actualImportName
-      }
-    } else if (batchSlug === 'direct_entry') {
+    } else if (batchName === 'direct_entry') {
       whereClause.importName = null
     }
 
@@ -179,26 +184,37 @@ export async function GET(
       ]
     }
 
-    // Execute paginated queries in parallel
-    const [totalRows, leadsList, agentRowsCount] = await Promise.all([
-      prisma.lead.count({ where: whereClause }),
-      prisma.lead.findMany({
+    let totalRows = 0
+    let leadsList = []
+
+    if (shouldPaginate) {
+      const [count, leads] = await Promise.all([
+        prisma.lead.count({ where: whereClause }),
+        prisma.lead.findMany({
+          where: whereClause,
+          include: { assignee: true },
+          orderBy: [
+            { expiryDate: 'desc' },
+            { createdAt: 'desc' }
+          ],
+          skip: (page - 1) * limit,
+          take: limit
+        })
+      ])
+      totalRows = count
+      leadsList = leads
+    } else {
+      const leads = await prisma.lead.findMany({
         where: whereClause,
-        include: { assignee: { select: { fullName: true } } },
+        include: { assignee: true },
         orderBy: [
           { expiryDate: 'desc' },
           { createdAt: 'desc' }
-        ],
-        skip: (page - 1) * limit,
-        take: limit
-      }),
-      prisma.lead.count({
-        where: {
-          ...whereClause,
-          existingAgent: 'Agent'
-        }
+        ]
       })
-    ])
+      totalRows = leads.length
+      leadsList = leads
+    }
 
     const standardHeaders = [
       'Client Name', 'Phone Number', 'REG NO / Vehicle No', 'Policy Expiry Date',
@@ -261,6 +277,12 @@ export async function GET(
     })
 
     const agentColIdx = headers.findIndex(h => h.toLowerCase().trim() === 'agent')
+    const agentRowsCount = await prisma.lead.count({
+      where: {
+        ...whereClause,
+        existingAgent: 'Agent'
+      }
+    })
 
     return NextResponse.json({
       fileName: safeFileName,
@@ -270,9 +292,9 @@ export async function GET(
       agentColIdx,
       agentRowsCount,
       totalRows,
-      totalPages: Math.ceil(totalRows / limit) || 1,
-      page,
-      limit
+      totalPages: shouldPaginate ? Math.ceil(totalRows / limit) : 1,
+      page: shouldPaginate ? page : 1,
+      limit: shouldPaginate ? limit : totalRows
     })
   } catch (err: any) {
     console.error('[sheets-preview] Error:', err)
@@ -300,94 +322,47 @@ export async function DELETE(
     const uploadDir = getUploadDir()
     const filePath = path.join(uploadDir, safeFileName)
 
-    const batchSlug = safeFileName
+    // Extract batch name
+    const batchName = safeFileName
       .replace(/^import_/, '')
+      .replace(/_\d+\.(xlsx|csv)$/, '')
       .replace(/\.(xlsx|csv)$/, '')
 
     const deleteLeads = req.nextUrl.searchParams.get('deleteLeads') !== 'false'
 
     let deletedLeadsCount = 0
-    if (deleteLeads) {
-      if (safeFileName === 'import_renewals.xlsx' || batchSlug === 'renewals') {
+    if (deleteLeads && batchName && batchName !== 'all_leads') {
+      if (batchName === 'renewals') {
         const delRenewals = await prisma.renewalRecord.deleteMany({}).catch(() => ({ count: 0 }))
         deletedLeadsCount = delRenewals.count
-      } else if (safeFileName === 'import_leads.xlsx' || batchSlug === 'leads' || batchSlug === 'all_leads') {
-        const softDel = await prisma.lead.updateMany({
-          where: { status: { not: 'Trashed' }, deletedAt: null },
-          data: { status: 'Trashed', deletedAt: new Date(), deletedBy: context.userId }
-        })
-        deletedLeadsCount = softDel.count
       } else {
-        const dbBatches = await prisma.lead.groupBy({ by: ['importName'] })
-        let targetImportName: string | null = batchSlug
-        const isDirectEntry = batchSlug === 'direct_entry'
+        const cleanBatch = batchName.replace(/[^a-zA-Z0-9]/g, '').toLowerCase()
+        const allLeads = await prisma.lead.findMany({ select: { id: true, importName: true } })
+        const matchedLeadIds = allLeads
+          .filter(l => {
+            if (!l.importName) return false
+            const dbClean = l.importName.replace(/[^a-zA-Z0-9]/g, '').toLowerCase()
+            return dbClean === cleanBatch || dbClean.includes(cleanBatch) || cleanBatch.includes(dbClean)
+          })
+          .map(l => l.id)
 
-        const matchedBatch = dbBatches.find(b => {
-          if (!b.importName) return false
-          const clean = String(b.importName).trim().replace(/[^a-zA-Z0-9_-]/g, '_')
-          return clean === batchSlug || b.importName === batchSlug || b.importName.toLowerCase() === batchSlug.toLowerCase()
-        })
+import { deleteLeadsWithCascade } from '@/lib/lead-delete-helper'
 
-        if (matchedBatch && matchedBatch.importName) {
-          targetImportName = matchedBatch.importName
-        }
-
-        const leadWhere = isDirectEntry
-          ? { importName: null, status: { not: 'Trashed' }, deletedAt: null }
-          : { importName: targetImportName, status: { not: 'Trashed' }, deletedAt: null }
-
-        const batchLeads = await prisma.lead.findMany({
-          where: leadWhere,
-          select: { id: true }
-        })
-        const batchLeadIds = batchLeads.map(l => l.id)
-
-        if (batchLeadIds.length > 0) {
-          const chunkSize = 500
-          for (let i = 0; i < batchLeadIds.length; i += chunkSize) {
-            const chunk = batchLeadIds.slice(i, i + chunkSize)
-
-            await Promise.allSettled([
-              prisma.policy.updateMany({ where: { leadId: { in: chunk } }, data: { leadId: null } }),
-              prisma.quotation.updateMany({ where: { leadId: { in: chunk } }, data: { leadId: null } }),
-              prisma.claim.updateMany({ where: { leadId: { in: chunk } }, data: { leadId: null } }),
-              prisma.customer.updateMany({ where: { leadId: { in: chunk } }, data: { leadId: null } }),
-              prisma.renewalRecord.updateMany({ where: { leadId: { in: chunk } }, data: { leadId: null } }),
-              prisma.fitnessWork.updateMany({ where: { leadId: { in: chunk } }, data: { leadId: null } }),
-              prisma.rTOWork.updateMany({ where: { leadId: { in: chunk } }, data: { leadId: null } }),
-              prisma.visit.updateMany({ where: { leadId: { in: chunk } }, data: { leadId: null } }),
-              prisma.loan.updateMany({ where: { leadId: { in: chunk } }, data: { leadId: null } })
-            ])
-
-            await Promise.allSettled([
-              prisma.leadAssignment.deleteMany({ where: { leadId: { in: chunk } } }),
-              prisma.leadStatusHistory.deleteMany({ where: { leadId: { in: chunk } } }),
-              prisma.leadWhatsAppLog.deleteMany({ where: { leadId: { in: chunk } } }),
-              prisma.call.deleteMany({ where: { leadId: { in: chunk } } }),
-              prisma.followUp.deleteMany({ where: { leadId: { in: chunk } } }),
-              prisma.activityLog.deleteMany({ where: { entityId: { in: chunk } } })
-            ])
-
-            const delResult = await prisma.lead.deleteMany({
-              where: { id: { in: chunk } }
-            }).catch(async () => {
-              return await prisma.lead.updateMany({
-                where: { id: { in: chunk } },
-                data: { status: 'Trashed', deletedAt: new Date(), deletedBy: context.userId }
-              })
-            })
-
-            deletedLeadsCount += delResult.count
-          }
+        if (matchedLeadIds.length > 0) {
+          const count = await deleteLeadsWithCascade(matchedLeadIds)
+          deletedLeadsCount = count
         }
       }
     }
 
-    try {
-      if (fs.existsSync(filePath)) {
+    // Delete file from disk
+    if (fs.existsSync(filePath)) {
+      try {
         fs.unlinkSync(filePath)
+      } catch (err: any) {
+        console.warn('[sheets DELETE] Failed to unlink file:', err)
       }
-    } catch {}
+    }
 
     return NextResponse.json({
       success: true,
@@ -425,44 +400,47 @@ export async function PATCH(
     }
 
     const trimmedNewName = newBatchName.trim()
+    const uploadDir = getUploadDir()
+    const oldFilePath = path.join(uploadDir, oldFileName)
 
+    // Cannot rename master files
     if (oldFileName === 'import_leads.xlsx' || oldFileName === 'import_renewals.xlsx') {
       return NextResponse.json({ error: 'Cannot rename master system spreadsheets' }, { status: 400 })
     }
 
+    if (!fs.existsSync(oldFilePath)) {
+      return NextResponse.json({ error: 'Source spreadsheet file not found' }, { status: 404 })
+    }
+
+    // Extract old batch name
     const oldBatchName = oldFileName
       .replace(/^import_/, '')
       .replace(/\.(xlsx|csv)$/, '')
       .replace(/_/g, ' ')
 
+    const cleanNewName = trimmedNewName.replace(/[^a-zA-Z0-9_-]/g, '_')
+    const ext = path.extname(oldFileName)
+    const newFileName = `import_${cleanNewName}${ext}`
+    const newFilePath = path.join(uploadDir, newFileName)
+
+    if (fs.existsSync(newFilePath) && oldFileName !== newFileName) {
+      return NextResponse.json({ error: 'A spreadsheet with this name already exists' }, { status: 400 })
+    }
+
     // 1. Update database leads importName field
     const updateResult = await prisma.lead.updateMany({
-      where: {
-        OR: [
-          { importName: oldBatchName },
-          { importName: { contains: oldBatchName, mode: 'insensitive' } }
-        ]
-      },
+      where: { importName: oldBatchName },
       data: { importName: trimmedNewName }
     })
 
-    // 2. Rename file on disk if exists
-    try {
-      const uploadDir = getUploadDir()
-      const oldFilePath = path.join(uploadDir, oldFileName)
-      const cleanNewName = trimmedNewName.replace(/[^a-zA-Z0-9_-]/g, '_')
-      const ext = path.extname(oldFileName) || '.xlsx'
-      const newFileName = `import_${cleanNewName}${ext}`
-      const newFilePath = path.join(uploadDir, newFileName)
-
-      if (fs.existsSync(oldFilePath) && oldFilePath !== newFilePath) {
-        fs.renameSync(oldFilePath, newFilePath)
-      }
-    } catch {}
+    // 2. Rename file on disk
+    fs.renameSync(oldFilePath, newFilePath)
 
     return NextResponse.json({
       success: true,
       oldFileName,
+      newFileName,
+      oldBatchName,
       newBatchName: trimmedNewName,
       updatedLeadsCount: updateResult.count,
       message: `Spreadsheet renamed successfully to "${trimmedNewName}". ${updateResult.count} leads updated.`

@@ -26,62 +26,61 @@ export async function GET(req: NextRequest) {
     const filePath = path.join(uploadDir, safeFileName)
 
     // Extract batch name
-    const batchSlug = safeFileName
+    const batchName = safeFileName
       .replace(/^import_/, '')
       .replace(/\.(xlsx|csv)$/, '')
 
-    let fileBuffer: Buffer | null = null
-
-    if (fs.existsSync(filePath)) {
-      try {
-        fileBuffer = fs.readFileSync(filePath)
-      } catch {}
-    }
-
-    if (!fileBuffer) {
-      if (batchSlug === 'renewals' || safeFileName === 'import_renewals.xlsx') {
+    if (!fs.existsSync(filePath)) {
+      if (batchName === 'renewals') {
         const { syncRenewalsSpreadsheet } = await import('@/lib/spreadsheet-sync')
-        const res = await syncRenewalsSpreadsheet(uploadDir)
-        if (res && res.buffer) {
-          fileBuffer = res.buffer
-        }
+        await syncRenewalsSpreadsheet(uploadDir).catch(() => {})
       } else {
         const prisma = (await import('@/lib/prisma')).default
+        // Find all distinct active import batches from database
         const dbBatches = await prisma.lead.groupBy({
           by: ['importName'],
-          where: { status: { not: 'Trashed' }, deletedAt: null }
+          where: {
+            status: { not: 'Trashed' },
+            deletedAt: null
+          }
         })
 
-        let actualImportName: string | null = batchSlug
+        let actualImportName = batchName
+        let foundMatch = false
 
-        if (batchSlug === 'leads' || batchSlug === 'all_leads') {
-          actualImportName = 'leads'
-        } else if (batchSlug === 'direct_entry') {
-          actualImportName = 'direct_entry'
-        } else {
-          for (const batch of dbBatches) {
-            if (!batch.importName) continue
-            const clean = String(batch.importName).trim().replace(/[^a-zA-Z0-9_-]/g, '_')
-            if (clean === batchSlug || batch.importName === batchSlug || batch.importName.toLowerCase() === batchSlug.toLowerCase()) {
-              actualImportName = batch.importName
-              break
-            }
+        // Check for exact sanitized match
+        for (const batch of dbBatches) {
+          if (!batch.importName) continue
+          const clean = String(batch.importName).trim().replace(/[^a-zA-Z0-9_-]/g, '_')
+          if (clean === batchName) {
+            actualImportName = batch.importName
+            foundMatch = true
+            break
           }
         }
 
-        const { syncSpreadsheetForBatch } = await import('@/lib/spreadsheet-sync')
-        const res = await syncSpreadsheetForBatch(actualImportName, uploadDir)
-        if (res && res.buffer) {
-          fileBuffer = res.buffer
+        // Fallback for special batches like 'all_leads', 'leads' or 'direct_entry'
+        if (!foundMatch) {
+          if (batchName === 'all_leads' || batchName === 'leads' || batchName === 'direct_entry') {
+            foundMatch = true
+            actualImportName = 'leads'
+          }
+        }
+
+        if (foundMatch) {
+          const { syncSpreadsheetForBatch } = await import('@/lib/spreadsheet-sync')
+          await syncSpreadsheetForBatch(actualImportName, uploadDir).catch(() => {})
         }
       }
     }
 
-    if (!fileBuffer) {
-      return NextResponse.json({ error: 'Spreadsheet file could not be generated' }, { status: 404 })
+    if (!fs.existsSync(filePath)) {
+      return NextResponse.json({ error: 'Spreadsheet file not found' }, { status: 404 })
     }
 
-    return new NextResponse(new Uint8Array(fileBuffer), {
+    const fileBuffer = fs.readFileSync(filePath)
+    
+    return new NextResponse(fileBuffer, {
       headers: {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         'Content-Disposition': `attachment; filename="${safeFileName}"`,

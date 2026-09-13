@@ -69,8 +69,7 @@ export async function GET(req: NextRequest) {
     const employeeWhere: any = {
       role: {
         name: { notIn: ['Super Admin', 'Admin', 'Viewer'] }
-      },
-      isActive: true
+      }
     }
     
     if (roleUpper === 'MANAGER') {
@@ -84,22 +83,21 @@ export async function GET(req: NextRequest) {
         fullName: true,
         _count: {
           select: {
-            assignedLeads: { where: { status: { not: 'Trashed' }, deletedAt: null } },
+            assignedLeads: true,
             calls: true,
           }
         },
         assignedLeads: {
-          where: { status: { not: 'Trashed' }, deletedAt: null },
-          select: { status: true },
-          take: 500
+          select: {
+            status: true
+          }
         }
-      },
-      take: 50
+      }
     })
 
     const formattedEmployeeStats = employeeStats.map(emp => {
       const converted = emp.assignedLeads.filter(l => l.status === 'Converted').length
-      const pending = emp.assignedLeads.filter(l => l.status === 'New' || l.status === 'Follow-up' || l.status === 'Follow Up').length
+      const pending = emp.assignedLeads.filter(l => l.status === 'New' || l.status === 'Follow-up').length
       return {
         id: emp.id,
         name: emp.fullName,

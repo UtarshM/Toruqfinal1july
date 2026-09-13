@@ -34,6 +34,8 @@ export async function GET(req: NextRequest) {
   }
 }
 
+import { deleteLeadsWithCascade } from '@/lib/lead-delete-helper'
+
 // POST: Restore leads from trash
 export async function POST(req: NextRequest) {
   const { error } = await validateAuth(req, 'lead.edit')
@@ -47,10 +49,28 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'ids array is required' }, { status: 400 })
     }
 
-    const formattedIds = ids.map(id => `'${id}'`).join(',')
-    await prisma.$executeRawUnsafe(
-      `UPDATE "leads" SET "deletedAt" = NULL, "deletedBy" = NULL, "status" = 'New' WHERE "id"::text IN (${formattedIds})`
-    )
+    // Restore in chunks of 500
+    const CHUNK_SIZE = 500
+    for (let i = 0; i < ids.length; i += CHUNK_SIZE) {
+      const chunk = ids.slice(i, i + CHUNK_SIZE)
+      await prisma.lead.updateMany({
+        where: { id: { in: chunk } },
+        data: {
+          deletedAt: null,
+          deletedBy: null,
+          status: 'New'
+        }
+      }).catch(async () => {
+        // Fallback if deletedBy column does not exist in schema
+        await prisma.lead.updateMany({
+          where: { id: { in: chunk } },
+          data: {
+            deletedAt: null,
+            status: 'New'
+          }
+        })
+      })
+    }
 
     return NextResponse.json({ success: true, count: ids.length })
   } catch (error: any) {
@@ -72,12 +92,9 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: 'ids array is required' }, { status: 400 })
     }
 
-    const formattedIds = ids.map(id => `'${id}'`).join(',')
-    await prisma.$executeRawUnsafe(
-      `DELETE FROM "leads" WHERE "id"::text IN (${formattedIds})`
-    )
+    const count = await deleteLeadsWithCascade(ids)
 
-    return NextResponse.json({ success: true, count: ids.length })
+    return NextResponse.json({ success: true, count })
   } catch (error: any) {
     console.error('Trash Permanent DELETE Error:', error)
     return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 })

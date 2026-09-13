@@ -11,6 +11,8 @@ import { notifyRole } from '@/lib/notify'
 import { syncSpreadsheetForBatch } from '@/lib/spreadsheet-sync'
 import { getUploadDir } from '@/lib/upload-helper'
 
+export const maxDuration = 60
+
 function parseImportedDate(dateVal: any): Date | null {
   if (!dateVal) return null
   if (dateVal instanceof Date) {
@@ -275,15 +277,48 @@ export async function POST(req: NextRequest) {
     const errorRows: any[] = []
     const vehicleNumbers = new Set<string>()
 
-    // Fetch active existing vehicle numbers and known agent phone numbers using lightweight select
-    const existingLeads = await prisma.lead.findMany({
+    // Collect candidate vehicle numbers and phones from THIS chunk only to perform fast indexed query
+    const candidateVehicles = new Set<string>()
+    const candidatePhones = new Set<string>()
+
+    for (const r of rawData) {
+      if (typeof r === 'object' && r !== null) {
+        for (const [k, v] of Object.entries(r)) {
+          if (!v) continue
+          const vStr = String(v).trim()
+          if (!vStr) continue
+          const kLower = k.toLowerCase()
+          if (kLower.includes('vehic') || kLower.includes('reg') || kLower === 'vno') {
+            candidateVehicles.add(vStr.toUpperCase())
+          }
+          const digits = vStr.replace(/\D/g, '')
+          if (digits.length >= 10 && digits.length <= 13) {
+            candidatePhones.add(digits.slice(-10))
+            candidatePhones.add(vStr)
+          }
+        }
+      }
+    }
+
+    const orClauses: any[] = []
+    if (candidateVehicles.size > 0) {
+      orClauses.push({ vehicleNo: { in: Array.from(candidateVehicles), mode: 'insensitive' } })
+    }
+    if (candidatePhones.size > 0) {
+      orClauses.push({ clientPhone: { in: Array.from(candidatePhones) } })
+    }
+
+    // High-speed indexed query for this chunk only (takes < 20ms instead of full table scan)
+    const existingLeads = orClauses.length > 0 ? await prisma.lead.findMany({
       where: {
         deletedAt: null,
-        status: { not: 'Trashed' }
+        status: { not: 'Trashed' },
+        OR: orClauses
       },
       select: { vehicleNo: true, clientPhone: true, existingAgent: true }
-    })
-    const existingVehicles = new Set(existingLeads.map(l => l.vehicleNo).filter(Boolean))
+    }) : []
+
+    const existingVehicles = new Set(existingLeads.map(l => l.vehicleNo ? l.vehicleNo.toUpperCase() : null).filter(Boolean))
     const agentPhoneSet = new Set<string>()
     existingLeads
       .filter(l => (l.existingAgent === 'Agent' || (l.existingAgent && l.existingAgent.toLowerCase().includes('agent'))) && l.clientPhone)
@@ -575,7 +610,13 @@ export async function POST(req: NextRequest) {
       }).catch(() => {})
     }
 
-    // 6. Direct Spreadsheet Synchronization: Not needed in import chunk (sheets API reads DB dynamically)
+    // 6. Spreadsheet Synchronization on Disk (only if requested, not on every streaming chunk)
+    const shouldSyncDisk = req.headers.get('x-sync-disk') === 'true'
+    if (shouldSyncDisk) {
+      const uploadDir = getUploadDir()
+      await syncSpreadsheetForBatch(batchImportName, uploadDir).catch(e => console.warn('[leads/import] Batch sync warning:', e))
+      await syncSpreadsheetForBatch('all_leads', uploadDir).catch(e => console.warn('[leads/import] Master sync warning:', e))
+    }
 
     // 7. Complete Job Tracking
     const duplicateCount = errorRows.filter(e => e.error.includes('Duplicate')).length

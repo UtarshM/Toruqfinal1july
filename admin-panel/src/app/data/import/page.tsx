@@ -9,7 +9,7 @@ import * as XLSX from 'xlsx'
 import {
   UploadCloud, FileSpreadsheet, Map, CheckCircle2, AlertCircle,
   ArrowRight, RefreshCw, Database, Eye, Info,
-  Edit, Trash2, Plus, Save, X, Check, Lock, Sparkles
+  Edit, Trash2, Plus, Save, X, Check, Lock
 } from 'lucide-react'
 
 interface ColumnMapping {
@@ -64,15 +64,14 @@ export default function LeadImportPage() {
   const router = useRouter()
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const roleName = (typeof user?.role === 'string' ? user.role : user?.role?.name || '').toUpperCase()
+  const roleName = user?.role?.name?.toUpperCase() || ''
   const isExecutive = roleName.endsWith('EXECUTIVE') || roleName === 'VIEWER'
-  const isAdmin = roleName.includes('ADMIN') || roleName.includes('SUPER') || roleName.includes('MANAGER') || !roleName
+  const isAdmin = roleName === 'ADMIN' || roleName === 'SUPER ADMIN'
 
   // States
   const [step, setStep] = useState(1) // 1: Upload, 2: Map & Preview, 3: Completed
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [successMessage, setSuccessMessage] = useState<string | null>(null)
   const [fileName, setFileName] = useState('')
   
   // Data State
@@ -316,6 +315,7 @@ function inferHeaderFromColumnData(values: any[], colIndex: number): string {
 
   // Validate the mapped rows
   const getMappedData = () => {
+    const effectiveImportName = importName.trim() || fileName.replace(/\.[^/.]+$/, '').trim() || 'Leads Batch'
     return parsedRows.map((row) => {
       const mappedRecord: any = {}
       mappings.forEach(m => {
@@ -331,10 +331,8 @@ function inferHeaderFromColumnData(values: any[], colIndex: number): string {
           mappedRecord[k] = row[k]
         }
       })
-      // Attach importName to each lead
-      if (importName.trim()) {
-        mappedRecord.importName = importName.trim()
-      }
+      // Always attach importName to each lead
+      mappedRecord.importName = effectiveImportName
       return mappedRecord
     })
   }
@@ -381,8 +379,8 @@ function inferHeaderFromColumnData(values: any[], colIndex: number): string {
       localStorage.setItem('torque_active_import_name', batchName)
     }
 
-    // Chunk size: 2,000 leads per HTTP payload to stay well within 4.5MB limits on Vercel/Next.js
-    const CHUNK_SIZE = 2000
+    // Chunk size: 500 leads per HTTP payload for fast ~400ms serverless execution without timeouts
+    const CHUNK_SIZE = 500
     const totalBatches = Math.ceil(validLeads.length / CHUNK_SIZE)
     let totalImported = 0
     let totalUpdated = 0
@@ -391,6 +389,7 @@ function inferHeaderFromColumnData(values: any[], colIndex: number): string {
       for (let i = 0; i < validLeads.length; i += CHUNK_SIZE) {
         const chunk = validLeads.slice(i, i + CHUNK_SIZE)
         const currentBatch = Math.floor(i / CHUNK_SIZE) + 1
+        const isLastBatch = currentBatch === totalBatches
         const processedSoFar = Math.min(i + chunk.length, validLeads.length)
         const percent = Math.round((processedSoFar / validLeads.length) * 100)
 
@@ -402,32 +401,52 @@ function inferHeaderFromColumnData(values: any[], colIndex: number): string {
           totalBatches
         })
 
-        const res = await apiFetch('/api/v1/leads/import', {
-          method: 'POST',
-          headers: {
-            'x-import-job-id': `${jobId}_b${currentBatch}`
-          },
-          body: JSON.stringify({
-            leads: chunk,
-            importName: batchName
-          })
-        })
+        // Retry mechanism (up to 2 retries per chunk for temporary network blips)
+        let attempt = 0
+        let success = false
+        let lastErr = ''
 
-        // Defensive response reading: get body as text first to prevent JSON parse errors on HTML / 413
-        const resText = await res.text()
-        let data: any = {}
-        try {
-          data = JSON.parse(resText)
-        } catch {
-          throw new Error(resText || `Server returned error status: ${res.status}`)
+        while (attempt < 2 && !success) {
+          attempt++
+          try {
+            const res = await apiFetch('/api/v1/leads/import', {
+              method: 'POST',
+              headers: {
+                'x-import-job-id': `${jobId}_b${currentBatch}`,
+                ...(isLastBatch ? { 'x-sync-disk': 'true' } : {})
+              },
+              body: JSON.stringify({
+                leads: chunk,
+                importName: batchName
+              })
+            })
+
+            const resText = await res.text()
+            let data: any = {}
+            try {
+              data = JSON.parse(resText)
+            } catch {
+              throw new Error(resText || `Server returned error status: ${res.status}`)
+            }
+
+            if (!res.ok) {
+              throw new Error(data.error || `Batch ${currentBatch}/${totalBatches} failed with status ${res.status}`)
+            }
+
+            totalImported += data.stats?.valid ?? data.importedCount ?? chunk.length
+            totalUpdated += data.stats?.duplicates ?? data.updatedCount ?? 0
+            success = true
+          } catch (chunkErr: any) {
+            lastErr = chunkErr?.message || 'Network error'
+            if (attempt < 2) {
+              await new Promise(r => setTimeout(r, 1000))
+            }
+          }
         }
 
-        if (!res.ok) {
-          throw new Error(data.error || `Import failed on batch ${currentBatch}/${totalBatches}.`)
+        if (!success) {
+          throw new Error(`Import stopped on batch ${currentBatch}/${totalBatches}: ${lastErr}`)
         }
-
-        totalImported += data.stats?.valid ?? data.importedCount ?? chunk.length
-        totalUpdated += data.stats?.duplicates ?? data.updatedCount ?? 0
       }
 
       setImportResult({
@@ -469,47 +488,20 @@ function inferHeaderFromColumnData(values: any[], colIndex: number): string {
     setMappings(prev => prev.filter(m => m.dbField !== dbField))
   }
 
-  const mapAllRemainingFields = () => {
-    setError(null)
-    setSuccessMessage(null)
+  const addAllUnmappedSheetColumns = () => {
+    const mappedHeaders = new Set(mappings.map(m => m.mappedHeader).filter(Boolean))
+    const unmappedSheetHeaders = headers.filter(h => !mappedHeaders.has(h))
 
-    if (headers.length === 0) {
-      setError('No spreadsheet columns detected to map.')
+    if (unmappedSheetHeaders.length === 0) {
+      setError('All spreadsheet columns are already mapped!')
       return
     }
 
-    // 1. Auto-match any existing unmapped fields in mappings with unmapped sheet headers
-    const currentMappedHeaders = new Set(mappings.map(m => m.mappedHeader).filter(Boolean))
-    const updatedMappings = mappings.map(m => {
-      if (m.mappedHeader) return m
-      // Look for a matching unmapped header
-      const match = headers.find(h => {
-        if (currentMappedHeaders.has(h)) return false
-        const hNorm = h.toLowerCase().replace(/[^a-z0-9]/g, '')
-        const labelNorm = m.label.toLowerCase().replace(/[^a-z0-9]/g, '')
-        const fieldNorm = m.dbField.toLowerCase().replace(/[^a-z0-9]/g, '')
-        return hNorm === labelNorm || hNorm === fieldNorm || h.toLowerCase().trim() === m.label.toLowerCase().trim()
-      })
-      if (match) {
-        currentMappedHeaders.add(match)
-        return { ...m, mappedHeader: match }
-      }
-      return m
-    })
-
-    // 2. Identify all sheet headers that are still unmapped
-    const finalMappedHeaders = new Set(updatedMappings.map(m => m.mappedHeader).filter(Boolean))
-    const unmappedSheetHeaders = headers.filter(h => !finalMappedHeaders.has(h))
-
-    // 3. Automatically add new mappings for ALL remaining unmapped headers
-    const newlyAdded: ColumnMapping[] = unmappedSheetHeaders.map(h => {
+    const newMappings: ColumnMapping[] = unmappedSheetHeaders.map(h => {
       const key = sanitizeFieldKey(h) || 'customCol'
       let uniqueKey = key
       let counter = 1
-      while (
-        updatedMappings.some(m => m.dbField === uniqueKey) ||
-        newlyAdded?.some(m => m.dbField === uniqueKey)
-      ) {
+      while (mappings.some(m => m.dbField === uniqueKey)) {
         uniqueKey = `${key}_${counter++}`
       }
       return {
@@ -520,19 +512,12 @@ function inferHeaderFromColumnData(values: any[], colIndex: number): string {
       }
     })
 
-    const finalMappings = [...updatedMappings, ...newlyAdded]
-    setMappings(finalMappings)
-    const totalMapped = finalMappings.filter(m => m.mappedHeader).length
-    setSuccessMessage(`All ${totalMapped} spreadsheet columns are now mapped and ready to import!`)
-    setTimeout(() => setSuccessMessage(null), 4000)
+    setMappings(prev => [...prev, ...newMappings])
+    setError(null)
   }
 
-  // Backward compatibility alias
-  const addAllUnmappedSheetColumns = mapAllRemainingFields
-
-  const addMapping = (customHeader?: string, customLabel?: string) => {
-    const headerToMap = customHeader || selectedSheetHeader
-    const label = (customLabel || newColLabel.trim() || headerToMap).trim()
+  const addMapping = () => {
+    const label = newColLabel.trim() || selectedSheetHeader
     if (!label) {
       setError('Please select a spreadsheet column or enter a column label.')
       return
@@ -549,7 +534,7 @@ function inferHeaderFromColumnData(values: any[], colIndex: number): string {
       dbField: finalDbField,
       label,
       required: false,
-      mappedHeader: headerToMap || (headers.includes(label) ? label : '')
+      mappedHeader: selectedSheetHeader || (headers.includes(label) ? label : '')
     }
 
     setMappings(prev => [...prev, newField])
@@ -557,8 +542,6 @@ function inferHeaderFromColumnData(values: any[], colIndex: number): string {
     setNewColLabel('')
     setSelectedSheetHeader('')
     setError(null)
-    setSuccessMessage(`Added "${label}" to column mappings.`)
-    setTimeout(() => setSuccessMessage(null), 3000)
   }
 
   const saveMappingsToDatabase = async () => {
@@ -627,41 +610,36 @@ function inferHeaderFromColumnData(values: any[], colIndex: number): string {
             </div>
           </div>
 
-          {/* Action Buttons in Step 2 */}
-          {step === 2 && (
+          {/* Admin Schema Action Button */}
+          {isAdmin && step === 2 && (
             <div className="flex gap-2">
               <button
-                type="button"
-                onClick={mapAllRemainingFields}
-                className="flex items-center gap-1.5 px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition-all cursor-pointer shadow-sm"
+                onClick={addAllUnmappedSheetColumns}
+                className="flex items-center gap-1.5 px-3 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-bold rounded-xl transition-all cursor-pointer border border-blue-200 shadow-sm"
                 title="Automatically map all remaining unmapped columns from your spreadsheet"
               >
-                <Sparkles size={14} className="text-amber-300" />
-                Map All ({headers.filter(h => !mappings.some(m => m.mappedHeader === h)).length})
+                <Plus size={14} />
+                Add All Sheet Columns ({headers.filter(h => !mappings.some(m => m.mappedHeader === h)).length})
               </button>
               <button
-                type="button"
                 onClick={() => setShowAddForm(prev => !prev)}
                 className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-all cursor-pointer border border-slate-200"
               >
                 <Plus size={14} />
                 Add Column
               </button>
-              {isAdmin && (
-                <button
-                  type="button"
-                  onClick={saveMappingsToDatabase}
-                  disabled={savingMappings}
-                  className="flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-all disabled:opacity-50 cursor-pointer shadow-sm"
-                >
-                  {savingMappings ? (
-                    <RefreshCw size={14} className="animate-spin" />
-                  ) : (
-                    <Save size={14} />
-                  )}
-                  {saveSuccess ? 'Saved!' : 'Save Config'}
-                </button>
-              )}
+              <button
+                onClick={saveMappingsToDatabase}
+                disabled={savingMappings}
+                className="flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-all disabled:opacity-50 cursor-pointer shadow-sm"
+              >
+                {savingMappings ? (
+                  <RefreshCw size={14} className="animate-spin" />
+                ) : (
+                  <Save size={14} />
+                )}
+                {saveSuccess ? 'Saved!' : 'Save Config'}
+              </button>
             </div>
           )}
         </div>
@@ -673,18 +651,6 @@ function inferHeaderFromColumnData(values: any[], colIndex: number): string {
               <span>{error}</span>
             </div>
             <button onClick={() => setError(null)} className="text-rose-400 hover:text-rose-600">
-              <X size={16} />
-            </button>
-          </div>
-        )}
-
-        {successMessage && (
-          <div className="bg-blue-50 border border-blue-100 text-blue-700 px-4 py-3 rounded-2xl flex items-center justify-between gap-3 text-sm animate-in fade-in duration-200">
-            <div className="flex items-center gap-3">
-              <CheckCircle2 size={18} className="shrink-0 text-blue-600" />
-              <span className="font-semibold">{successMessage}</span>
-            </div>
-            <button onClick={() => setSuccessMessage(null)} className="text-blue-400 hover:text-blue-600">
               <X size={16} />
             </button>
           </div>
@@ -771,39 +737,17 @@ function inferHeaderFromColumnData(values: any[], colIndex: number): string {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             
             {/* Mappings Form */}
-            <div className="lg:col-span-1 bg-white rounded-2xl border border-slate-100 shadow-sm p-6 space-y-5">
-              {/* Card Header with Stats and Actions */}
-              <div className="flex items-center justify-between pb-4 border-b border-slate-100 gap-2">
+            <div className="lg:col-span-1 bg-white rounded-2xl border border-slate-100 shadow-sm p-6 space-y-6">
+              <div className="flex items-center justify-between pb-4 border-b border-slate-100">
                 <div className="flex items-center gap-2">
-                  <Map size={18} className="text-blue-600 shrink-0" />
+                  <Map size={18} className="text-blue-600" />
                   <h3 className="font-black text-slate-900 text-md">Column Mapping</h3>
-                  <span className="text-[10px] bg-blue-50 text-blue-700 font-bold px-2 py-0.5 rounded-full border border-blue-100 shrink-0">
-                    {mappings.filter(m => m.mappedHeader).length} / {headers.length || mappings.length}
+                </div>
+                {!isAdmin && (
+                  <span className="text-[10px] bg-slate-100 text-slate-500 font-bold px-2 py-0.5 rounded flex items-center gap-1">
+                    <Lock size={10} /> Read Only
                   </span>
-                </div>
-
-                <div className="flex items-center gap-1.5 shrink-0">
-                  {headers.filter(h => !mappings.some(m => m.mappedHeader === h)).length > 0 && (
-                    <button
-                      type="button"
-                      onClick={mapAllRemainingFields}
-                      className="flex items-center gap-1 px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold rounded-lg transition-all shadow-sm cursor-pointer"
-                      title="Automatically map all remaining spreadsheet columns"
-                    >
-                      <Sparkles size={12} className="text-amber-300" />
-                      Map All
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => setShowAddForm(prev => !prev)}
-                    className="flex items-center gap-1 px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold rounded-lg transition-all cursor-pointer border border-slate-200"
-                    title="Add new column"
-                  >
-                    <Plus size={12} />
-                    Add Field
-                  </button>
-                </div>
+                )}
               </div>
 
               {/* Import Name / Sheet Name Input in Step 2 */}
@@ -822,17 +766,11 @@ function inferHeaderFromColumnData(values: any[], colIndex: number): string {
               </div>
 
               {/* Add Column Inline Form */}
-              {showAddForm && (
-                <div className="bg-gradient-to-br from-blue-50/70 to-slate-50 border border-blue-200 rounded-2xl p-4 space-y-3.5 shadow-sm animate-in slide-in-from-top-3 duration-200">
-                  <div className="flex items-center justify-between pb-2 border-b border-blue-100">
-                    <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-                      <Plus size={13} className="text-blue-600" /> Add & Map Column
-                    </h4>
-                    <button
-                      type="button"
-                      onClick={() => setShowAddForm(false)}
-                      className="text-slate-400 hover:text-slate-600 p-0.5 rounded-md hover:bg-slate-200"
-                    >
+              {showAddForm && isAdmin && (
+                <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 space-y-4 shadow-inner animate-in slide-in-from-top-4 duration-200">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">Add Custom Column</h4>
+                    <button onClick={() => setShowAddForm(false)} className="text-slate-400 hover:text-slate-600">
                       <X size={14} />
                     </button>
                   </div>
@@ -840,9 +778,7 @@ function inferHeaderFromColumnData(values: any[], colIndex: number): string {
                   <div className="space-y-3">
                     {headers.length > 0 && (
                       <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                          Select from Spreadsheet ({headers.filter(h => !mappings.some(m => m.mappedHeader === h)).length} unmapped)
-                        </label>
+                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Select Column from Spreadsheet</label>
                         <select
                           value={selectedSheetHeader}
                           onChange={(e) => {
@@ -854,67 +790,39 @@ function inferHeaderFromColumnData(values: any[], colIndex: number): string {
                           }}
                           className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20"
                         >
-                          <option value="">-- Choose Column from Spreadsheet --</option>
-                          {headers.filter(h => !mappings.some(m => m.mappedHeader === h)).length > 0 && (
-                            <optgroup label={`Unmapped Columns (${headers.filter(h => !mappings.some(m => m.mappedHeader === h)).length})`}>
-                              {headers.filter(h => !mappings.some(m => m.mappedHeader === h)).map(h => (
-                                <option key={h} value={h}>★ {h}</option>
-                              ))}
-                            </optgroup>
-                          )}
-                          {headers.filter(h => mappings.some(m => m.mappedHeader === h)).length > 0 && (
-                            <optgroup label="Already Mapped Columns">
-                              {headers.filter(h => mappings.some(m => m.mappedHeader === h)).map(h => (
-                                <option key={h} value={h}>{h} (already mapped)</option>
-                              ))}
-                            </optgroup>
-                          )}
+                          <option value="">-- Pick Spreadsheet Column --</option>
+                          {headers.map(h => (
+                            <option key={h} value={h}>{h}</option>
+                          ))}
                         </select>
                       </div>
                     )}
 
                     <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                        Column Label / Display Name
-                      </label>
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Or Enter Column Label</label>
                       <input
                         type="text"
-                        placeholder="e.g. Engine Number, Model, NCB %, etc."
+                        placeholder="e.g. Engine Number, NCB %, Model"
                         value={newColLabel}
                         onChange={(e) => setNewColLabel(e.target.value)}
                         className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20"
                       />
                     </div>
 
-                    <div className="flex gap-2 pt-1">
-                      <button
-                        type="button"
-                        onClick={() => addMapping()}
-                        className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md shadow-blue-100 transition-all cursor-pointer flex items-center justify-center gap-1.5"
-                      >
-                        <Plus size={14} />
-                        Add & Map Column
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowAddForm(false)
-                          setNewColLabel('')
-                          setSelectedSheetHeader('')
-                        }}
-                        className="px-3 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-xs font-bold transition-all cursor-pointer"
-                      >
-                        Cancel
-                      </button>
-                    </div>
+                    <button
+                      onClick={addMapping}
+                      className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md shadow-blue-100 transition-all cursor-pointer"
+                    >
+                      Add Column Mapping
+                    </button>
                   </div>
                 </div>
               )}
 
               {/* Column Mapping Inputs List */}
-              <div className="space-y-3.5 max-h-[420px] overflow-y-auto pr-1">
+              <div className="space-y-4 max-h-[400px] overflow-y-auto pr-1">
                 {mappings.map((field) => (
-                  <div key={field.dbField} className="space-y-1.5 border-b border-slate-50 pb-3 last:border-0 last:pb-0">
+                  <div key={field.dbField} className="space-y-2 border-b border-slate-50 pb-3 last:border-0 last:pb-0">
                     <div className="flex items-center justify-between">
                       {editingField === field.dbField ? (
                         <div className="flex items-center gap-1.5 w-full">
@@ -926,16 +834,14 @@ function inferHeaderFromColumnData(values: any[], colIndex: number): string {
                             autoFocus
                           />
                           <button
-                            type="button"
                             onClick={() => saveRename(field.dbField)}
-                            className="p-1 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 rounded-lg transition-all cursor-pointer"
+                            className="p-1 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 rounded-lg transition-all"
                           >
                             <Check size={12} />
                           </button>
                           <button
-                            type="button"
                             onClick={cancelEditing}
-                            className="p-1 bg-rose-50 text-rose-600 hover:bg-rose-100 rounded-lg transition-all cursor-pointer"
+                            className="p-1 bg-rose-50 text-rose-600 hover:bg-rose-100 rounded-lg transition-all"
                           >
                             <X size={12} />
                           </button>
@@ -947,38 +853,34 @@ function inferHeaderFromColumnData(values: any[], colIndex: number): string {
                             {field.required && <span className="text-rose-500">*</span>}
                             
                             {/* Badges for custom JSON columns or specific mapped fields */}
-                            {!DB_LEAD_FIELDS.some(d => d.dbField === field.dbField) ? (
+                            {!DB_LEAD_FIELDS.some(d => d.dbField === field.dbField) && (
                               <span className="text-[9px] bg-amber-50 text-amber-600 border border-amber-100 px-1.5 py-0.2 rounded font-medium shrink-0">
                                 Custom Field
                               </span>
-                            ) : !field.mappedHeader ? (
-                              <span className="text-[9px] text-amber-500 font-medium shrink-0">
-                                (Unmapped)
-                              </span>
-                            ) : null}
+                            )}
                           </label>
 
-                          {/* Actions */}
-                          <div className="flex items-center gap-1 shrink-0">
-                            <button
-                              type="button"
-                              onClick={() => startEditing(field.dbField, field.label)}
-                              className="p-1 hover:bg-slate-100 text-slate-400 hover:text-slate-700 rounded transition-all cursor-pointer"
-                              title="Rename column"
-                            >
-                              <Edit size={11} />
-                            </button>
-                            {!field.required && (
+                          {/* Actions (Admins only) */}
+                          {isAdmin && (
+                            <div className="flex items-center gap-1 shrink-0">
                               <button
-                                type="button"
-                                onClick={() => deleteMapping(field.dbField)}
-                                className="p-1 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded transition-all cursor-pointer"
-                                title="Delete column mapping"
+                                onClick={() => startEditing(field.dbField, field.label)}
+                                className="p-1 hover:bg-slate-100 text-slate-400 hover:text-slate-700 rounded transition-all cursor-pointer"
+                                title="Rename column"
                               >
-                                <Trash2 size={11} />
+                                <Edit size={10} />
                               </button>
-                            )}
-                          </div>
+                              {!field.required && (
+                                <button
+                                  onClick={() => deleteMapping(field.dbField)}
+                                  className="p-1 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded transition-all cursor-pointer"
+                                  title="Delete column mapping"
+                                >
+                                  <Trash2 size={10} />
+                                </button>
+                              )}
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -986,11 +888,7 @@ function inferHeaderFromColumnData(values: any[], colIndex: number): string {
                     <select
                       value={field.mappedHeader}
                       onChange={(e) => handleMapChange(field.dbField, e.target.value)}
-                      className={`w-full border rounded-xl px-3 py-2 text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-500/20 transition-all ${
-                        field.mappedHeader
-                          ? 'bg-slate-50 border-slate-200 text-slate-800'
-                          : 'bg-amber-50/40 border-amber-200 text-amber-800'
-                      }`}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20"
                     >
                       <option value="">-- Choose Sheet Column --</option>
                       {headers.map(h => (
@@ -999,35 +897,6 @@ function inferHeaderFromColumnData(values: any[], colIndex: number): string {
                     </select>
                   </div>
                 ))}
-              </div>
-
-              {/* Bottom Quick Actions: Map All Remaining & Add More Field */}
-              <div className="pt-3 border-t border-slate-100 space-y-2">
-                {headers.filter(h => !mappings.some(m => m.mappedHeader === h)).length > 0 ? (
-                  <button
-                    type="button"
-                    onClick={mapAllRemainingFields}
-                    className="w-full py-2.5 px-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer"
-                    title="Automatically add and map all remaining unmapped spreadsheet columns with 1 click"
-                  >
-                    <Sparkles size={14} className="text-amber-300 animate-pulse" />
-                    <span>⚡ Map All Remaining Fields ({headers.filter(h => !mappings.some(m => m.mappedHeader === h)).length} unmapped)</span>
-                  </button>
-                ) : (
-                  <div className="py-2.5 px-3 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5">
-                    <CheckCircle2 size={15} className="text-emerald-600" />
-                    <span>All {headers.length} Spreadsheet Columns Mapped!</span>
-                  </div>
-                )}
-
-                <button
-                  type="button"
-                  onClick={() => setShowAddForm(true)}
-                  className="w-full py-2.5 px-3 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-dashed border-slate-300 hover:border-slate-400 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer"
-                >
-                  <Plus size={14} />
-                  <span>+ Add More Field</span>
-                </button>
               </div>
 
               {/* Action Buttons & Progress Bar */}

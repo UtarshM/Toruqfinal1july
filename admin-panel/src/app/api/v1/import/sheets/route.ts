@@ -3,43 +3,19 @@ import { validateAuth } from '@/lib/auth-guard'
 import prisma from '@/lib/prisma'
 import path from 'path'
 import fs from 'fs'
+import * as XLSX from 'xlsx'
+import { syncSpreadsheetForBatch, syncRenewalsSpreadsheet } from '@/lib/spreadsheet-sync'
 import { getUploadDir } from '@/lib/upload-helper'
 
-const STANDARD_HEADERS = [
-  'Client Name',
-  'Phone Number',
-  'REG NO / Vehicle No',
-  'Policy Expiry Date',
-  'Lead Status',
-  'Assigned To',
-  'Import Batch',
-  'Mo No. 2',
-  'Registration Date',
-  'GVW',
-  'City',
-  'Address'
-]
-
-const RENEWAL_HEADERS = [
-  'Client Name',
-  'Phone Number',
-  'Vehicle No',
-  'Policy Number',
-  'Provider / Insurer',
-  'Policy Type',
-  'Premium Amount',
-  'Policy Expiry Date',
-  'Policy Start Date',
-  'Renewal Status',
-  'Sales Person',
-  'Policy PDF',
-  'Assigned To',
-  'Assigned Month',
-  'Assigned Year',
-  'Renewed Date',
-  'Refused Date',
-  'Created At'
-]
+function formatDate(date: any): string {
+  if (!date) return ''
+  try {
+    const d = new Date(date)
+    return isNaN(d.getTime()) ? '' : d.toISOString().split('T')[0]
+  } catch {
+    return ''
+  }
+}
 
 export async function GET(req: NextRequest) {
   const { context, error } = await validateAuth(req)
@@ -52,51 +28,40 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+    const uploadDir = getUploadDir()
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true })
+    }
 
-    // 1. Concurrently fetch aggregate statistics directly from DB (instant, no timeouts)
-    const [dbBatches, agentBatches, totalRenewals, totalActiveLeads, totalActiveAgents] = await Promise.all([
-      prisma.lead.groupBy({
-        by: ['importName'],
-        _count: { _all: true },
-        _min: { createdAt: true },
-        _max: { createdAt: true, updatedAt: true },
-        where: {
-          status: { not: 'Trashed' },
-          deletedAt: null
-        }
-      }),
-      prisma.lead.groupBy({
-        by: ['importName'],
-        _count: { _all: true },
-        where: {
-          status: { not: 'Trashed' },
-          deletedAt: null,
-          existingAgent: 'Agent'
-        }
-      }),
-      prisma.renewalRecord.count(),
-      prisma.lead.count({
-        where: {
-          status: { not: 'Trashed' },
-          deletedAt: null
-        }
-      }),
-      prisma.lead.count({
-        where: {
-          status: { not: 'Trashed' },
-          deletedAt: null,
-          existingAgent: 'Agent'
-        }
-      })
-    ])
+    const shouldSync = req.nextUrl.searchParams.get('sync') === 'true'
 
-    const agentCountMap = new Map<string | null, number>()
-    agentBatches.forEach(b => {
-      agentCountMap.set(b.importName, b._count._all)
+    // Clean up empty renewals sheet if 0 renewals exist
+    const totalRenewals = await prisma.renewalRecord.count()
+    const renewalsFile = path.join(uploadDir, 'import_renewals.xlsx')
+    if (totalRenewals === 0 && fs.existsSync(renewalsFile)) {
+      try { fs.unlinkSync(renewalsFile) } catch {}
+    }
+
+    // 1. Fetch all distinct active import batches from database
+    const dbBatches = await prisma.lead.groupBy({
+      by: ['importName'],
+      _count: { _all: true },
+      _min: { createdAt: true },
+      _max: { createdAt: true, updatedAt: true },
+      where: {
+        status: { not: 'Trashed' },
+        deletedAt: null
+      }
     })
 
-    // 2. Handle Lead Search across batches if requested
+    // Always synchronize the consolidated leads spreadsheet
+    await syncSpreadsheetForBatch('leads', uploadDir).catch(e => console.warn('[sheets] leads sync warning:', e))
+
+    // Always regenerate "Policy Renewals" if renewals exist to guarantee 100% fresh live data
+    if (totalRenewals > 0) {
+      await syncRenewalsSpreadsheet(uploadDir).catch(() => {})
+    }
+
     const leadSearch = req.nextUrl.searchParams.get('leadSearch')?.trim()
     let matchingLeads: any[] = []
     let matchingBatchNames: string[] = []
@@ -134,92 +99,113 @@ export async function GET(req: NextRequest) {
       matchingBatchNames = [...new Set(leads.map(l => l.importName || 'direct_entry'))]
     }
 
-    // 3. Build virtual and real spreadsheet files directly from DB batches
-    const files: any[] = []
-
-    // A. Add Master Consolidated Leads Sheet
-    if (totalActiveLeads > 0) {
-      const now = new Date()
-      files.push({
-        fileName: 'import_leads.xlsx',
-        displayName: 'Imported Leads (Master).xlsx',
-        batchName: 'Imported Leads (Master)',
-        sizeBytes: totalActiveLeads * 140,
-        importedAt: now.toISOString(),
-        updatedAt: now.toISOString(),
-        dayOfWeek: days[now.getDay()] || 'Today',
-        dateOnly: now.toISOString().split('T')[0],
-        totalRows: totalActiveLeads,
-        agentCount: totalActiveAgents,
-        headers: STANDARD_HEADERS,
-        downloadUrl: `/api/v1/import/sheets/download?file=import_leads.xlsx`
-      })
-    }
-
-    // B. Add Policy Renewals Master Sheet
+    // 2. Read only the master files from server storage
+    const fileNames = ['import_leads.xlsx']
     if (totalRenewals > 0) {
-      const now = new Date()
-      files.push({
-        fileName: 'import_renewals.xlsx',
-        displayName: 'Policy Renewals.xlsx',
-        batchName: 'Policy Renewals (Master)',
-        sizeBytes: totalRenewals * 160,
-        importedAt: now.toISOString(),
-        updatedAt: now.toISOString(),
-        dayOfWeek: days[now.getDay()] || 'Today',
-        dateOnly: now.toISOString().split('T')[0],
-        totalRows: totalRenewals,
-        agentCount: 0,
-        headers: RENEWAL_HEADERS,
-        downloadUrl: `/api/v1/import/sheets/download?file=import_renewals.xlsx`
-      })
+      fileNames.push('import_renewals.xlsx')
     }
 
-    // C. Add each distinct database batch (e.g., SAMPLE, Demo leads 1, etc.)
-    for (const b of dbBatches) {
-      const rawBatchName = b.importName || 'Direct Entry'
-      const isDirect = !b.importName || b.importName.toLowerCase() === 'direct_entry'
-      const cleanBatch = isDirect ? 'direct_entry' : rawBatchName.trim().replace(/[^a-zA-Z0-9_-]/g, '_')
-      const fileName = `import_${cleanBatch}.xlsx`
-      const displayName = `${rawBatchName}.xlsx`
+    const files = fileNames.map(fileName => {
+      const filePath = path.join(uploadDir, fileName)
+      const stat = fs.statSync(filePath)
 
-      const rawCreated = b._min.createdAt || new Date()
-      const importedDate = new Date(rawCreated)
-      const updatedAt = b._max.updatedAt || b._max.createdAt || importedDate
+      let totalRows = 0
+      let agentCount = 0
+      let headers: string[] = []
+
+      try {
+        const fileBuffer = fs.readFileSync(filePath)
+        const wb = XLSX.read(fileBuffer, { type: 'buffer' })
+        const sheetName = wb.SheetNames[0]
+        if (sheetName) {
+          const rows: any[][] = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1, defval: '' })
+          if (rows.length > 0) {
+            headers = rows[0].map(h => String(h || ''))
+            totalRows = Math.max(0, rows.length - 1)
+
+            const agentColIdx = headers.findIndex(h => h.toLowerCase().trim() === 'agent')
+            if (agentColIdx !== -1) {
+              for (let i = 1; i < rows.length; i++) {
+                const val = String(rows[i]?.[agentColIdx] || '').toLowerCase().trim()
+                if (val === 'agent') agentCount++
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.error(`[sheets] Error reading file ${fileName}:`, err)
+      }
+
+      // Clean display name without synthetic "import_" prefix
+      const displayName = fileName
+        .replace(/^import_/, '')
+        .replace(/\.(xlsx|csv)$/, '')
+        .replace(/_/g, ' ')
+        + path.extname(fileName)
+
+      // Friendly batch name
+      let batchName = fileName
+        .replace(/^import_/, '')
+        .replace(/\.(xlsx|csv)$/, '')
+        .replace(/_/g, ' ')
+
+      if (fileName === 'import_renewals.xlsx') {
+        batchName = 'Policy Renewals (Master)'
+      } else if (fileName === 'import_leads.xlsx') {
+        batchName = 'Imported Leads (Master)'
+      }
+
+      const matchingDbBatch = dbBatches.find(b => {
+        if (fileName === 'import_leads.xlsx') return true
+        const cleanB = b.importName ? String(b.importName).trim().replace(/[^a-zA-Z0-9_-]/g, '_') : 'direct_entry'
+        return fileName === `import_${cleanB}.xlsx` || fileName.includes(cleanB)
+      })
+
+      // Robust date calculation (never 1970)
+      let rawImportedAt = matchingDbBatch?._min?.createdAt || stat.birthtime || stat.mtime
+      let importedDate = new Date(rawImportedAt)
+      if (isNaN(importedDate.getTime()) || importedDate.getTime() < 946684800000) { // before year 2000
+        importedDate = stat.mtime && stat.mtime.getTime() > 946684800000 ? stat.mtime : new Date()
+      }
+      const importedAt = importedDate.toISOString()
+      const updatedAt = matchingDbBatch?._max?.updatedAt || stat.mtime || importedDate
+
+      const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
       const dayOfWeek = days[importedDate.getDay()] || 'Today'
-      const dateOnly = !isNaN(importedDate.getTime()) ? importedDate.toISOString().split('T')[0] : ''
+      const dateOnly = importedDate.toISOString().split('T')[0]
 
-      const totalRows = b._count._all
-      const agentCount = agentCountMap.get(b.importName) || 0
-
-      files.push({
+      return {
         fileName,
         displayName,
-        batchName: rawBatchName,
-        sizeBytes: totalRows * 128,
-        importedAt: importedDate.toISOString(),
+        batchName,
+        sizeBytes: stat.size,
+        importedAt,
         updatedAt: new Date(updatedAt).toISOString(),
         dayOfWeek,
         dateOnly,
         totalRows,
         agentCount,
-        headers: STANDARD_HEADERS,
+        headers,
         downloadUrl: `/api/v1/import/sheets/download?file=${fileName}`
-      })
-    }
+      }
+    })
 
-    // Sort: Master renewals first, master leads second, then newest imported batches
-    files.sort((a, b) => {
+    // Filter out 0-row empty master sheets from display
+    const nonDummyFiles = files.filter(f => {
+      if (f.fileName === 'import_renewals.xlsx' && f.totalRows === 0) return false
+      return true
+    })
+
+    // Sort by newest imported first
+    nonDummyFiles.sort((a, b) => {
       if (a.fileName === 'import_renewals.xlsx') return -1
       if (b.fileName === 'import_renewals.xlsx') return 1
-      if (a.fileName === 'import_leads.xlsx') return -1
-      if (b.fileName === 'import_leads.xlsx') return 1
       return new Date(b.importedAt).getTime() - new Date(a.importedAt).getTime()
     })
 
-    return NextResponse.json({ files, matchingLeads, matchingBatchNames })
+    return NextResponse.json({ files: nonDummyFiles, matchingLeads, matchingBatchNames })
   } catch (err: any) {
-    console.error('[sheets GET] Error:', err)
+    console.error('[sheets] Error:', err)
     return NextResponse.json({ error: 'Internal Server Error', details: err?.message }, { status: 500 })
   }
 }
@@ -247,126 +233,57 @@ export async function DELETE(req: NextRequest) {
     let totalDeletedFiles = 0
     let totalDeletedLeads = 0
 
-    // Fetch existing batches from DB to match actual importName precisely
-    const dbBatches = await prisma.lead.groupBy({
-      by: ['importName']
-    })
+    const allLeads = deleteLeads ? await prisma.lead.findMany({ select: { id: true, importName: true } }) : []
 
     for (const rawName of fileNames) {
-      const safeFileName = path.basename(String(rawName).trim())
+      const safeFileName = path.basename(rawName)
       const filePath = path.join(uploadDir, safeFileName)
 
-      const batchSlug = safeFileName
+      const batchName = safeFileName
         .replace(/^import_/, '')
+        .replace(/_\d+\.(xlsx|csv)$/, '')
         .replace(/\.(xlsx|csv)$/, '')
 
+import { deleteLeadsWithCascade } from '@/lib/lead-delete-helper'
+
       if (deleteLeads) {
-        if (safeFileName === 'import_renewals.xlsx' || batchSlug === 'renewals') {
+        if (safeFileName === 'import_renewals.xlsx' || batchName === 'renewals') {
           const delRenewals = await prisma.renewalRecord.deleteMany({}).catch(() => ({ count: 0 }))
           totalDeletedLeads += delRenewals.count
-        } else if (safeFileName === 'import_leads.xlsx' || batchSlug === 'leads' || batchSlug === 'all_leads') {
-          // Master sheet delete: Soft-delete all leads to Trashed
-          const softDelResult = await prisma.lead.updateMany({
-            where: {
-              status: { not: 'Trashed' },
-              deletedAt: null
-            },
-            data: {
-              status: 'Trashed',
-              deletedAt: new Date(),
-              deletedBy: context.userId
-            }
-          })
-          totalDeletedLeads += softDelResult.count
         } else {
-          // Find matching importName from DB
-          let targetImportName: string | null = batchSlug
-          let isDirectEntry = batchSlug === 'direct_entry'
+          const cleanBatch = batchName.replace(/[^a-zA-Z0-9]/g, '').toLowerCase()
+          const matchedLeadIds = allLeads
+            .filter(l => {
+              if (!l.importName) return false
+              const dbClean = l.importName.replace(/[^a-zA-Z0-9]/g, '').toLowerCase()
+              return dbClean === cleanBatch || dbClean.includes(cleanBatch) || cleanBatch.includes(dbClean)
+            })
+            .map(l => l.id)
 
-          const matchedBatch = dbBatches.find(b => {
-            if (!b.importName) return false
-            const clean = String(b.importName).trim().replace(/[^a-zA-Z0-9_-]/g, '_')
-            return clean === batchSlug || b.importName === batchSlug || b.importName.toLowerCase() === batchSlug.toLowerCase()
-          })
-
-          if (matchedBatch && matchedBatch.importName) {
-            targetImportName = matchedBatch.importName
-          }
-
-          // Build SQL condition
-          const leadWhere = isDirectEntry
-            ? { importName: null, status: { not: 'Trashed' }, deletedAt: null }
-            : { importName: targetImportName, status: { not: 'Trashed' }, deletedAt: null }
-
-          // Fetch leads in this batch to cleanly decouple foreign relations
-          const batchLeads = await prisma.lead.findMany({
-            where: leadWhere,
-            select: { id: true }
-          })
-          const batchLeadIds = batchLeads.map(l => l.id)
-
-          if (batchLeadIds.length > 0) {
-            // Process in chunks of 500 to guarantee no parameter limit errors
-            const chunkSize = 500
-            for (let i = 0; i < batchLeadIds.length; i += chunkSize) {
-              const chunk = batchLeadIds.slice(i, i + chunkSize)
-
-              // 1. Decouple relations that reference Lead
-              await Promise.allSettled([
-                prisma.policy.updateMany({ where: { leadId: { in: chunk } }, data: { leadId: null } }),
-                prisma.quotation.updateMany({ where: { leadId: { in: chunk } }, data: { leadId: null } }),
-                prisma.claim.updateMany({ where: { leadId: { in: chunk } }, data: { leadId: null } }),
-                prisma.customer.updateMany({ where: { leadId: { in: chunk } }, data: { leadId: null } }),
-                prisma.renewalRecord.updateMany({ where: { leadId: { in: chunk } }, data: { leadId: null } }),
-                prisma.fitnessWork.updateMany({ where: { leadId: { in: chunk } }, data: { leadId: null } }),
-                prisma.rTOWork.updateMany({ where: { leadId: { in: chunk } }, data: { leadId: null } }),
-                prisma.visit.updateMany({ where: { leadId: { in: chunk } }, data: { leadId: null } }),
-                prisma.loan.updateMany({ where: { leadId: { in: chunk } }, data: { leadId: null } })
-              ])
-
-              // 2. Delete dependent activity and logging tables
-              await Promise.allSettled([
-                prisma.leadAssignment.deleteMany({ where: { leadId: { in: chunk } } }),
-                prisma.leadStatusHistory.deleteMany({ where: { leadId: { in: chunk } } }),
-                prisma.leadWhatsAppLog.deleteMany({ where: { leadId: { in: chunk } } }),
-                prisma.call.deleteMany({ where: { leadId: { in: chunk } } }),
-                prisma.followUp.deleteMany({ where: { leadId: { in: chunk } } }),
-                prisma.activityLog.deleteMany({ where: { entityId: { in: chunk } } })
-              ])
-
-              // 3. Delete leads
-              const delResult = await prisma.lead.deleteMany({
-                where: { id: { in: chunk } }
-              }).catch(async () => {
-                // Fallback soft-delete if foreign key constraint still complains
-                return await prisma.lead.updateMany({
-                  where: { id: { in: chunk } },
-                  data: { status: 'Trashed', deletedAt: new Date(), deletedBy: context.userId }
-                })
-              })
-
-              totalDeletedLeads += delResult.count
-            }
+          if (matchedLeadIds.length > 0) {
+            const count = await deleteLeadsWithCascade(matchedLeadIds)
+            totalDeletedLeads += count
           }
         }
       }
 
-      // Remove physical file from disk if present
-      try {
-        if (fs.existsSync(filePath)) {
+      if (fs.existsSync(filePath)) {
+        try {
           fs.unlinkSync(filePath)
+          totalDeletedFiles++
+        } catch (err: any) {
+          console.warn('[sheets DELETE] Failed to unlink file:', err)
         }
-      } catch (unlinkErr) {
-        console.warn('[sheets DELETE] Failed to unlink file:', unlinkErr)
+      } else {
+        totalDeletedFiles++
       }
-      totalDeletedFiles++
     }
 
     return NextResponse.json({
       success: true,
       deletedFilesCount: totalDeletedFiles,
       deletedLeadsCount: totalDeletedLeads,
-      message: `${totalDeletedFiles} spreadsheet(s) and ${totalDeletedLeads} associated lead(s) deleted successfully.`
+      message: `${totalDeletedFiles} spreadsheet(s) deleted successfully.`
     })
   } catch (err: any) {
     console.error('[sheets bulk DELETE] Error:', err)
