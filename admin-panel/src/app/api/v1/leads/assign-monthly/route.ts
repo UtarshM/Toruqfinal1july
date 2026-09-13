@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json()
-    const { importName, month, year, salesExecutiveIds, leadIds } = body
+    const { importName, month, year, salesExecutiveIds, leadIds, maxPerExecutive, city } = body
 
     if (!salesExecutiveIds || !Array.isArray(salesExecutiveIds) || salesExecutiveIds.length === 0) {
       return NextResponse.json({ error: 'At least one sales executive must be selected' }, { status: 400 })
@@ -56,18 +56,33 @@ export async function POST(req: NextRequest) {
       if (importName) {
         whereClause.importName = importName
       }
+
+      // If city is provided (e.g. "Morbi" or "Rajkot"), filter by city or address
+      if (city && city !== 'all' && city !== 'All') {
+        whereClause.AND = [
+          {
+            OR: [
+              { city: { contains: city, mode: 'insensitive' } },
+              { address: { contains: city, mode: 'insensitive' } }
+            ]
+          }
+        ]
+      }
     }
 
-    const leadsToAssign = await prisma.lead.findMany({
+    const allCandidateLeads = await prisma.lead.findMany({
       where: whereClause,
-      orderBy: { expiryDate: 'asc' }, // Nearest expiry first
+      orderBy: [
+        { expiryDate: 'asc' }, // Nearest insurance expiry first
+        { createdAt: 'asc' }
+      ],
       select: { id: true, expiryDate: true, clientName: true }
     })
 
-    if (leadsToAssign.length === 0) {
+    if (allCandidateLeads.length === 0) {
       return NextResponse.json({
         success: false,
-        error: 'No unassigned leads found for the selected month',
+        error: 'No unassigned leads found matching the selected filters.',
         assignedCount: 0
       }, { status: 400 })
     }
@@ -89,7 +104,7 @@ export async function POST(req: NextRequest) {
     let activeExecutivesForAssignment = executives
     let skippedExecutivesOnLeave: string[] = []
 
-    if (month && year) {
+    if (month && year && Number(month) > 0 && Number(year) > 0) {
       const monthStart = new Date(year, month - 1, 1)
       const monthEnd = new Date(year, month, 0, 23, 59, 59, 999)
       const approvedLeaves = await prisma.leaveRequest.findMany({
@@ -109,6 +124,9 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    const execCount = activeExecutivesForAssignment.length
+    const capacityPerExec = (maxPerExecutive && Number(maxPerExecutive) > 0) ? Number(maxPerExecutive) : null
+
     // Group lead IDs by executive ID for fast bulk updates (1 query per executive)
     const execLeadIds: Record<string, string[]> = {}
     const assignmentCounts: Record<string, number> = {}
@@ -119,16 +137,72 @@ export async function POST(req: NextRequest) {
 
     const assignments: { leadId: string; executiveId: string; executiveName: string }[] = []
 
-    for (let i = 0; i < leadsToAssign.length; i++) {
-      const lead = leadsToAssign[i]
-      const exec = activeExecutivesForAssignment[i % activeExecutivesForAssignment.length]
-      execLeadIds[exec.id].push(lead.id)
-      assignments.push({
-        leadId: lead.id,
-        executiveId: exec.id,
-        executiveName: exec.fullName
-      })
-      assignmentCounts[exec.id] = (assignmentCounts[exec.id] || 0) + 1
+    // Balanced Expiry Group Distribution Algorithm
+    if (capacityPerExec) {
+      const totalTarget = execCount * capacityPerExec
+
+      if (allCandidateLeads.length <= totalTarget) {
+        // Less than target: distribute all available leads round-robin
+        for (let i = 0; i < allCandidateLeads.length; i++) {
+          const lead = allCandidateLeads[i]
+          const exec = activeExecutivesForAssignment[i % execCount]
+          execLeadIds[exec.id].push(lead.id)
+          assignments.push({
+            leadId: lead.id,
+            executiveId: exec.id,
+            executiveName: exec.fullName
+          })
+          assignmentCounts[exec.id] = (assignmentCounts[exec.id] || 0) + 1
+        }
+      } else {
+        // More leads than target: balance across Early, Mid, Late expiry groups
+        const totalCandidates = allCandidateLeads.length
+        const t1 = Math.floor(totalCandidates / 3)
+        const t2 = Math.floor((totalCandidates * 2) / 3)
+
+        const earlyPool = allCandidateLeads.slice(0, t1)
+        const midPool = allCandidateLeads.slice(t1, t2)
+        const latePool = allCandidateLeads.slice(t2)
+
+        const earlyPerExec = Math.floor(capacityPerExec / 3)
+        const midPerExec = Math.floor(capacityPerExec / 3)
+        const latePerExec = capacityPerExec - (earlyPerExec + midPerExec)
+
+        const targetGroupQuotas = [
+          { pool: earlyPool, perExec: earlyPerExec },
+          { pool: midPool, perExec: midPerExec },
+          { pool: latePool, perExec: latePerExec }
+        ]
+
+        for (const group of targetGroupQuotas) {
+          const needed = group.perExec * execCount
+          const selectedFromGroup = group.pool.slice(0, needed)
+          for (let i = 0; i < selectedFromGroup.length; i++) {
+            const lead = selectedFromGroup[i]
+            const exec = activeExecutivesForAssignment[i % execCount]
+            execLeadIds[exec.id].push(lead.id)
+            assignments.push({
+              leadId: lead.id,
+              executiveId: exec.id,
+              executiveName: exec.fullName
+            })
+            assignmentCounts[exec.id] = (assignmentCounts[exec.id] || 0) + 1
+          }
+        }
+      }
+    } else {
+      // No capacity limit: round-robin all leads
+      for (let i = 0; i < allCandidateLeads.length; i++) {
+        const lead = allCandidateLeads[i]
+        const exec = activeExecutivesForAssignment[i % execCount]
+        execLeadIds[exec.id].push(lead.id)
+        assignments.push({
+          leadId: lead.id,
+          executiveId: exec.id,
+          executiveName: exec.fullName
+        })
+        assignmentCounts[exec.id] = (assignmentCounts[exec.id] || 0) + 1
+      }
     }
 
     // Perform bulk updates sequentially (maximum 1 connection used)
@@ -162,7 +236,8 @@ export async function POST(req: NextRequest) {
     // Build distribution summary
     const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
       'July', 'August', 'September', 'October', 'November', 'December']
-    const monthName = monthNames[month - 1]
+    const monthName = (month && Number(month) > 0) ? monthNames[Number(month) - 1] : 'All Months'
+    const totalAssigned = assignments.length
     
     const distribution = executives.map(e => ({
       id: e.id,
@@ -173,26 +248,26 @@ export async function POST(req: NextRequest) {
     // Notify admins about the assignment
     const distSummary = distribution.map(d => `${d.name}: ${d.leadsAssigned} leads`).join(', ')
     await notifyRole('Admin', {
-      title: `📋 ${monthName} ${year} Leads Assigned`,
-      body: `${leadsToAssign.length} leads assigned via round-robin. ${distSummary}`,
+      title: `📋 ${monthName} ${year || ''} Leads Assigned`,
+      body: `${totalAssigned} leads assigned via balanced round-robin. ${distSummary}`,
       type: 'info',
       entityType: 'lead_assignment',
       data: {
         month, year,
-        totalAssigned: leadsToAssign.length,
+        totalAssigned,
         distribution,
         importName: importName || 'all'
       }
     }).catch(() => {})
 
     await notifyRole('Super Admin', {
-      title: `📋 ${monthName} ${year} Leads Assigned`,
-      body: `${leadsToAssign.length} leads assigned via round-robin. ${distSummary}`,
+      title: `📋 ${monthName} ${year || ''} Leads Assigned`,
+      body: `${totalAssigned} leads assigned via balanced round-robin. ${distSummary}`,
       type: 'info',
       entityType: 'lead_assignment',
       data: {
         month, year,
-        totalAssigned: leadsToAssign.length,
+        totalAssigned,
         distribution,
         importName: importName || 'all'
       }
@@ -205,8 +280,8 @@ export async function POST(req: NextRequest) {
         await prisma.notification.create({
           data: {
             userId: exec.id,
-            title: `📋 ${count} New Leads Assigned — ${monthName} ${year}`,
-            body: `You have been assigned ${count} leads for ${monthName} ${year}. Check your leads section.`,
+            title: `📋 ${count} New Leads Assigned — ${monthName} ${year || ''}`,
+            body: `You have been assigned ${count} leads for ${monthName} ${year || ''} with balanced expiry date distribution.`,
             type: 'info',
             entityType: 'lead_assignment',
             data: { month, year, count }
@@ -219,11 +294,11 @@ export async function POST(req: NextRequest) {
       success: true,
       monthName,
       year,
-      totalAssigned: leadsToAssign.length,
+      totalAssigned,
       distribution,
       skippedOnLeave: skippedExecutivesOnLeave,
       importName: importName || null,
-      message: `${leadsToAssign.length} leads for ${monthName} ${year} assigned successfully via round-robin.${skippedExecutivesOnLeave.length > 0 ? ` (Skipped ${skippedExecutivesOnLeave.join(', ')} due to approved leave)` : ''}`
+      message: `${totalAssigned} leads for ${monthName} ${year || ''} assigned successfully with balanced expiry date groups.${skippedExecutivesOnLeave.length > 0 ? ` (Skipped ${skippedExecutivesOnLeave.join(', ')} due to approved leave)` : ''}`
     })
   } catch (err: any) {
     console.error('[assign-monthly] Error:', err)

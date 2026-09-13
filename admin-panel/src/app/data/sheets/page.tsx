@@ -7,7 +7,7 @@ import {
   CheckCircle, FileText, ArrowRight, ChevronLeft, ChevronRight,
   Calendar, Clock, User, Filter, ArrowUpDown, ChevronDown, Sparkles,
   Phone, Car, MapPin, Tag, Check, CalendarDays, Lock, Users, UserCheck,
-  Trash2, CheckSquare, Square
+  Trash2, CheckSquare, Square, Sliders
 } from 'lucide-react'
 import { fetchApi } from '@/lib/api'
 import { useAuth } from '@/context/AuthContext'
@@ -106,6 +106,8 @@ export default function ImportedSheetsPage() {
   // Monthly Assignment States
   const [expiryMonthFilter, setExpiryMonthFilter] = useState<number>(0) // 0 = All, 1-12 = month
   const [expiryYearFilter, setExpiryYearFilter] = useState<number>(new Date().getFullYear())
+  const [maxLeadsPerExec, setMaxLeadsPerExec] = useState<number | 'all'>(130) // Capacity limit (130 default)
+  const [previewCityFilter, setPreviewCityFilter] = useState<string>('all') // 'all', 'morbi', 'rajkot'
   const [showAssignPanel, setShowAssignPanel] = useState(false)
   const [availableExecs, setAvailableExecs] = useState<any[]>([])
   const [selectedExecIds, setSelectedExecIds] = useState<string[]>([])
@@ -244,6 +246,15 @@ export default function ImportedSheetsPage() {
     setSelectedFile(file)
     setPreviewSearch(initialRowSearch || '')
     setPreviewAgentFilter('all')
+    const lowerName = (file.batchName || file.fileName).toLowerCase()
+    if (lowerName.includes('morbi')) {
+      setPreviewCityFilter('morbi')
+    } else if (lowerName.includes('rajkot')) {
+      setPreviewCityFilter('rajkot')
+    } else {
+      setPreviewCityFilter('all')
+    }
+    setMaxLeadsPerExec(130)
     setPreviewSortCol(null)
     setCurrentPage(1)
     setSelectedPreviewIndices(new Set())
@@ -315,7 +326,9 @@ export default function ImportedSheetsPage() {
           month: expiryMonthFilter,
           year: expiryYearFilter,
           salesExecutiveIds: selectedExecIds,
-          leadIds: targetLeadIds
+          leadIds: targetLeadIds,
+          maxPerExecutive: maxLeadsPerExec === 'all' ? null : Number(maxLeadsPerExec),
+          city: previewCityFilter !== 'all' ? previewCityFilter : null
         })
       })
       setAssignResult(res)
@@ -603,6 +616,20 @@ export default function ImportedSheetsPage() {
       }
     }
 
+    // Filter by city / branch (e.g. Morbi or Rajkot)
+    if (previewCityFilter !== 'all' && previewData.headers) {
+      const cityFilterLower = previewCityFilter.toLowerCase().trim()
+      const cityColIdx = previewData.headers.findIndex(h => {
+        const norm = h.toLowerCase().replace(/[^a-z0-9]/g, '')
+        return norm.includes('city') || norm.includes('branch') || norm.includes('location') || norm.includes('address')
+      })
+      if (cityColIdx !== -1) {
+        rows = rows.filter(row => String(row[cityColIdx] || '').toLowerCase().includes(cityFilterLower))
+      } else {
+        rows = rows.filter(row => row.some(cell => String(cell || '').toLowerCase().includes(cityFilterLower)))
+      }
+    }
+
     // Filter by agent tag
     if (previewAgentFilter !== 'all' && previewData.agentColIdx !== -1) {
       rows = rows.filter(row => {
@@ -628,15 +655,13 @@ export default function ImportedSheetsPage() {
         if (valA > valB) return previewSortOrder === 'asc' ? 1 : -1
         return 0
       })
-    }
-
-    // If month is filtered, sort by expiry date nearest first
-    if (expiryMonthFilter > 0 && previewData.headers) {
+    } else if (previewData.headers) {
+      // Default: Sort by expiry date ascending (nearest insurance expiry first)
       const expiryColIdx = previewData.headers.findIndex(h => {
         const hLower = h.toLowerCase().replace(/[^a-z0-9]/g, '')
         return hLower.includes('expiry') || hLower.includes('validity') || hLower.includes('duedate')
       })
-      if (expiryColIdx !== -1 && previewSortCol === null) {
+      if (expiryColIdx !== -1) {
         rows = [...rows].sort((a, b) => {
           const parseD = (v: any) => {
             const s = String(v || '').trim()
@@ -654,7 +679,7 @@ export default function ImportedSheetsPage() {
     }
 
     return rows
-  }, [previewData, previewSearch, previewAgentFilter, previewSortCol, previewSortOrder, expiryMonthFilter, expiryYearFilter])
+  }, [previewData, previewSearch, previewAgentFilter, previewSortCol, previewSortOrder, expiryMonthFilter, expiryYearFilter, previewCityFilter])
 
   // Pagination for preview modal
   const totalFilteredRows = filteredPreviewRows.length
@@ -1866,12 +1891,25 @@ export default function ImportedSheetsPage() {
                               <option key={y} value={y}>{y}</option>
                             ))}
                           </select>
+                          <select
+                            value={previewCityFilter}
+                            onChange={e => {
+                              setPreviewCityFilter(e.target.value)
+                              setCurrentPage(1)
+                              setSelectedPreviewIndices(new Set())
+                            }}
+                            className="bg-white border border-blue-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                          >
+                            <option value="all">All Branches / Cities</option>
+                            <option value="morbi">Morbi Branch</option>
+                            <option value="rajkot">Rajkot Branch</option>
+                          </select>
                         </div>
 
-                        {(expiryMonthFilter > 0 || expiryYearFilter > 0) && (
+                        {(expiryMonthFilter > 0 || expiryYearFilter > 0 || previewCityFilter !== 'all') && (
                           <div className="flex items-center gap-2 ml-auto">
                             <span className="px-3 py-1 bg-indigo-600 text-white text-xs font-black rounded-lg shadow-sm">
-                              {filteredPreviewRows.length} leads in {expiryMonthFilter > 0 ? MONTH_NAMES[expiryMonthFilter] : 'All Months'} {expiryYearFilter > 0 ? expiryYearFilter : 'All Years'}
+                              {filteredPreviewRows.length} leads {previewCityFilter !== 'all' ? `(${previewCityFilter.toUpperCase()})` : ''} • {expiryMonthFilter > 0 ? MONTH_NAMES[expiryMonthFilter] : 'All Months'} {expiryYearFilter > 0 ? expiryYearFilter : 'All Years'}
                             </span>
                           </div>
                         )}
@@ -1883,12 +1921,74 @@ export default function ImportedSheetsPage() {
                           <h4 className="text-sm font-black text-slate-900 flex items-center gap-2">
                             <UserCheck size={16} className="text-indigo-600" />
                             Select Sales Executives for {expiryMonthFilter > 0 ? `${MONTH_NAMES[expiryMonthFilter]} ${expiryYearFilter || ''}` : expiryYearFilter > 0 ? `Year ${expiryYearFilter}` : 'All Months'}
+                            {previewCityFilter !== 'all' && (
+                              <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 text-[10px] font-black rounded uppercase">
+                                {previewCityFilter}
+                              </span>
+                            )}
                           </h4>
                             {!execsLoading && (
                               <span className="text-[10px] font-bold text-slate-500">
                                 {selectedExecIds.length} of {availableExecs.length} selected
                               </span>
                             )}
+                          </div>
+
+                          {/* Capacity / Quota Settings (e.g. 130 leads each) */}
+                          <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-2.5">
+                            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2.5">
+                              <div>
+                                <span className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+                                  <Sliders size={14} className="text-indigo-600" />
+                                  Capacity Limit per Sales Person:
+                                </span>
+                                <p className="text-[11px] text-slate-500 mt-0.5 font-medium">
+                                  Sorts ascending by insurance expiry date and assigns via round-robin with balanced early, mid, and late expiry groups.
+                                </p>
+                              </div>
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                {[130, 100, 150].map(val => (
+                                  <button
+                                    key={val}
+                                    type="button"
+                                    onClick={() => setMaxLeadsPerExec(val)}
+                                    className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer border ${
+                                      maxLeadsPerExec === val
+                                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                                    }`}
+                                  >
+                                    {val} each {val === 130 && '⭐'}
+                                  </button>
+                                ))}
+                                <button
+                                  type="button"
+                                  onClick={() => setMaxLeadsPerExec('all')}
+                                  className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer border ${
+                                    maxLeadsPerExec === 'all'
+                                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                                      : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                                  }`}
+                                >
+                                  All (No Limit)
+                                </button>
+                                <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg px-2 py-1">
+                                  <input
+                                    type="number"
+                                    min={1}
+                                    max={10000}
+                                    value={maxLeadsPerExec === 'all' ? '' : maxLeadsPerExec}
+                                    onChange={e => {
+                                      const val = parseInt(e.target.value, 10)
+                                      setMaxLeadsPerExec(isNaN(val) || val <= 0 ? 'all' : val)
+                                    }}
+                                    placeholder="Custom"
+                                    className="w-14 text-xs font-bold text-slate-800 outline-none text-center"
+                                  />
+                                  <span className="text-[10px] text-slate-400 font-bold">each</span>
+                                </div>
+                              </div>
+                            </div>
                           </div>
 
                           {execsLoading ? (
@@ -1964,28 +2064,47 @@ export default function ImportedSheetsPage() {
                             </div>
                           )}
 
-                          {/* Assign Button + Result */}
-                          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 border-t border-slate-100">
-                            <div className="text-xs font-semibold text-slate-600">
-                              <strong>{selectedPreviewIndices.size > 0 ? selectedPreviewIndices.size : filteredPreviewRows.length}</strong> leads will be distributed via round-robin across <strong>{selectedExecIds.length}</strong> executives
-                              {selectedExecIds.length > 0 && (
-                                <span className="text-blue-600 ml-1">
-                                  (~{Math.ceil((selectedPreviewIndices.size > 0 ? selectedPreviewIndices.size : filteredPreviewRows.length) / selectedExecIds.length)} each)
-                                </span>
-                              )}
-                            </div>
-                            <button
-                              onClick={handleAssignLeads}
-                              disabled={assigning || selectedExecIds.length === 0 || (selectedPreviewIndices.size === 0 && filteredPreviewRows.length === 0)}
-                              className="px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white text-sm font-black rounded-xl transition-all flex items-center gap-2 cursor-pointer shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                              {assigning ? (
-                                <><RefreshCw size={16} className="animate-spin" /> Assigning...</>
-                              ) : (
-                                <><Users size={16} /> {selectedPreviewIndices.size > 0 ? `Assign ${selectedPreviewIndices.size} Selected Leads` : `Assign All ${filteredPreviewRows.length} Leads`}</>
-                              )}
-                            </button>
-                          </div>
+                          {/* Assign Button + Dynamic Lead Distribution Calculation */}
+                          {(() => {
+                            const hasManualSelection = selectedPreviewIndices.size > 0
+                            const totalAvailable = hasManualSelection ? selectedPreviewIndices.size : filteredPreviewRows.length
+                            const execCount = selectedExecIds.length
+                            let targetTotal = totalAvailable
+                            let perPerson = execCount > 0 ? Math.ceil(targetTotal / execCount) : 0
+
+                            if (!hasManualSelection && maxLeadsPerExec !== 'all' && execCount > 0) {
+                              targetTotal = Math.min(totalAvailable, execCount * Number(maxLeadsPerExec))
+                              perPerson = Math.min(Number(maxLeadsPerExec), Math.ceil(targetTotal / execCount))
+                            }
+
+                            const earlyShare = Math.floor(perPerson / 3)
+                            const midShare = Math.floor(perPerson / 3)
+                            const lateShare = perPerson - (earlyShare + midShare)
+
+                            return (
+                              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 border-t border-slate-100">
+                                <div className="text-xs font-semibold text-slate-600">
+                                  <strong>{targetTotal}</strong> leads will be distributed via balanced round-robin across <strong>{execCount}</strong> executives
+                                  {execCount > 0 && targetTotal > 0 && (
+                                    <div className="text-indigo-600 font-bold mt-0.5 text-[11px]">
+                                      (~{perPerson} leads each: {earlyShare} early, {midShare} mid, {lateShare} late expiry dates)
+                                    </div>
+                                  )}
+                                </div>
+                                <button
+                                  onClick={handleAssignLeads}
+                                  disabled={assigning || execCount === 0 || targetTotal === 0}
+                                  className="px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white text-sm font-black rounded-xl transition-all flex items-center gap-2 cursor-pointer shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                  {assigning ? (
+                                    <><RefreshCw size={16} className="animate-spin" /> Assigning...</>
+                                  ) : (
+                                    <><Users size={16} /> Assign {targetTotal} Leads ({perPerson} each)</>
+                                  )}
+                                </button>
+                              </div>
+                            )
+                          })()}
 
                           {/* Assignment Result */}
                           {assignResult && (
