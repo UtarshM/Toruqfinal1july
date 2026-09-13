@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json()
-    const { importName, month, year, salesExecutiveIds } = body
+    const { importName, month, year, salesExecutiveIds, leadIds } = body
 
     if (!salesExecutiveIds || !Array.isArray(salesExecutiveIds) || salesExecutiveIds.length === 0) {
       return NextResponse.json({ error: 'At least one sales executive must be selected' }, { status: 400 })
@@ -31,18 +31,31 @@ export async function POST(req: NextRequest) {
       ]
     }
 
-    if (month && year && Number(month) > 0) {
-      const monthStart = new Date(year, month - 1, 1)
-      const monthEnd = new Date(year, month, 0, 23, 59, 59, 999)
-      whereClause.expiryDate = {
-        gte: monthStart,
-        lte: monthEnd
+    // If specific selected leadIds are provided, assign those directly
+    if (leadIds && Array.isArray(leadIds) && leadIds.length > 0) {
+      whereClause.id = { in: leadIds }
+    } else {
+      if (year && Number(year) > 0) {
+        if (month && Number(month) > 0) {
+          const monthStart = new Date(year, Number(month) - 1, 1)
+          const monthEnd = new Date(year, Number(month), 0, 23, 59, 59, 999)
+          whereClause.expiryDate = { gte: monthStart, lte: monthEnd }
+        } else {
+          const yearStart = new Date(year, 0, 1)
+          const yearEnd = new Date(year, 11, 31, 23, 59, 59, 999)
+          whereClause.expiryDate = { gte: yearStart, lte: yearEnd }
+        }
+      } else if (month && Number(month) > 0) {
+        const curYear = new Date().getFullYear()
+        const monthStart = new Date(curYear, Number(month) - 1, 1)
+        const monthEnd = new Date(curYear, Number(month), 0, 23, 59, 59, 999)
+        whereClause.expiryDate = { gte: monthStart, lte: monthEnd }
       }
-    }
 
-    // If importName is provided, filter by it
-    if (importName) {
-      whereClause.importName = importName
+      // If importName is provided, filter by it
+      if (importName) {
+        whereClause.importName = importName
+      }
     }
 
     const leadsToAssign = await prisma.lead.findMany({

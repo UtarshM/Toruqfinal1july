@@ -162,17 +162,25 @@ export async function GET(
     // Expiry Month and Year Filter
     const monthParam = url.searchParams.get('month')
     const yearParam = url.searchParams.get('year')
-    if (monthParam && monthParam !== '0') {
-      const m = parseInt(monthParam)
-      const y = parseInt(yearParam || String(new Date().getFullYear()))
-      
-      const startDate = new Date(y, m - 1, 1)
-      const endDate = new Date(y, m, 0, 23, 59, 59, 999)
-      
-      whereClause.expiryDate = {
-        gte: startDate,
-        lte: endDate
+    const m = monthParam ? parseInt(monthParam) : 0
+    const y = yearParam ? parseInt(yearParam) : 0
+
+    if (y > 0) {
+      if (m > 0) {
+        const startDate = new Date(y, m - 1, 1)
+        const endDate = new Date(y, m, 0, 23, 59, 59, 999)
+        whereClause.expiryDate = { gte: startDate, lte: endDate }
+      } else {
+        const startDate = new Date(y, 0, 1)
+        const endDate = new Date(y, 11, 31, 23, 59, 59, 999)
+        whereClause.expiryDate = { gte: startDate, lte: endDate }
       }
+    } else if (m > 0) {
+      // Default to current year if only month is specified
+      const curYear = new Date().getFullYear()
+      const startDate = new Date(curYear, m - 1, 1)
+      const endDate = new Date(curYear, m, 0, 23, 59, 59, 999)
+      whereClause.expiryDate = { gte: startDate, lte: endDate }
     }
 
     if (searchParam) {
@@ -290,6 +298,7 @@ export async function GET(
       downloadUrl: `/api/v1/import/sheets/download?file=${safeFileName}`,
       headers,
       rows,
+      leadIds: leadsList.map(l => l.id),
       agentColIdx,
       agentRowsCount,
       totalRows,

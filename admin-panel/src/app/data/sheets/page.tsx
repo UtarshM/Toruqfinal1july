@@ -44,6 +44,7 @@ interface SheetPreviewData {
   downloadUrl: string
   headers: string[]
   rows: any[][]
+  leadIds?: string[]
   agentColIdx: number
   agentRowsCount: number
   totalRows?: number
@@ -100,6 +101,7 @@ export default function ImportedSheetsPage() {
   const [previewSortOrder, setPreviewSortOrder] = useState<'asc' | 'desc'>('asc')
   const [currentPage, setCurrentPage] = useState(1)
   const [rowsPerPage, setRowsPerPage] = useState<number | 'all'>(50)
+  const [selectedPreviewIndices, setSelectedPreviewIndices] = useState<Set<number>>(new Set())
 
   // Monthly Assignment States
   const [expiryMonthFilter, setExpiryMonthFilter] = useState<number>(0) // 0 = All, 1-12 = month
@@ -244,6 +246,10 @@ export default function ImportedSheetsPage() {
     setPreviewAgentFilter('all')
     setPreviewSortCol(null)
     setCurrentPage(1)
+    setSelectedPreviewIndices(new Set())
+    setAssignResult(null)
+    // Fetch available executives immediately for assignment
+    fetchAvailableExecs(expiryMonthFilter, expiryYearFilter)
     try {
       const res = await fetchApi(`/api/v1/import/sheets/${encodeURIComponent(file.fileName)}?all=true`)
       setPreviewData(res)
@@ -275,19 +281,32 @@ export default function ImportedSheetsPage() {
     setExpiryMonthFilter(month)
     setCurrentPage(1)
     setAssignResult(null)
-    if (month > 0) {
-      fetchAvailableExecs(month, expiryYearFilter)
-    } else {
-      setShowAssignPanel(false)
-    }
+    setSelectedPreviewIndices(new Set())
+    fetchAvailableExecs(month, expiryYearFilter)
   }
 
-  // Assign leads for the selected month
+  // Handle year filter change in preview
+  const handleExpiryYearChange = (year: number) => {
+    setExpiryYearFilter(year)
+    setCurrentPage(1)
+    setAssignResult(null)
+    setSelectedPreviewIndices(new Set())
+    fetchAvailableExecs(expiryMonthFilter, year)
+  }
+
+  // Assign leads for the selected month or specifically selected rows
   const handleAssignLeads = async () => {
     if (selectedExecIds.length === 0) return
     setAssigning(true)
     setAssignResult(null)
     try {
+      let targetLeadIds: string[] | undefined = undefined
+      if (selectedPreviewIndices.size > 0 && previewData?.leadIds) {
+        targetLeadIds = Array.from(selectedPreviewIndices)
+          .map(idx => previewData.leadIds?.[idx])
+          .filter(Boolean) as string[]
+      }
+
       const res = await fetchApi('/api/v1/leads/assign-monthly', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -295,10 +314,18 @@ export default function ImportedSheetsPage() {
           importName: selectedFile?.batchName === 'Imported Leads (Master)' ? null : selectedFile?.batchName || null,
           month: expiryMonthFilter,
           year: expiryYearFilter,
-          salesExecutiveIds: selectedExecIds
+          salesExecutiveIds: selectedExecIds,
+          leadIds: targetLeadIds
         })
       })
       setAssignResult(res)
+
+      // Refresh preview to show updated assignees
+      if (selectedFile) {
+        const refreshed = await fetchApi(`/api/v1/import/sheets/${encodeURIComponent(selectedFile.fileName)}?all=true`)
+        setPreviewData(refreshed)
+        setSelectedPreviewIndices(new Set())
+      }
     } catch (err: any) {
       setAssignResult({ error: err.message || 'Assignment failed' })
     } finally {
@@ -535,8 +562,8 @@ export default function ImportedSheetsPage() {
     if (!previewData?.rows) return []
     let rows = previewData.rows
 
-    // Filter by expiry month if selected
-    if (expiryMonthFilter > 0 && previewData.headers) {
+    // Filter by expiry month and year if selected
+    if (previewData.headers && (expiryMonthFilter > 0 || (expiryYearFilter && expiryYearFilter > 0))) {
       const expiryColIdx = previewData.headers.findIndex(h => {
         const hLower = h.toLowerCase().replace(/[^a-z0-9]/g, '')
         return hLower.includes('expiry') || hLower.includes('validity') || hLower.includes('duedate') || hLower.includes('policyend')
@@ -544,21 +571,34 @@ export default function ImportedSheetsPage() {
       if (expiryColIdx !== -1) {
         rows = rows.filter(row => {
           const cellVal = String(row[expiryColIdx] || '').trim()
-          if (!cellVal) return false
-          // Parse the date to get its month
+          if (!cellVal || cellVal === '—' || cellVal === 'NA' || cellVal.toLowerCase() === 'null') return false
+          
           let d: Date | null = null
-          // Try DD/MM/YYYY or DD-MM-YYYY
+          // Try DD/MM/YYYY or DD-MM-YYYY or D/M/YYYY
           const dmyMatch = cellVal.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2,4})/)
           if (dmyMatch) {
             let yr = parseInt(dmyMatch[3], 10)
             if (yr < 100) yr += yr < 50 ? 2000 : 1900
-            d = new Date(yr, parseInt(dmyMatch[2], 10) - 1, parseInt(dmyMatch[1], 10))
+            const m = parseInt(dmyMatch[2], 10) - 1
+            const day = parseInt(dmyMatch[1], 10)
+            d = new Date(yr, m, day)
+          }
+          if (!d || isNaN(d.getTime())) {
+            // Try YYYY-MM-DD
+            const ymdMatch = cellVal.match(/^(\d{4})[/\-.](\d{1,2})[/\-.](\d{1,2})/)
+            if (ymdMatch) {
+              d = new Date(parseInt(ymdMatch[1], 10), parseInt(ymdMatch[2], 10) - 1, parseInt(ymdMatch[3], 10))
+            }
           }
           if (!d || isNaN(d.getTime())) {
             d = new Date(cellVal)
           }
           if (!d || isNaN(d.getTime())) return false
-          return (d.getMonth() + 1) === expiryMonthFilter && d.getFullYear() === expiryYearFilter
+
+          const matchYear = expiryYearFilter > 0 ? d.getFullYear() === expiryYearFilter : true
+          const matchMonth = expiryMonthFilter > 0 ? (d.getMonth() + 1) === expiryMonthFilter : true
+
+          return matchYear && matchMonth
         })
       }
     }
@@ -1753,6 +1793,30 @@ export default function ImportedSheetsPage() {
 
                         <span>Filtered: <strong className="text-slate-900">{filteredPreviewRows.length}</strong></span>
 
+                        {/* Lead Selection Controls */}
+                        {selectedPreviewIndices.size > 0 ? (
+                          <div className="flex items-center gap-2 bg-indigo-50 border border-indigo-200 px-3 py-1 rounded-xl">
+                            <span className="text-xs font-bold text-indigo-900">
+                              {selectedPreviewIndices.size} selected
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedPreviewIndices(new Set())}
+                              className="text-[11px] text-indigo-600 hover:text-indigo-800 font-bold underline cursor-pointer"
+                            >
+                              Clear
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setSelectedPreviewIndices(new Set(filteredPreviewRows.map((_, i) => i)))}
+                            className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[11px] font-bold transition-all cursor-pointer"
+                          >
+                            Select All ({filteredPreviewRows.length})
+                          </button>
+                        )}
+
                         {/* Rows per page selector */}
                         <div className="flex items-center gap-1.5 ml-auto">
                           <span className="text-[11px] text-slate-400 font-semibold">Rows:</span>
@@ -1794,24 +1858,20 @@ export default function ImportedSheetsPage() {
                           </select>
                           <select
                             value={expiryYearFilter}
-                            onChange={e => {
-                              setExpiryYearFilter(Number(e.target.value))
-                              if (expiryMonthFilter > 0) {
-                                handleExpiryMonthChange(expiryMonthFilter)
-                              }
-                            }}
+                            onChange={e => handleExpiryYearChange(Number(e.target.value))}
                             className="bg-white border border-blue-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
                           >
+                            <option value={0}>All Years</option>
                             {[2024, 2025, 2026, 2027, 2028, 2029, 2030].map(y => (
                               <option key={y} value={y}>{y}</option>
                             ))}
                           </select>
                         </div>
 
-                        {expiryMonthFilter > 0 && (
+                        {(expiryMonthFilter > 0 || expiryYearFilter > 0) && (
                           <div className="flex items-center gap-2 ml-auto">
                             <span className="px-3 py-1 bg-indigo-600 text-white text-xs font-black rounded-lg shadow-sm">
-                              {filteredPreviewRows.length} leads in {MONTH_NAMES[expiryMonthFilter]} {expiryYearFilter}
+                              {filteredPreviewRows.length} leads in {expiryMonthFilter > 0 ? MONTH_NAMES[expiryMonthFilter] : 'All Months'} {expiryYearFilter > 0 ? expiryYearFilter : 'All Years'}
                             </span>
                           </div>
                         )}
@@ -1822,7 +1882,7 @@ export default function ImportedSheetsPage() {
                         <div className="flex items-center justify-between">
                           <h4 className="text-sm font-black text-slate-900 flex items-center gap-2">
                             <UserCheck size={16} className="text-indigo-600" />
-                            Select Sales Executives for {expiryMonthFilter > 0 ? `${MONTH_NAMES[expiryMonthFilter]} ${expiryYearFilter}` : 'All Months'}
+                            Select Sales Executives for {expiryMonthFilter > 0 ? `${MONTH_NAMES[expiryMonthFilter]} ${expiryYearFilter || ''}` : expiryYearFilter > 0 ? `Year ${expiryYearFilter}` : 'All Months'}
                           </h4>
                             {!execsLoading && (
                               <span className="text-[10px] font-bold text-slate-500">
@@ -1907,22 +1967,22 @@ export default function ImportedSheetsPage() {
                           {/* Assign Button + Result */}
                           <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 border-t border-slate-100">
                             <div className="text-xs font-semibold text-slate-600">
-                              <strong>{filteredPreviewRows.length}</strong> leads will be distributed via round-robin across <strong>{selectedExecIds.length}</strong> executives
+                              <strong>{selectedPreviewIndices.size > 0 ? selectedPreviewIndices.size : filteredPreviewRows.length}</strong> leads will be distributed via round-robin across <strong>{selectedExecIds.length}</strong> executives
                               {selectedExecIds.length > 0 && (
                                 <span className="text-blue-600 ml-1">
-                                  (~{Math.ceil(filteredPreviewRows.length / selectedExecIds.length)} each)
+                                  (~{Math.ceil((selectedPreviewIndices.size > 0 ? selectedPreviewIndices.size : filteredPreviewRows.length) / selectedExecIds.length)} each)
                                 </span>
                               )}
                             </div>
                             <button
                               onClick={handleAssignLeads}
-                              disabled={assigning || selectedExecIds.length === 0 || filteredPreviewRows.length === 0}
+                              disabled={assigning || selectedExecIds.length === 0 || (selectedPreviewIndices.size === 0 && filteredPreviewRows.length === 0)}
                               className="px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white text-sm font-black rounded-xl transition-all flex items-center gap-2 cursor-pointer shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                               {assigning ? (
                                 <><RefreshCw size={16} className="animate-spin" /> Assigning...</>
                               ) : (
-                                <><Users size={16} /> Assign {filteredPreviewRows.length} Leads</>
+                                <><Users size={16} /> {selectedPreviewIndices.size > 0 ? `Assign ${selectedPreviewIndices.size} Selected Leads` : `Assign All ${filteredPreviewRows.length} Leads`}</>
                               )}
                             </button>
                           </div>
@@ -1961,6 +2021,24 @@ export default function ImportedSheetsPage() {
                       <table className="w-full text-left text-xs border-collapse">
                         <thead>
                           <tr className="bg-slate-900 text-slate-100 sticky top-0 z-10 text-[11px] font-black uppercase tracking-wider">
+                            <th className="px-3 py-3 border-b border-slate-700 w-10 text-center">
+                              <input
+                                type="checkbox"
+                                checked={
+                                  filteredPreviewRows.length > 0 &&
+                                  filteredPreviewRows.every((_, idx) => selectedPreviewIndices.has(idx))
+                                }
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setSelectedPreviewIndices(new Set(filteredPreviewRows.map((_, i) => i)))
+                                  } else {
+                                    setSelectedPreviewIndices(new Set())
+                                  }
+                                }}
+                                className="h-4 w-4 rounded border-slate-600 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                                title="Select all filtered leads"
+                              />
+                            </th>
                             <th className="px-4 py-3 border-b border-slate-700 w-12 text-center">#</th>
                             {previewData.headers.map((header, idx) => (
                               <th 
@@ -1981,25 +2059,59 @@ export default function ImportedSheetsPage() {
                         <tbody className="divide-y divide-slate-100">
                           {paginatedRows.length === 0 ? (
                             <tr>
-                              <td colSpan={previewData.headers.length + 1} className="py-12 text-center text-slate-400 font-semibold">
+                              <td colSpan={previewData.headers.length + 2} className="py-12 text-center text-slate-400 font-semibold">
                                 No matching rows found in this spreadsheet.
                               </td>
                             </tr>
                           ) : (
                             paginatedRows.map((row, rIdx) => {
                               const globalRowNumber = rowsPerPage === 'all' ? rIdx + 1 : (currentPage - 1) * (rowsPerPage as number) + rIdx + 1
+                              const globalFilteredIndex = rowsPerPage === 'all' ? rIdx : (currentPage - 1) * (rowsPerPage as number) + rIdx
+                              const isSelected = selectedPreviewIndices.has(globalFilteredIndex)
                               const isAgentRow = previewData.agentColIdx !== -1 && 
                                 String(row[previewData.agentColIdx] || '').toLowerCase().trim() === 'agent'
 
                               return (
                                 <tr 
                                   key={rIdx}
-                                  className={`transition-colors ${
-                                    isAgentRow 
+                                  onClick={(e) => {
+                                    if ((e.target as HTMLElement).tagName === 'A') return
+                                    setSelectedPreviewIndices(prev => {
+                                      const next = new Set(prev)
+                                      if (next.has(globalFilteredIndex)) {
+                                        next.delete(globalFilteredIndex)
+                                      } else {
+                                        next.add(globalFilteredIndex)
+                                      }
+                                      return next
+                                    })
+                                  }}
+                                  className={`transition-colors cursor-pointer ${
+                                    isSelected
+                                      ? 'bg-indigo-50 hover:bg-indigo-100/90 font-bold border-l-4 border-indigo-600'
+                                      : isAgentRow 
                                       ? 'bg-amber-50/80 hover:bg-amber-100/80 font-bold text-amber-900 border-l-4 border-amber-500' 
                                       : rIdx % 2 === 0 ? 'bg-white hover:bg-slate-50/80' : 'bg-slate-50/40 hover:bg-slate-100/60'
                                   }`}
                                 >
+                                  <td className="px-3 py-3 text-center w-10" onClick={e => e.stopPropagation()}>
+                                    <input
+                                      type="checkbox"
+                                      checked={isSelected}
+                                      onChange={() => {
+                                        setSelectedPreviewIndices(prev => {
+                                          const next = new Set(prev)
+                                          if (next.has(globalFilteredIndex)) {
+                                            next.delete(globalFilteredIndex)
+                                          } else {
+                                            next.add(globalFilteredIndex)
+                                          }
+                                          return next
+                                        })
+                                      }}
+                                      className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                                    />
+                                  </td>
                                   <td className="px-4 py-3 text-slate-400 font-mono text-[10px] text-center">{globalRowNumber}</td>
                                   {previewData.headers.map((_, cIdx) => {
                                     const val = row[cIdx] !== undefined && row[cIdx] !== null ? String(row[cIdx]) : ''

@@ -19,15 +19,19 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    // Fetch all active sales executives
-    const executives = await prisma.user.findMany({
+    // Fetch all active sales executives and staff
+    let executives = await prisma.user.findMany({
       where: {
         isActive: true,
         role: {
           OR: [
             { name: { contains: 'Sales', mode: 'insensitive' } },
             { name: { contains: 'Executive', mode: 'insensitive' } },
-            { name: { equals: 'EXECUTIVE', mode: 'insensitive' } }
+            { name: { contains: 'Caller', mode: 'insensitive' } },
+            { name: { contains: 'Telecaller', mode: 'insensitive' } },
+            { name: { contains: 'Staff', mode: 'insensitive' } },
+            { name: { contains: 'Manager', mode: 'insensitive' } },
+            { name: { contains: 'Admin', mode: 'insensitive' } }
           ]
         }
       },
@@ -40,6 +44,26 @@ export async function GET(req: NextRequest) {
         role: { select: { name: true } }
       }
     })
+
+    if (executives.length === 0) {
+      // Fallback to all active users except pure client/customer roles
+      executives = await prisma.user.findMany({
+        where: {
+          isActive: true,
+          role: {
+            name: { notIn: ['Client', 'Customer', 'client', 'customer'] }
+          }
+        },
+        orderBy: { createdAt: 'asc' },
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+          isActive: true,
+          role: { select: { name: true } }
+        }
+      })
+    }
 
     // Get leave requests for the target month
     const monthStart = new Date(year, month - 1, 1)
