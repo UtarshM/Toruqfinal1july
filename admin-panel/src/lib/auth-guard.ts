@@ -69,11 +69,13 @@ export async function validateAuth(
       if (!authError && data?.user) {
         authUser = data.user
       } else {
-        // Resilient fallback: verify token directly with Supabase auth endpoint using anon key
+        // Resilient fallback 1: verify token directly with configured Supabase auth endpoint
         try {
-          const verifyRes = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/user`, {
+          const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://qzxresquqptqxajuffsd.supabase.co'
+          const supabaseAnon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF6eHJlc3F1cXB0cXhhanVmZnNkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkyMDc1MzEsImV4cCI6MjEwNDc4MzUzMX0.tRftNSoyB-kL1cB5kJgKTxfoNtLtFs0wFIg1L47KI9A'
+          const verifyRes = await fetch(`${supabaseUrl}/auth/v1/user`, {
             headers: {
-              'apikey': process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
+              'apikey': supabaseAnon,
               'Authorization': `Bearer ${token}`
             }
           })
@@ -82,6 +84,25 @@ export async function validateAuth(
           }
         } catch (e) {
           console.error('[auth-guard] Fallback auth verify failed:', e)
+        }
+
+        // Resilient fallback 2: direct verify against primary active Supabase project
+        if (!authUser) {
+          try {
+            const primaryUrl = 'https://qzxresquqptqxajuffsd.supabase.co'
+            const primaryAnon = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF6eHJlc3F1cXB0cXhhanVmZnNkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkyMDc1MzEsImV4cCI6MjEwNDc4MzUzMX0.tRftNSoyB-kL1cB5kJgKTxfoNtLtFs0wFIg1L47KI9A'
+            const verifyRes = await fetch(`${primaryUrl}/auth/v1/user`, {
+              headers: {
+                'apikey': primaryAnon,
+                'Authorization': `Bearer ${token}`
+              }
+            })
+            if (verifyRes.ok) {
+              authUser = await verifyRes.json()
+            }
+          } catch (e) {
+            console.error('[auth-guard] Primary Supabase fallback verify failed:', e)
+          }
         }
       }
 
