@@ -797,11 +797,11 @@ export default function LeadsPage() {
       )}
 
       {/* Active Filter Recovery Banner */}
-      {leads.length > 0 && filteredLeads.length === 0 && (
+      {!isLoading && hasActiveColumnFilters && filteredLeads.length === 0 && (
         <div className="bg-amber-50 border border-amber-200 text-amber-900 p-4 rounded-2xl text-xs font-bold mt-4 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-sm">
           <div className="flex items-center gap-2">
             <AlertCircle size={16} className="text-amber-600 shrink-0" />
-            <span>{leads.length} leads loaded, but active column or search filters are hiding them.</span>
+            <span>No leads matched your active search or column filters.</span>
           </div>
           <button 
             onClick={() => {
@@ -814,7 +814,7 @@ export default function LeadsPage() {
             }} 
             className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition-all shadow cursor-pointer whitespace-nowrap"
           >
-            Reset All Filters
+            Clear Filters
           </button>
         </div>
       )}
