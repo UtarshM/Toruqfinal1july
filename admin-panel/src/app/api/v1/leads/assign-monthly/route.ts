@@ -57,16 +57,19 @@ export async function POST(req: NextRequest) {
         whereClause.importName = importName
       }
 
-      // If city is provided (e.g. "Morbi" or "Rajkot"), filter by city or address
+      // If city is provided (Morbi Branch), filter by city or address unless already a Morbi batch
       if (city && city !== 'all' && city !== 'All') {
-        whereClause.AND = [
-          {
-            OR: [
-              { city: { contains: city, mode: 'insensitive' } },
-              { address: { contains: city, mode: 'insensitive' } }
-            ]
-          }
-        ]
+        const isMorbiImport = importName && importName.toLowerCase().includes('morbi')
+        if (!isMorbiImport) {
+          whereClause.AND = [
+            {
+              OR: [
+                { city: { contains: city, mode: 'insensitive' } },
+                { address: { contains: city, mode: 'insensitive' } }
+              ]
+            }
+          ]
+        }
       }
     }
 

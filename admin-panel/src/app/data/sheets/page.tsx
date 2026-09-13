@@ -107,7 +107,7 @@ export default function ImportedSheetsPage() {
   const [expiryMonthFilter, setExpiryMonthFilter] = useState<number>(0) // 0 = All, 1-12 = month
   const [expiryYearFilter, setExpiryYearFilter] = useState<number>(new Date().getFullYear())
   const [maxLeadsPerExec, setMaxLeadsPerExec] = useState<number | 'all'>('all') // Master admin decides quota per assignment (default 'all')
-  const [previewCityFilter, setPreviewCityFilter] = useState<string>('all') // 'all', 'morbi', 'rajkot'
+  const [previewCityFilter, setPreviewCityFilter] = useState<string>('morbi') // Morbi branch only
   const [showAssignPanel, setShowAssignPanel] = useState(false)
   const [availableExecs, setAvailableExecs] = useState<any[]>([])
   const [selectedExecIds, setSelectedExecIds] = useState<string[]>([])
@@ -246,14 +246,7 @@ export default function ImportedSheetsPage() {
     setSelectedFile(file)
     setPreviewSearch(initialRowSearch || '')
     setPreviewAgentFilter('all')
-    const lowerName = (file.batchName || file.fileName).toLowerCase()
-    if (lowerName.includes('morbi')) {
-      setPreviewCityFilter('morbi')
-    } else if (lowerName.includes('rajkot')) {
-      setPreviewCityFilter('rajkot')
-    } else {
-      setPreviewCityFilter('all')
-    }
+    setPreviewCityFilter('morbi')
     setMaxLeadsPerExec('all')
     setPreviewSortCol(null)
     setCurrentPage(1)
@@ -616,17 +609,20 @@ export default function ImportedSheetsPage() {
       }
     }
 
-    // Filter by city / branch (e.g. Morbi or Rajkot)
+    // Filter by city / branch (Morbi Branch)
     if (previewCityFilter !== 'all' && previewData.headers) {
-      const cityFilterLower = previewCityFilter.toLowerCase().trim()
-      const cityColIdx = previewData.headers.findIndex(h => {
-        const norm = h.toLowerCase().replace(/[^a-z0-9]/g, '')
-        return norm.includes('city') || norm.includes('branch') || norm.includes('location') || norm.includes('address')
-      })
-      if (cityColIdx !== -1) {
-        rows = rows.filter(row => String(row[cityColIdx] || '').toLowerCase().includes(cityFilterLower))
-      } else {
-        rows = rows.filter(row => row.some(cell => String(cell || '').toLowerCase().includes(cityFilterLower)))
+      const isMorbiFile = selectedFile && (selectedFile.batchName || selectedFile.fileName || '').toLowerCase().includes('morbi')
+      if (!isMorbiFile) {
+        const cityFilterLower = previewCityFilter.toLowerCase().trim()
+        const cityColIdx = previewData.headers.findIndex(h => {
+          const norm = h.toLowerCase().replace(/[^a-z0-9]/g, '')
+          return norm.includes('city') || norm.includes('branch') || norm.includes('location') || norm.includes('address')
+        })
+        if (cityColIdx !== -1) {
+          rows = rows.filter(row => String(row[cityColIdx] || '').toLowerCase().includes(cityFilterLower))
+        } else {
+          rows = rows.filter(row => row.some(cell => String(cell || '').toLowerCase().includes(cityFilterLower)))
+        }
       }
     }
 
@@ -1900,9 +1896,8 @@ export default function ImportedSheetsPage() {
                             }}
                             className="bg-white border border-blue-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
                           >
-                            <option value="all">All Branches / Cities</option>
                             <option value="morbi">Morbi Branch</option>
-                            <option value="rajkot">Rajkot Branch</option>
+                            <option value="all">All Leads (No Branch Filter)</option>
                           </select>
                         </div>
 
