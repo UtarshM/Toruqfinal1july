@@ -285,6 +285,7 @@ export default function ManagerDocumentsPage() {
           <div className="space-y-1 bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs">
             <h6 className="text-[9px] font-black text-slate-400 uppercase">Policy Parameters</h6>
             <div className="flex justify-between"><span className="text-slate-500">Policy Type:</span> <span className="font-bold text-slate-900">{sub.formData?.policyType || 'N/A'}</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">Vehicle Type:</span> <span className="font-bold text-slate-900 text-indigo-700">{sub.formData?.vehicleType || 'N/A'}</span></div>
             <div className="flex justify-between"><span className="text-slate-500">Category:</span> <span className="font-bold text-slate-900">{sub.formData?.customerCategory || 'N/A'}</span></div>
             <div className="flex justify-between"><span className="text-slate-500">Expiry Date:</span> <span className="font-bold text-slate-900">{formatToDateMonthYear(sub.formData?.expDate) || 'N/A'}</span></div>
             <div className="flex justify-between"><span className="text-slate-500">NCB Status:</span> <span className="font-bold text-slate-900">{sub.formData?.ncb || 'N/A'}</span></div>
@@ -820,6 +821,7 @@ export default function ManagerDocumentsPage() {
                               <h5 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider border-b pb-1">Policy Parameters</h5>
                               <div className="space-y-2 text-xs">
                                 <div className="flex justify-between"><span className="text-slate-500">Policy Type:</span> <span className="font-bold text-slate-900">{sub.formData?.policyType || 'N/A'}</span></div>
+                                <div className="flex justify-between"><span className="text-slate-500">Vehicle Type:</span> <span className="font-bold text-slate-900 text-indigo-700">{sub.formData?.vehicleType || 'N/A'}</span></div>
                                 <div className="flex justify-between"><span className="text-slate-500">Category:</span> <span className="font-bold text-slate-900">{sub.formData?.customerCategory || 'N/A'}</span></div>
                                 <div className="flex justify-between"><span className="text-slate-500">Expiry Date:</span> <span className="font-bold text-slate-900">{formatToDateMonthYear(sub.formData?.expDate) || 'N/A'}</span></div>
                                 <div className="flex justify-between"><span className="text-slate-500">NCB Status:</span> <span className="font-bold text-slate-900">{sub.formData?.ncb || 'N/A'}</span></div>

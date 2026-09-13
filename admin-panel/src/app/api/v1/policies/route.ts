@@ -158,6 +158,35 @@ export async function POST(req: NextRequest) {
           documents: body.issuedPolicyPdfUrl ? [body.issuedPolicyPdfUrl] : []
         }
       })
+
+      // Update vehicleType in lead customFields if provided
+      if (body.lead_id && (body.vehicle_type || body.vehicleType)) {
+        try {
+          const leadData = await prisma.lead.findUnique({
+            where: { id: body.lead_id },
+            select: { customFields: true }
+          })
+          const cf = (leadData?.customFields && typeof leadData.customFields === 'object') ? (leadData.customFields as any) : {}
+          await prisma.lead.update({
+            where: { id: body.lead_id },
+            data: {
+              customFields: {
+                ...cf,
+                vehicleType: body.vehicle_type || body.vehicleType,
+                policySubmission: {
+                  ...(cf.policySubmission || {}),
+                  formData: {
+                    ...((cf.policySubmission && cf.policySubmission.formData) || {}),
+                    vehicleType: body.vehicle_type || body.vehicleType
+                  }
+                }
+              }
+            }
+          })
+        } catch (leadUpdateErr) {
+          console.warn('[policy POST] Failed to update lead vehicleType:', leadUpdateErr)
+        }
+      }
     } catch (renewalErr) {
       console.warn('[policy POST] Failed to create renewal record:', renewalErr)
     }

@@ -83,6 +83,7 @@ export async function GET(
         status: 'Draft',
         formData: {
           policyType: '',
+          vehicleType: 'LMV - Private Car (CC)',
           customerType: 'Existing',
           customerCategory: 'OPC-Our Premium Customer',
           regNo: lead.vehicleNo || '',

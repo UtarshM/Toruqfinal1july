@@ -37,6 +37,19 @@ export const REQUIRED_DOCUMENTS = [
   { key: 'VEHICLE_PHOTO', label: '7. Vehicle Photo for Body Type', desc: 'Live vehicle photo confirming body type match' },
 ]
 
+export const VEHICLE_TYPE_OPTIONS = [
+  'Two Wheeler (CC)',
+  '3W GCV - Loading Rixa',
+  '3W PCV - Passenger Rixa',
+  'LMV - Private Car (CC)',
+  'GCV - Loading Vehicle (GVW)',
+  'PCV - Passenger Vehicle (Seating Capacity & CC)',
+  'Other - MISC D',
+  'Agriculture Tractor',
+  'Commercial Tractor (GVW)',
+  'CPM - Machine',
+] as const
+
 export function formatToDateMonthYear(dateVal: any): string {
   if (!dateVal) return ''
   const str = String(dateVal).trim()
@@ -99,6 +112,7 @@ export default function LeadPolicySubmissionModal({ leadId, lead, onClose, onUpd
   const [hpSelection, setHpSelection] = useState<string>('As per RC')
   const [formData, setFormData] = useState<any>({
     policyType: 'nil dep',
+    vehicleType: 'LMV - Private Car (CC)',
     customerType: 'Existing',
     customerCategory: 'OPC-Our Premium Customer',
     regNo: lead?.vehicleNo || '',
@@ -146,6 +160,7 @@ export default function LeadPolicySubmissionModal({ leadId, lead, onClose, onUpd
           setFormData((prev: any) => ({
             ...prev,
             ...res.submission.formData,
+            vehicleType: res.submission.formData.vehicleType || 'LMV - Private Car (CC)',
             hpDetails: loadedHp || 'As per RC',
             dueDate: formatToDateMonthYear(res.submission.formData.dueDate) || '',
             inspectionStatus: res.submission.formData.inspectionStatus === 'Not Required' ? 'Not Applicable' : (res.submission.formData.inspectionStatus || 'Not Applicable'),
@@ -333,6 +348,7 @@ export default function LeadPolicySubmissionModal({ leadId, lead, onClose, onUpd
 
     if (isWithoutNcb) {
       return `*Policy Type:* ${formData.policyType || 'nil dep'}
+*Vehicle Type:* ${formData.vehicleType || 'LMV - Private Car (CC)'}
 *Customer Type:* ${formData.customerType || 'Existing'}
 *Customer Category:* ${formData.customerCategory || 'OPC-Our Premium Customer'}
 *Reg No:* ${formData.regNo || lead?.vehicleNo || ''}
@@ -350,6 +366,7 @@ export default function LeadPolicySubmissionModal({ leadId, lead, onClose, onUpd
     }
 
     return `*Policy Type:* ${formData.policyType || 'nil dep'}
+*Vehicle Type:* ${formData.vehicleType || 'LMV - Private Car (CC)'}
 *Customer Type:* ${formData.customerType || 'Existing'}
 *Customer Category:* ${formData.customerCategory || 'OPC-Our Premium Customer'}
 *Reg No:* ${formData.regNo || lead?.vehicleNo || ''}
@@ -550,6 +567,21 @@ ${formData.paymentMode?.toLowerCase() === 'credit' && formData.dueDate ? `*Due D
                       <option value="comprehensive">Comprehensive</option>
                       <option value="TP">Third Party (TP)</option>
                       <option value="OD">Own Damage (OD)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-600 block mb-1">Vehicle Type *</label>
+                    <select
+                      value={formData.vehicleType || 'LMV - Private Car (CC)'}
+                      onChange={e => setFormData({ ...formData, vehicleType: e.target.value })}
+                      className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      {VEHICLE_TYPE_OPTIONS.map((vt, idx) => (
+                        <option key={vt} value={vt}>
+                          {idx + 1}. {vt}
+                        </option>
+                      ))}
                     </select>
                   </div>
 

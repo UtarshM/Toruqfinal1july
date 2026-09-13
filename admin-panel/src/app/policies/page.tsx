@@ -7,6 +7,7 @@ import {
   Shield, Search, FileText, Download, Filter, Plus, X, Calendar, 
   RefreshCw, Eye, CheckCircle2, User, Trash2, AlertTriangle, Check
 } from 'lucide-react'
+import { VEHICLE_TYPE_OPTIONS } from '@/components/leads/LeadPolicySubmissionModal'
 
 export default function PoliciesPage() {
   const { user } = useAuth()
@@ -33,6 +34,7 @@ export default function PoliciesPage() {
     policy_number: '',
     provider: '',
     type: 'Motor',
+    vehicle_type: 'LMV - Private Car (CC)',
     premium_amount: '',
     start_date: new Date().toISOString().split('T')[0],
     end_date: new Date(new Date().setFullYear(new Date().getFullYear() + 1)).toISOString().split('T')[0]
@@ -551,6 +553,15 @@ export default function PoliciesPage() {
                 </select>
               </div>
               <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Vehicle Type</label>
+                <select value={newPolicy.vehicle_type} onChange={e => setNewPolicy({...newPolicy, vehicle_type: e.target.value})}
+                  className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl outline-none font-medium">
+                  {VEHICLE_TYPE_OPTIONS.map((vt, idx) => (
+                    <option key={vt} value={vt}>{idx + 1}. {vt}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="col-span-2 sm:col-span-1">
                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Premium Amount</label>
                 <input required type="number" value={newPolicy.premium_amount} onChange={e => setNewPolicy({...newPolicy, premium_amount: e.target.value})}
                   className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl outline-none" />

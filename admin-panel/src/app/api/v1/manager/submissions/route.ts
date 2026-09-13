@@ -80,6 +80,7 @@ Customer Name: ${customerName}
 Mobile No 1: ${mob1}
 Mobile No 2: ${mob2}
 Policy Type: ${policyType}
+Vehicle Type: ${d.vehicleType || 'LMV - Private Car (CC)'}
 Customer Type: ${customerType}
 Category: ${customerCat}
 Rate: ${rate}
@@ -98,6 +99,7 @@ Customer Name: ${customerName}
 Mobile No 1: ${mob1}
 Mobile No 2: ${mob2}
 Policy Type: ${policyType}
+Vehicle Type: ${d.vehicleType || 'LMV - Private Car (CC)'}
 Customer Type: ${customerType}
 Category: ${customerCat}
 Rate: ${rate}
