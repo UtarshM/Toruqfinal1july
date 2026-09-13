@@ -24,6 +24,9 @@ function toDateOnlyIST(date: any): string {
   }
 }
 
+export const maxDuration = 60
+export const dynamic = 'force-dynamic'
+
 export async function GET(req: NextRequest) {
   const { context, error } = await validateAuth(req)
   if (error || !context) return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

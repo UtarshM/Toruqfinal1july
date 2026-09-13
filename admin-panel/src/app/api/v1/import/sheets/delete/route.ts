@@ -6,6 +6,9 @@ import fs from 'fs'
 import { getUploadDir } from '@/lib/upload-helper'
 import { deleteLeadsWithCascade } from '@/lib/lead-delete-helper'
 
+export const maxDuration = 60
+export const dynamic = 'force-dynamic'
+
 export async function POST(req: NextRequest) {
   const { context, error } = await validateAuth(req)
   if (error || !context) return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
