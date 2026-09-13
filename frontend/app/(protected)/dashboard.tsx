@@ -72,7 +72,7 @@ export default function DashboardScreen() {
       }
 
       const newStats = { ...sData, leads, revenue, pending, claims };
-      const newItems = nData.notifications || [];
+      const newItems = nData?.notifications || [];
 
       setStats(newStats);
       setItems(newItems);

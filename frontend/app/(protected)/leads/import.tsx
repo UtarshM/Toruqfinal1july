@@ -8,6 +8,9 @@ import Sidebar from '../../../src/components/Sidebar';
 import { supabase } from '../../../src/lib/supabase';
 import { useAuth } from '../../../src/context/AuthContext';
 import { useRouter } from 'expo-router';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as XLSX from 'xlsx';
+import Papa from 'papaparse';
 
 import { BASE_URL } from '../../../src/utils/api';
 
@@ -140,8 +143,10 @@ export default function LeadImportScreen() {
   
   // Mapping UI states
   const [fileHeaders, setFileHeaders] = useState<string[]>([]);
+  const [parsedRows, setParsedRows] = useState<any[]>([]);
   const [parsingHeaders, setParsingHeaders] = useState(false);
   const [mappings, setMappings] = useState<ColumnMapping[]>([]);
+  const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null);
   
   // Custom Field adding/editing states
   const [showAddForm, setShowAddForm] = useState(false);
@@ -159,16 +164,71 @@ export default function LeadImportScreen() {
   const handlePickFile = async () => {
     try {
       const res = await DocumentPicker.getDocumentAsync({
-        type: '*/*',
+        type: [
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'application/vnd.ms-excel',
+          'application/msexcel',
+          'application/x-msexcel',
+          'application/x-ms-excel',
+          'application/x-excel',
+          'application/excel',
+          'text/csv',
+          'text/comma-separated-values',
+          'application/csv',
+          'application/x-csv',
+          'text/x-csv',
+          'text/plain',
+          '*/*'
+        ],
         copyToCacheDirectory: true
       });
 
       if (!res.canceled && res.assets && res.assets.length > 0) {
-        const file = res.assets[0];
-        const ext = file.name.toLowerCase().split('.').pop();
-        if (ext !== 'csv' && ext !== 'xlsx' && ext !== 'xls') {
+        const file = { ...res.assets[0] };
+        const rawName = (file.name || '').trim();
+        const rawUri = (file.uri || '').trim();
+        const mime = (file.mimeType || '').toLowerCase().trim();
+
+        const cleanName = decodeURIComponent(rawName);
+        const cleanUri = decodeURIComponent(rawUri);
+
+        const isExcel = /\.(xlsx|xls)$/i.test(cleanName) || 
+                        /\.(xlsx|xls)$/i.test(cleanUri) || 
+                        mime.includes('spreadsheet') || 
+                        mime.includes('excel') || 
+                        mime.includes('sheet') || 
+                        mime.includes('ms-excel');
+
+        const isCsv = /\.csv$/i.test(cleanName) || 
+                      /\.csv$/i.test(cleanUri) || 
+                      mime.includes('csv') || 
+                      mime.includes('comma-separated');
+
+        const isExplicitlyUnsupported = /\.(jpg|jpeg|png|gif|webp|svg|pdf|mp3|mp4|avi|mov|zip|rar|tar|gz|apk|exe)$/i.test(cleanName) ||
+          /\.(jpg|jpeg|png|gif|webp|svg|pdf|mp3|mp4|avi|mov|zip|rar|tar|gz|apk|exe)$/i.test(cleanUri) ||
+          (mime.startsWith('image/') || mime.startsWith('video/') || mime.startsWith('audio/') || mime === 'application/pdf');
+
+        if (isExplicitlyUnsupported && !isExcel && !isCsv) {
           Alert.alert('Unsupported Format', 'Please upload a CSV or Excel (.xlsx/.xls) file.');
           return;
+        }
+
+        // Normalize filename so downstream parsers and backends always recognize it
+        let normalizedName = cleanName || 'import_leads.xlsx';
+        if (!/\.(xlsx|xls|csv)$/i.test(normalizedName)) {
+          normalizedName += isCsv ? '.csv' : '.xlsx';
+        }
+        file.name = normalizedName;
+        if (!file.mimeType || file.mimeType === 'application/octet-stream') {
+          file.mimeType = isCsv 
+            ? 'text/csv' 
+            : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+        }
+
+        // Auto-fill batch name if empty
+        if (!importName.trim()) {
+          const autoBatch = normalizedName.replace(/\.[^/.]+$/, '').replace(/[_\-\+]+/g, ' ').trim();
+          if (autoBatch) setImportName(autoBatch);
         }
 
         setSelectedFile(file);
@@ -176,8 +236,9 @@ export default function LeadImportScreen() {
         setImportedList([]);
         setShowMappingForm(false);
         setFileHeaders([]);
+        setParsedRows([]);
         
-        // Proactively parse headers
+        // Proactively parse headers and rows
         parseFileHeaders(file);
       }
     } catch (err) {
@@ -185,64 +246,142 @@ export default function LeadImportScreen() {
     }
   };
 
+  // Helper: safely extract a human-readable string from any thrown value
+  const safeErrorMessage = (err: unknown, fallback = 'An unknown error occurred.'): string => {
+    if (!err) return fallback;
+    if (typeof err === 'string') return err;
+    if (err instanceof Error) return err.message || fallback;
+    if (typeof err === 'object') {
+      const obj = err as any;
+      if (typeof obj.message === 'string') return obj.message;
+      if (typeof obj.error === 'string') return obj.error;
+      if (typeof obj.detail === 'string') return obj.detail;
+      try { return JSON.stringify(err); } catch { return fallback; }
+    }
+    return String(err);
+  };
+
   const parseFileHeaders = async (file: DocumentPicker.DocumentPickerAsset) => {
     setParsingHeaders(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token;
-      if (!token) {
-        Alert.alert('Error', 'Session expired. Please log in again.');
-        return;
+      let headers: string[] = [];
+      let rows: any[] = [];
+      const isCsv = file.name.toLowerCase().endsWith('.csv') || (file.mimeType && file.mimeType.includes('csv'));
+
+      // Step 1: Attempt ultra-fast local parsing right on device
+      try {
+        if (isCsv) {
+          // Read first 256KB for header parsing to prevent out-of-memory on massive CSVs
+          const text = await FileSystem.readAsStringAsync(file.uri, {
+            encoding: FileSystem.EncodingType.UTF8,
+            length: 256 * 1024
+          }).catch(() => FileSystem.readAsStringAsync(file.uri, { encoding: FileSystem.EncodingType.UTF8 }));
+
+          const results = Papa.parse(text, { header: false, skipEmptyLines: true });
+          const rawAoa = results.data as any[][];
+          if (rawAoa && rawAoa.length > 0) {
+            const rawHeaders = (rawAoa[0] || []).map((h: any) => String(h || '').trim());
+            headers = rawHeaders.map((h, c) => h || `Column_${c + 1}`);
+            rows = rawAoa.slice(1).map(r => {
+              const obj: any = {};
+              headers.forEach((h, idx) => {
+                obj[h] = r[idx] !== undefined ? r[idx] : '';
+              });
+              return obj;
+            });
+          }
+        } else {
+          const base64Data = await FileSystem.readAsStringAsync(file.uri, { encoding: FileSystem.EncodingType.Base64 });
+          const workbook = XLSX.read(base64Data, { type: 'base64', cellDates: true });
+          const firstSheet = workbook.SheetNames[0];
+          const worksheet = workbook.Sheets[firstSheet];
+          const rawAoa: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
+          if (rawAoa && rawAoa.length > 0) {
+            const rawHeaders = (rawAoa[0] || []).map((h: any) => String(h || '').trim());
+            headers = rawHeaders.map((h, c) => h || `Column_${c + 1}`);
+            rows = rawAoa.slice(1).map(r => {
+              const obj: any = {};
+              headers.forEach((h, idx) => {
+                obj[h] = r[idx] !== undefined ? r[idx] : '';
+              });
+              return obj;
+            });
+          }
+        }
+      } catch (localErr: unknown) {
+        console.warn('[import] Local parsing failed, falling back to server parse:', safeErrorMessage(localErr));
       }
 
-      const formData = new FormData();
-      formData.append('file', {
-        uri: file.uri,
-        name: file.name,
-        type: file.mimeType || 'application/octet-stream',
-      } as any);
+      // Step 2: Fallback to server parse endpoint if local extraction was empty
+      if (headers.length === 0) {
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          const token = session?.access_token;
+          if (token) {
+            const formData = new FormData();
+            formData.append('file', {
+              uri: file.uri,
+              name: file.name,
+              type: file.mimeType || 'application/octet-stream',
+            } as any);
 
-      const response = await fetch(`${BASE_URL}/api/v1/leads/import/parse`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Accept': 'application/json',
-        },
-        body: formData,
-      });
+            const response = await fetch(`${BASE_URL}/api/v1/leads/import/parse`, {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${token}`,
+                'Accept': 'application/json',
+              },
+              body: formData,
+            });
 
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to parse file headers');
+            if (response.ok) {
+              const data = await response.json();
+              headers = data.headers || [];
+            }
+          }
+        } catch (serverErr: unknown) {
+          console.warn('[import] Server header parse error:', safeErrorMessage(serverErr));
+        }
+
+        // Standard Default Headers Fallback (Ensures user is NEVER blocked by network 413 or parse errors)
+        if (headers.length === 0) {
+          headers = [
+            'Client Name', 'Phone Number', 'Vehicle Number', 'Policy Expiry Date',
+            'Email Address', 'Registration Date', 'GVW', 'Address', 'City', 'Agent'
+          ];
+        }
       }
 
-      setFileHeaders(data.headers || []);
+      setFileHeaders(headers);
+      setParsedRows(rows);
       
-      // Auto-fuzzy match headers
+      // Auto-fuzzy match headers (same as website)
       const defaultMappings: ColumnMapping[] = [
-        { dbField: 'clientName', label: 'Owner Name', required: true, mappedHeader: '' },
-        { dbField: 'clientPhone', label: 'Contact Phone', required: true, mappedHeader: '' },
-        { dbField: 'vehicleNo', label: 'Vehicle Number', required: true, mappedHeader: '' },
-        { dbField: 'expiryDate', label: 'Expiry Date', required: true, mappedHeader: '' },
+        { dbField: 'clientName', label: 'Client Name', required: true, mappedHeader: '' },
+        { dbField: 'clientPhone', label: 'Phone Number', required: false, mappedHeader: '' },
+        { dbField: 'vehicleNo', label: 'Vehicle Number', required: false, mappedHeader: '' },
+        { dbField: 'expiryDate', label: 'Policy Expiry Date', required: false, mappedHeader: '' },
         { dbField: 'clientEmail', label: 'Email Address', required: false, mappedHeader: '' },
         { dbField: 'registrationDate', label: 'Registration Date', required: false, mappedHeader: '' },
         { dbField: 'gvw', label: 'GVW', required: false, mappedHeader: '' },
         { dbField: 'address', label: 'Address', required: false, mappedHeader: '' },
-        { dbField: 'city', label: 'City', required: false, mappedHeader: '' }
+        { dbField: 'city', label: 'City', required: false, mappedHeader: '' },
+        { dbField: 'existingAgent', label: 'Agent', required: false, mappedHeader: '' }
       ];
 
       const updatedMappings = defaultMappings.map(field => {
-        const match = (data.headers || []).find((h: string) => {
+        const match = headers.find((h: string) => {
           const header = h.toLowerCase().trim().replace(/[\s\.\-_]/g, '');
-          if (field.dbField === 'clientName') return ['ownername', 'name', 'clientname', 'partyname', 'insuredname', 'insured'].includes(header);
-          if (field.dbField === 'clientPhone') return ['phonenumber', 'contactnumber', 'phone', 'contact', 'mobile', 'mobileno', 'phoneno'].includes(header);
-          if (field.dbField === 'vehicleNo') return ['vehiclenumber', 'vehicleno', 'vehicle', 'regno', 'registrationno'].includes(header);
-          if (field.dbField === 'clientEmail') return ['email', 'clientemail', 'emailid'].includes(header);
-          if (field.dbField === 'expiryDate') return ['expirydate', 'expiry', 'insuranceexpirydate', 'duedate'].includes(header);
-          if (field.dbField === 'registrationDate') return ['registrationdate', 'regdate'].includes(header);
+          if (field.dbField === 'clientName') return ['ownername', 'name', 'clientname', 'partyname', 'insuredname', 'insured', 'customername', 'customer', 'client', 'party'].includes(header);
+          if (field.dbField === 'clientPhone') return ['phonenumber', 'contactnumber', 'phone', 'contact', 'mobile', 'mobileno', 'phoneno', 'mobilenumber', 'custmobile'].includes(header);
+          if (field.dbField === 'vehicleNo') return ['vehiclenumber', 'vehicleno', 'vehicle', 'regno', 'registrationno', 'vahanno', 'rcno', 'registrationnumber'].includes(header);
+          if (field.dbField === 'clientEmail') return ['email', 'clientemail', 'emailid', 'mail'].includes(header);
+          if (field.dbField === 'expiryDate') return ['expirydate', 'expiry', 'insuranceexpirydate', 'duedate', 'policyexpiry', 'policyexpirydate', 'expdate', 'policyenddate'].includes(header);
+          if (field.dbField === 'registrationDate') return ['registrationdate', 'registration', 'regdate'].includes(header);
           if (field.dbField === 'gvw') return ['gvw', 'grossweight', 'grossvehicleweight', 'weight'].includes(header);
           if (field.dbField === 'address') return ['address', 'location'].includes(header);
           if (field.dbField === 'city') return ['city', 'state'].includes(header);
+          if (field.dbField === 'existingAgent') return ['agent', 'broker', 'isagent', 'existingagent', 'agentname', 'agentno'].includes(header);
           return false;
         });
         return { ...field, mappedHeader: match || '' };
@@ -251,8 +390,9 @@ export default function LeadImportScreen() {
       setMappings(updatedMappings);
       setShowMappingForm(true);
 
-    } catch (err: any) {
-      Alert.alert('Header Parsing Failed', err.message || 'Could not parse headers of the file.');
+    } catch (err: unknown) {
+      const msg = safeErrorMessage(err, 'Could not parse headers of the file.');
+      Alert.alert('Header Parsing Failed', msg);
       setSelectedFile(null);
     } finally {
       setParsingHeaders(false);
@@ -272,11 +412,13 @@ export default function LeadImportScreen() {
     const missingRequired = mappings.filter(m => m.required && !m.mappedHeader);
     if (missingRequired.length > 0) {
       const labels = missingRequired.map(m => m.label).join(', ');
-      Alert.alert('Error', `Please map all required fields: ${labels}`);
+      Alert.alert('Error', `Please map required field: ${labels}`);
       return;
     }
 
     setUploading(true);
+    setUploadProgress(null);
+
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
@@ -285,49 +427,113 @@ export default function LeadImportScreen() {
         return;
       }
 
-      const formData = new FormData();
-      formData.append('file', {
-        uri: selectedFile.uri,
-        name: selectedFile.name,
-        type: selectedFile.mimeType || 'application/octet-stream',
-      } as any);
-      formData.append('importName', importName.trim());
-      
-      const cleanMapping: Record<string, string> = {};
-      mappings.forEach(m => {
-        if (m.mappedHeader) {
-          cleanMapping[m.dbField] = m.mappedHeader;
+      const batchName = importName.trim() || selectedFile.name.replace(/\.[^/.]+$/, '') || 'Leads Batch';
+
+      // Path A: If client parsed rows into memory, chunk and upload clean JSON (identical to website)
+      if (parsedRows.length > 0) {
+        const mappedLeads = parsedRows.map(row => {
+          const obj: any = {};
+          mappings.forEach(m => {
+            if (m.mappedHeader && row[m.mappedHeader] !== undefined) {
+              obj[m.dbField] = row[m.mappedHeader];
+            }
+          });
+          return obj;
+        });
+
+        const validLeads = mappedLeads.filter(l => {
+          return (l.clientName && String(l.clientName).trim() !== '') ||
+                 (l.clientPhone && String(l.clientPhone).trim() !== '') ||
+                 (l.vehicleNo && String(l.vehicleNo).trim() !== '');
+        });
+
+        if (validLeads.length === 0) {
+          Alert.alert('No Valid Leads', 'No rows contain a valid Name, Phone, or Vehicle Number. Please check your column mappings.');
+          setUploading(false);
+          return;
         }
-      });
 
-      formData.append('mapping', JSON.stringify(cleanMapping));
+        const CHUNK_SIZE = 2000;
+        let totalImported = 0;
+        let totalUpdated = 0;
 
-      const response = await fetch(`${BASE_URL}/api/v1/leads/import`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Accept': 'application/json',
-        },
-        body: formData,
-      });
+        for (let i = 0; i < validLeads.length; i += CHUNK_SIZE) {
+          const chunk = validLeads.slice(i, i + CHUNK_SIZE);
+          setUploadProgress({ current: Math.min(i + chunk.length, validLeads.length), total: validLeads.length });
 
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to import leads');
+          const response = await fetch(`${BASE_URL}/api/v1/leads/import`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              leads: chunk,
+              importName: batchName
+            }),
+          });
+
+          const data = await response.json();
+          if (!response.ok) {
+            throw new Error(data.error || 'Failed to import leads batch');
+          }
+
+          totalImported += data.stats?.valid ?? data.importedCount ?? chunk.length;
+          totalUpdated += data.stats?.duplicates ?? data.updatedCount ?? 0;
+        }
+
+        setResults({ valid: totalImported, duplicates: totalUpdated, total: validLeads.length });
+        setSelectedFile(null);
+        setImportName('');
+        setShowMappingForm(false);
+        setParsedRows([]);
+
+        Alert.alert('Import Completed 🎉', `Successfully imported ${totalImported} leads into "${batchName}".`);
+      } else {
+        // Path B: Fallback to multipart FormData upload
+        const formData = new FormData();
+        formData.append('file', {
+          uri: selectedFile.uri,
+          name: selectedFile.name,
+          type: selectedFile.mimeType || 'application/octet-stream',
+        } as any);
+        formData.append('importName', batchName);
+        
+        const cleanMapping: Record<string, string> = {};
+        mappings.forEach(m => {
+          if (m.mappedHeader) {
+            cleanMapping[m.dbField] = m.mappedHeader;
+          }
+        });
+        formData.append('mapping', JSON.stringify(cleanMapping));
+
+        const response = await fetch(`${BASE_URL}/api/v1/leads/import`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Accept': 'application/json',
+          },
+          body: formData,
+        });
+
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || 'Failed to import leads');
+        }
+
+        setResults(data.stats);
+        setImportedList(data.importedLeads || []);
+        setSelectedFile(null);
+        setImportName('');
+        setShowMappingForm(false);
+
+        Alert.alert('Import Completed 🎉', 'Leads imported successfully! You can now view and assign them from the Spreadsheets section.');
       }
-
-      setResults(data.stats);
-      setImportedList(data.importedLeads || []);
-      setSelectedFile(null);
-      setImportName('');
-      setShowMappingForm(false);
-
-      const successMsg = 'Leads imported successfully! You can now view and assign them to Sales Executives from the Spreadsheets section.';
-      Alert.alert('Import Completed 🎉', successMsg);
-    } catch (err: any) {
-      Alert.alert('Import Failed', err.message || 'An error occurred.');
+    } catch (err: unknown) {
+      Alert.alert('Import Failed', safeErrorMessage(err, 'An error occurred during import.'));
     } finally {
       setUploading(false);
+      setUploadProgress(null);
     }
   };
 
@@ -492,7 +698,14 @@ export default function LeadImportScreen() {
               disabled={uploading}
             >
               {uploading ? (
-                <ActivityIndicator color={Colors.white} />
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <ActivityIndicator color={Colors.white} />
+                  <Text style={styles.uploadBtnText}>
+                    {uploadProgress 
+                      ? `Uploading ${uploadProgress.current} / ${uploadProgress.total}...`
+                      : 'Uploading Leads...'}
+                  </Text>
+                </View>
               ) : (
                 <>
                   <Ionicons name="cloud-upload-outline" size={20} color={Colors.white} />

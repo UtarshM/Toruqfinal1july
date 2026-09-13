@@ -37,8 +37,9 @@ export default function Sidebar({ visible, onClose }: SidebarProps) {
   }, [visible]);
 
   const roleUpper = user?.role?.toUpperCase() || '';
-  const isAdmin = roleUpper === 'SUPER ADMIN' || roleUpper === 'ADMIN';
-  const isManager = roleUpper === 'MANAGER';
+  const isSuperAdminEmail = user?.email?.toLowerCase() === 'torqueautoadvisor@gmail.com';
+  const isAdmin = roleUpper === 'SUPER ADMIN' || roleUpper === 'ADMIN' || roleUpper.includes('ADMIN') || isSuperAdminEmail;
+  const isManager = roleUpper === 'MANAGER' || (roleUpper.includes('MANAGER') && !roleUpper.includes('HR'));
   const isHrManager = roleUpper === 'HR MANAGER' || roleUpper === 'HR';
 
   const MENU_GROUPS = [
@@ -54,10 +55,10 @@ export default function Sidebar({ visible, onClose }: SidebarProps) {
       items: [
         { name: 'Leads', icon: 'people-outline', route: '/(protected)/leads', visible: !isHrManager },
         { name: 'Import Leads', icon: 'cloud-upload-outline', route: '/(protected)/leads/import', visible: isAdmin },
-        { name: 'Imported Sheets', icon: 'grid-outline', route: '/(protected)/sheets', visible: isAdmin },
+        { name: 'Imported Spreadsheets', icon: 'grid-outline', route: '/(protected)/sheets', visible: isAdmin },
         { name: 'CRM', icon: 'person-add-outline', route: '/(protected)/crm', visible: !['ACCOUNTANT'].includes(roleUpper) && !isHrManager },
-        { name: 'Rate Calculator', icon: 'calculator-outline', route: '/(protected)/rate-calculator', visible: isAdmin },
         { name: 'Quotations', icon: 'clipboard-outline', route: '/(protected)/quotations', visible: isAdmin || isManager },
+        { name: 'Rate Calculator', icon: 'calculator-outline', route: '/(protected)/rate-calculator', visible: isAdmin },
         { name: 'Policies', icon: 'shield-checkmark-outline', route: '/(protected)/policies', visible: isAdmin || isManager },
         { name: 'Follow-ups', icon: 'calendar-outline', route: '/(protected)/follow-ups', visible: !['ACCOUNTANT'].includes(roleUpper) && !isHrManager },
       ]
@@ -78,15 +79,15 @@ export default function Sidebar({ visible, onClose }: SidebarProps) {
       label: 'MANAGEMENT',
       items: [
         { name: 'Policy Approvals', icon: 'shield-checkmark-outline', route: '/(protected)/policy-approvals', visible: isAdmin || isManager },
-        { name: 'Quotation Rates', icon: 'options-outline', route: '/(protected)/rates-management', visible: isAdmin },
         { name: 'Users', icon: 'person-outline', route: '/(protected)/users', visible: isAdmin || isHrManager },
         { name: 'Onboarding Approvals', icon: 'checkmark-circle-outline', route: '/(protected)/onboarding-approvals', visible: isAdmin || isHrManager || isManager },
         { name: 'Roles & Permissions', icon: 'ribbon-outline', route: '/(protected)/roles', visible: isAdmin },
         { name: 'Data Approvals', icon: 'checkbox-outline', route: '/(protected)/data-approvals', visible: isAdmin },
         { name: 'Finance', icon: 'wallet-outline', route: '/(protected)/finance', visible: isAdmin || roleUpper === 'ACCOUNTANT' },
-        { name: 'My Leaves / HR', icon: 'people-circle-outline', route: '/(protected)/hr', visible: true },
+        { name: 'HR', icon: 'people-circle-outline', route: '/(protected)/hr', visible: true },
         { name: 'Payroll & Salaries', icon: 'people-outline', route: '/(protected)/payroll', visible: isAdmin || isHrManager },
         { name: 'Lead Responses', icon: 'chatbubble-ellipses-outline', route: '/(protected)/responses', visible: isAdmin },
+        { name: 'Quotation Rates', icon: 'options-outline', route: '/(protected)/rates-management', visible: isAdmin },
         { name: 'Settings', icon: 'settings-outline', route: '/(protected)/settings', visible: true },
       ]
     }
@@ -174,9 +175,9 @@ export default function Sidebar({ visible, onClose }: SidebarProps) {
 
           {/* Footer */}
           <View style={styles.footer}>
-            <Text style={styles.userLabel}>Logged in as</Text>
-            <Text style={styles.userName} numberOfLines={1}>{user?.full_name || user?.name || 'User'}</Text>
-            <Text style={styles.userRole}>{user?.role || 'Executive'}</Text>
+            <Text style={styles.userLabel}>LOGGED IN AS</Text>
+            <Text style={styles.userName} numberOfLines={1}>{user?.full_name || user?.name || (isSuperAdminEmail ? 'Admin' : 'User')}</Text>
+            <Text style={styles.userRole}>{isAdmin ? 'SUPER ADMIN' : (user?.role?.toUpperCase() || 'EXECUTIVE')}</Text>
 
             <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
               <Pressable

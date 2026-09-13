@@ -347,11 +347,7 @@ CREATE TRIGGER on_auth_user_deleted
   masterSql += `-- ─── STEP 7: ROW LEVEL SECURITY (RLS) POLICIES ────────────────────────────\n`;
   const rlsPath = path.join(__dirname, '..', 'prisma', 'rls_policies.sql');
   if (fs.existsSync(rlsPath)) {
-    let rlsContent = fs.readFileSync(rlsPath, 'utf8');
-    rlsContent = rlsContent.replace(
-      /CREATE POLICY "([^"]+)"\s*\n\s*ON\s+([a-zA-Z0-9_]+)/g,
-      'DROP POLICY IF EXISTS "$1" ON $2;\nCREATE POLICY "$1"\n  ON $2'
-    );
+    const rlsContent = fs.readFileSync(rlsPath, 'utf8');
     masterSql += rlsContent;
   }
 

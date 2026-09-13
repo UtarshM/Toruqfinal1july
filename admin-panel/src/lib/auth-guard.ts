@@ -64,13 +64,34 @@ export async function validateAuth(
       context = cached.context
       profile = cached.userProfile
     } else {
-      const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token)
+      let authUser: any = null
+      const { data, error: authError } = await supabaseAdmin.auth.getUser(token)
+      if (!authError && data?.user) {
+        authUser = data.user
+      } else {
+        // Resilient fallback: verify token directly with Supabase auth endpoint using anon key
+        try {
+          const verifyRes = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/user`, {
+            headers: {
+              'apikey': process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
+              'Authorization': `Bearer ${token}`
+            }
+          })
+          if (verifyRes.ok) {
+            authUser = await verifyRes.json()
+          }
+        } catch (e) {
+          console.error('[auth-guard] Fallback auth verify failed:', e)
+        }
+      }
 
-      if (authError || !user) {
+      if (!authUser) {
         authCache.delete(token)
         console.error('[auth-guard] Supabase Auth Error:', authError?.message || 'No user found');
         return { error: NextResponse.json({ error: 'Invalid or expired token' }, { status: 401 }) }
       }
+
+      const user = authUser
 
       // Fetch user profile with role AND individual extra permissions
       profile = await prisma.user.findUnique({
@@ -83,8 +104,20 @@ export async function validateAuth(
         }
       })
 
+      if (!profile && user.email) {
+        profile = await prisma.user.findFirst({
+          where: { email: { equals: user.email, mode: 'insensitive' } },
+          include: {
+            role: {
+              include: { permissions: true }
+            },
+            permissions: true
+          }
+        })
+      }
+
       if (!profile) {
-        console.error('[auth-guard] User profile not found in Prisma for ID:', user.id);
+        console.error('[auth-guard] User profile not found in Prisma for ID:', user.id, 'email:', user.email);
         return { error: NextResponse.json({ error: 'User profile not found' }, { status: 404 }) }
       }
 

@@ -5,16 +5,18 @@ import {
   ActivityIndicator, Alert, Animated, Image
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { supabase } from '../src/lib/supabase';
+import { useAuth } from '../src/context/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, FontSize, BorderRadius } from '../src/utils/theme';
 
 export default function LoginScreen() {
   const router = useRouter();
+  const { login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [loadingText, setLoadingText] = useState('Sign In');
   const [emailFocused, setEmailFocused] = useState(false);
   const [passwordFocused, setPasswordFocused] = useState(false);
   const shakeAnim = useRef(new Animated.Value(0)).current;
@@ -29,22 +31,28 @@ export default function LoginScreen() {
   };
 
   const handleLogin = async () => {
+    if (loading) return;
     if (!email.trim()) { shake(); Alert.alert('Missing Field', 'Please enter your email.'); return; }
     if (!password) { shake(); Alert.alert('Missing Field', 'Please enter your password.'); return; }
 
     setLoading(true);
+    setLoadingText('Signing in...');
     try {
-      const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
-      if (error) {
-        shake();
-        Alert.alert('Login Failed', error.message);
-      }
-      // AuthContext onAuthStateChange handles redirect automatically
+      const loggedUser = await login(email.trim(), password);
+      setLoadingText('Loading Dashboard...');
+
+      setTimeout(() => {
+        if (loggedUser?.requiresOnboardingForm) {
+          router.replace('/onboarding');
+        } else {
+          router.replace('/(protected)/dashboard');
+        }
+      }, 50);
     } catch (e: any) {
-      shake();
-      Alert.alert('Error', e.message || 'Something went wrong');
-    } finally {
       setLoading(false);
+      setLoadingText('Sign In');
+      shake();
+      Alert.alert('Login Failed', e.message || 'Invalid email or password.');
     }
   };
 
@@ -140,10 +148,14 @@ export default function LoginScreen() {
             onPress={handleLogin}
             disabled={loading}
           >
-            {loading
-              ? <ActivityIndicator color={Colors.white} size="small" />
-              : <Text style={styles.signInBtnText}>Sign In</Text>
-            }
+            {loading ? (
+              <View style={styles.loadingRow}>
+                <ActivityIndicator color={Colors.white} size="small" />
+                <Text style={styles.signInBtnText}>{loadingText}</Text>
+              </View>
+            ) : (
+              <Text style={styles.signInBtnText}>Sign In</Text>
+            )}
           </Pressable>
 
           {/* Footer */}
@@ -244,9 +256,15 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 4,
   },
-  signInBtnDisabled: { opacity: 0.7 },
+  signInBtnDisabled: { opacity: 0.75 },
   signInBtnText: {
     color: Colors.white, fontSize: FontSize.lg, fontWeight: '800', letterSpacing: 0.3,
+  },
+  loadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
   },
 
   // ── Footer ──────────────────────────────────────────────────────────

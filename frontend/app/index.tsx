@@ -32,6 +32,7 @@ export default function LoginScreen() {
   }
 
   async function handleLogin() {
+    if (loading) return;
     if (!email.trim() || !password.trim()) {
       setError('Please enter email and password');
       return;
@@ -39,13 +40,18 @@ export default function LoginScreen() {
     setError('');
     setLoading(true);
     try {
-      await login(email.trim(), password);
-      // DO NOT navigate here — the route guard in _layout.tsx handles it
+      const loggedUser = await login(email.trim(), password);
+      setTimeout(() => {
+        if (loggedUser?.requiresOnboardingForm) {
+          router.replace('/onboarding');
+        } else {
+          router.replace('/(protected)/dashboard');
+        }
+      }, 50);
     } catch (e: any) {
+      setLoading(false);
       setError(e.message || 'Login failed');
       Alert.alert('Login Failed', e.message || 'Please check your credentials.');
-    } finally {
-      setLoading(false);
     }
   }
 

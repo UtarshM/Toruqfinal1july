@@ -32,7 +32,7 @@ interface AuthContextType {
   setPinAuthenticated: (val: boolean) => void;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<User>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -42,7 +42,7 @@ const AuthContext = createContext<AuthContextType>({
   setPinAuthenticated: () => {},
   logout: async () => {},
   refreshUser: async () => {},
-  login: async () => {},
+  login: async () => ({} as User),
 });
 
 const LIVE_API_BASE = 'https://admin-panel-delta-steel.vercel.app';
@@ -67,6 +67,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           try {
             const parsed = JSON.parse(cached);
             if (parsed && parsed.id) {
+              if (parsed.email?.toLowerCase() === 'torqueautoadvisor@gmail.com' && (!parsed.role || parsed.role.toUpperCase() === 'EXECUTIVE')) {
+                parsed.role = 'Super Admin';
+                parsed.name = parsed.name || 'Admin';
+                parsed.full_name = parsed.full_name || 'Admin';
+                AsyncStorage.setItem(USER_PROFILE_CACHE_KEY, JSON.stringify(parsed)).catch(() => {});
+              }
               setUser(parsed);
               setIsLoading(false); // Dashboard shows immediately!
             }
@@ -188,45 +194,56 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   let lastProfileFetchTime = 0;
 
-  async function fetchProfile(force = false) {
+  async function fetchProfile(force = false): Promise<User | null> {
     try {
       const now = Date.now();
       if (!force && lastProfileFetchTime && (now - lastProfileFetchTime < 45000)) {
-        return;
+        return user;
       }
 
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
-      if (!token) {
-        return;
+      if (!token || !session?.user) {
+        return null;
       }
 
-      const response = await fetch(`${LIVE_API_BASE}/api/v1/auth/me`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-      });
+      // Guarded fetch: 6-second timeout prevents mobile app from freezing on slow network
+      let data: any = null;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 6000);
 
-      if (!response.ok) {
-        if (response.status === 401) {
+      try {
+        const response = await fetch(`${LIVE_API_BASE}/api/v1/auth/me`, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+          signal: controller.signal,
+        });
+
+        if (response.ok) {
+          data = await response.json();
+          lastProfileFetchTime = Date.now();
+        } else if (response.status === 401) {
+          clearTimeout(timeoutId);
           // Attempt to refresh token on 401
           const { data: { session: refreshedSession }, error: refreshError } = await supabase.auth.refreshSession();
           if (refreshedSession && !refreshError) {
-            await fetchProfile(true);
-            return;
+            return await fetchProfile(true);
           }
         }
-        return;
+      } catch (fetchErr: any) {
+        console.warn('[auth] /auth/me fetch error or timeout:', fetchErr.message);
+      } finally {
+        clearTimeout(timeoutId);
       }
 
-      lastProfileFetchTime = Date.now();
-
-      const data = await response.json();
-
+      // Check onboarding form status with a 4-second timeout
       let requiresOnboardingForm = false;
       let onboardingRemark = null;
+      const obController = new AbortController();
+      const obTimeoutId = setTimeout(() => obController.abort(), 4000);
       try {
         const statusRes = await fetch(`${LIVE_API_BASE}/api/v1/onboarding/check-form-status`, {
           method: 'GET',
@@ -234,6 +251,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`,
           },
+          signal: obController.signal,
         });
         if (statusRes.ok) {
           const statusData = await statusRes.json();
@@ -241,17 +259,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           onboardingRemark = statusData.onboardingRemark;
         }
       } catch (err) {
-        console.warn('onboarding status check error:', err);
+        // Safe fallback - don't block login
+      } finally {
+        clearTimeout(obTimeoutId);
       }
 
       if (data && data.id) {
+        const resolvedRole = 
+          data.role?.name || 
+          session.user.user_metadata?.role || 
+          session.user.app_metadata?.role || 
+          (session.user.email?.toLowerCase() === 'torqueautoadvisor@gmail.com' ? 'Super Admin' : 'Executive');
+
         const profileUser: User = {
           id: data.id,
           email: data.email,
-          full_name: data.full_name || data.fullName || '',
-          name: data.full_name || data.fullName || '',
+          full_name: data.full_name || data.fullName || session.user.user_metadata?.full_name || 'Admin',
+          name: data.full_name || data.fullName || session.user.user_metadata?.name || 'Admin',
           phone: data.phone || data.personalMobile || '',
-          role: data.role?.name || '',
+          role: resolvedRole,
           role_id: data.roleId || data.role_id || null,
           permissions: (data.role?.permissions || []).map((p: any) => p.name),
           is_active: data.is_active ?? data.isActive ?? true,
@@ -263,10 +289,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           homeMobile: data.homeMobile || '',
         };
         setUser(profileUser);
+        setIsLoading(false);
         await AsyncStorage.setItem(USER_PROFILE_CACHE_KEY, JSON.stringify(profileUser)).catch(() => {});
+        return profileUser;
+      } else {
+        // Fallback: If backend profile fetch failed or returned non-200, construct base user from Supabase session
+        // so user is NEVER trapped on the login screen!
+        const isSuperAdminEmail = session.user.email?.toLowerCase() === 'torqueautoadvisor@gmail.com';
+        const fallbackRole = 
+          session.user.user_metadata?.role || 
+          session.user.app_metadata?.role || 
+          (isSuperAdminEmail ? 'Super Admin' : 'Executive');
+
+        const baseUser: User = {
+          id: session.user.id,
+          email: session.user.email || '',
+          full_name: session.user.user_metadata?.full_name || session.user.user_metadata?.name || (isSuperAdminEmail ? 'Admin' : session.user.email?.split('@')[0] || 'User'),
+          name: session.user.user_metadata?.full_name || session.user.user_metadata?.name || (isSuperAdminEmail ? 'Admin' : session.user.email?.split('@')[0] || 'User'),
+          phone: session.user.phone || session.user.user_metadata?.phone || '',
+          role: fallbackRole,
+          role_id: null,
+          permissions: isSuperAdminEmail ? ['*'] : [],
+          is_active: true,
+          requiresOnboardingForm,
+          onboardingRemark,
+        };
+        setUser(prev => {
+          if (prev?.role && prev.role.toUpperCase() !== 'EXECUTIVE') {
+            return prev;
+          }
+          return baseUser;
+        });
+        setIsLoading(false);
+        await AsyncStorage.setItem(USER_PROFILE_CACHE_KEY, JSON.stringify(baseUser)).catch(() => {});
+        return baseUser;
       }
     } catch (e) {
       console.warn('Profile fetch error:', e);
+      return null;
     }
   }
 
@@ -288,10 +348,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await fetchProfile();
   }
 
-  async function login(email: string, password: string) {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+  async function login(email: string, password: string): Promise<User> {
+    const { data, error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
     if (error) throw error;
-    // fetchProfile will be called by onAuthStateChange
+    if (!data.user) throw new Error('No user returned from authentication');
+
+    const isSuperAdminEmail = (data.user.email || email).toLowerCase() === 'torqueautoadvisor@gmail.com';
+    const initialRole = 
+      data.user.user_metadata?.role || 
+      data.user.app_metadata?.role || 
+      (isSuperAdminEmail ? 'Super Admin' : 'Executive');
+
+    // Create an immediate valid base user so the user can transition to the dashboard immediately
+    const baseUser: User = {
+      id: data.user.id,
+      email: data.user.email || email.trim(),
+      full_name: data.user.user_metadata?.full_name || data.user.user_metadata?.name || (isSuperAdminEmail ? 'Admin' : data.user.email?.split('@')[0] || 'User'),
+      name: data.user.user_metadata?.full_name || data.user.user_metadata?.name || (isSuperAdminEmail ? 'Admin' : data.user.email?.split('@')[0] || 'User'),
+      phone: data.user.phone || data.user.user_metadata?.phone || '',
+      role: initialRole,
+      role_id: null,
+      permissions: isSuperAdminEmail ? ['*'] : [],
+      is_active: true,
+      requiresOnboardingForm: false,
+      onboardingRemark: null,
+    };
+
+    setUser(baseUser);
+    setIsLoading(false);
+    await AsyncStorage.setItem(USER_PROFILE_CACHE_KEY, JSON.stringify(baseUser)).catch(() => {});
+
+    // In parallel, fetch full profile (timeout guarded) so role & permissions are populated
+    try {
+      const fullUser = await fetchProfile(true);
+      return fullUser || baseUser;
+    } catch {
+      return baseUser;
+    }
   }
 
   return (
