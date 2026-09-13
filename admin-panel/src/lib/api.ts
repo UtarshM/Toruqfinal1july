@@ -125,6 +125,14 @@ export async function fetchApi(path: string, options: RequestInit = {}, retries 
             token = refreshedToken
             headers['Authorization'] = `Bearer ${refreshedToken}`
             continue // Retry this request with the refreshed token!
+          } else if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
+            console.warn('[api] Session invalid/expired, redirecting to login...')
+            try {
+              localStorage.removeItem('toque_user_profile')
+              await supabase.auth.signOut().catch(() => {})
+            } catch {}
+            window.location.href = '/login'
+            throw new Error('Session expired. Redirecting to login...')
           }
         }
 
