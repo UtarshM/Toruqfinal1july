@@ -7,7 +7,7 @@ import {
   CheckCircle, FileText, ArrowRight, ChevronLeft, ChevronRight,
   Calendar, Clock, User, Filter, ArrowUpDown, ChevronDown, Sparkles,
   Phone, Car, MapPin, Tag, Check, CalendarDays, Lock, Users, UserCheck,
-  Trash2, CheckSquare, Square, Sliders
+  Trash2, CheckSquare, Square, Sliders, AlertTriangle
 } from 'lucide-react'
 import { fetchApi } from '@/lib/api'
 import { useAuth } from '@/context/AuthContext'
@@ -130,6 +130,8 @@ export default function ImportedSheetsPage() {
   const [purgeBatchName, setPurgeBatchName] = useState('')
   const [purgeHours, setPurgeHours] = useState('24')
   const [purgeIncludeNull, setPurgeIncludeNull] = useState(true)
+  const [purgeAllLeads, setPurgeAllLeads] = useState(false)
+  const [purgeConfirmText, setPurgeConfirmText] = useState('')
   const [purgePreviewCount, setPurgePreviewCount] = useState<number | null>(null)
   const [purgePreviewLoading, setPurgePreviewLoading] = useState(false)
   const [purgeIsExecuting, setPurgeIsExecuting] = useState(false)
@@ -387,9 +389,13 @@ export default function ImportedSheetsPage() {
     setPurgeStatusMessage('')
     try {
       const params = new URLSearchParams()
-      if (purgeBatchName.trim()) params.append('importName', purgeBatchName.trim())
-      if (purgeHours && Number(purgeHours) > 0) params.append('hours', purgeHours)
-      if (purgeIncludeNull) params.append('includeNullImport', 'true')
+      if (purgeAllLeads) {
+        params.append('all', 'true')
+      } else {
+        if (purgeBatchName.trim()) params.append('importName', purgeBatchName.trim())
+        if (purgeHours && Number(purgeHours) > 0) params.append('hours', purgeHours)
+        if (purgeIncludeNull) params.append('includeNullImport', 'true')
+      }
 
       const res = await fetchApi(`/api/v1/leads/purge?${params.toString()}`)
       setPurgePreviewCount(res?.matchingCount ?? 0)
@@ -403,6 +409,10 @@ export default function ImportedSheetsPage() {
 
   const handleExecutePurge = async () => {
     if (purgePreviewCount === 0) return
+    if (purgeAllLeads && purgeConfirmText.trim().toUpperCase() !== 'DELETE ALL') {
+      alert('Please type "DELETE ALL" to confirm purging all leads in the system.')
+      return
+    }
     setPurgeIsExecuting(true)
     setPurgeStatusMessage('')
     try {
@@ -410,8 +420,9 @@ export default function ImportedSheetsPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          importName: purgeBatchName.trim() || undefined,
-          hours: purgeHours ? Number(purgeHours) : undefined,
+          purgeAll: purgeAllLeads,
+          importName: !purgeAllLeads ? (purgeBatchName.trim() || undefined) : undefined,
+          hours: !purgeAllLeads && purgeHours ? Number(purgeHours) : undefined,
           includeNullImport: purgeIncludeNull
         })
       })
@@ -419,6 +430,7 @@ export default function ImportedSheetsPage() {
       setPurgeStatusMessage(res?.message || 'Leads successfully purged!')
       setPurgePreviewCount(0)
       setPurgeSampleLeads([])
+      setPurgeConfirmText('')
       setTimeout(() => {
         fetchFiles(false)
       }, 1500)
@@ -2407,6 +2419,28 @@ export default function ImportedSheetsPage() {
                 </button>
               </div>
 
+              {/* Mode Tabs */}
+              <div className="grid grid-cols-2 gap-2 bg-slate-100 p-1 rounded-2xl">
+                <button
+                  type="button"
+                  onClick={() => { setPurgeAllLeads(false); setPurgePreviewCount(null); setPurgeConfirmText(''); }}
+                  className={`py-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${
+                    !purgeAllLeads ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  Filter by Batch / Time
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setPurgeAllLeads(true); setPurgePreviewCount(null); setPurgeConfirmText(''); }}
+                  className={`py-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${
+                    purgeAllLeads ? 'bg-rose-600 text-white shadow-sm' : 'text-rose-600 hover:bg-rose-50'
+                  }`}
+                >
+                  🔥 Purge ALL Leads
+                </button>
+              </div>
+
               {/* Status Message */}
               {purgeStatusMessage && (
                 <div className={`p-3.5 rounded-2xl text-xs font-bold ${purgeStatusMessage.includes('Success') || purgeStatusMessage.includes('purged') ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-rose-50 text-rose-800 border border-rose-200'}`}>
@@ -2416,71 +2450,97 @@ export default function ImportedSheetsPage() {
 
               {/* Form Controls */}
               <div className="space-y-4 text-xs">
-                <div>
-                  <label className="font-bold text-slate-700 block mb-1">
-                    Batch / Sheet Name Filter (Optional)
-                  </label>
-                  <input
-                    type="text"
-                    value={purgeBatchName}
-                    onChange={e => { setPurgeBatchName(e.target.value); setPurgePreviewCount(null); }}
-                    placeholder="e.g. MORBI, Leads Batch, or leave empty"
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                  />
-                  <p className="text-[11px] text-slate-400 mt-1">Leave blank to match by time range only.</p>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="font-bold text-slate-700 block mb-1">
-                      Imported In Last
-                    </label>
-                    <select
-                      value={purgeHours}
-                      onChange={e => { setPurgeHours(e.target.value); setPurgePreviewCount(null); }}
-                      className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                    >
-                      <option value="2">Last 2 Hours</option>
-                      <option value="6">Last 6 Hours</option>
-                      <option value="12">Last 12 Hours</option>
-                      <option value="24">Last 24 Hours</option>
-                      <option value="48">Last 48 Hours</option>
-                      <option value="168">Last 7 Days</option>
-                      <option value="0">All Time (Requires Batch Name)</option>
-                    </select>
+                {purgeAllLeads ? (
+                  <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 space-y-2 text-rose-900">
+                    <div className="flex items-center gap-2 font-black text-xs text-rose-700">
+                      <AlertTriangle size={16} />
+                      <span>Complete Database Leads Wipe</span>
+                    </div>
+                    <p className="text-[11px] leading-relaxed text-rose-700/90 font-medium">
+                      This will permanently purge <strong>ALL leads</strong> currently stored in the database. All linked records (notes, submissions, quotes, assignments, and audit logs) will be safely deleted with cascading cleanup.
+                    </p>
                   </div>
-
-                  <div className="flex items-center pt-5">
-                    <label className="flex items-center gap-2 cursor-pointer select-none">
+                ) : (
+                  <>
+                    <div>
+                      <label className="font-bold text-slate-700 block mb-1">
+                        Batch / Sheet Name Filter (Optional)
+                      </label>
                       <input
-                        type="checkbox"
-                        checked={purgeIncludeNull}
-                        onChange={e => { setPurgeIncludeNull(e.target.checked); setPurgePreviewCount(null); }}
-                        className="h-4 w-4 rounded text-rose-600 focus:ring-rose-500 border-slate-300 cursor-pointer"
+                        type="text"
+                        value={purgeBatchName}
+                        onChange={e => { setPurgeBatchName(e.target.value); setPurgePreviewCount(null); }}
+                        placeholder="e.g. MORBI, Leads Batch, or leave empty"
+                        className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium focus:ring-2 focus:ring-blue-500 focus:outline-none"
                       />
-                      <span className="font-semibold text-slate-700 text-[11px]">
-                        Include untagged / null batch leads
-                      </span>
-                    </label>
-                  </div>
-                </div>
+                      <p className="text-[11px] text-slate-400 mt-1">Leave blank to match by time range only.</p>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="font-bold text-slate-700 block mb-1">
+                          Imported In Last
+                        </label>
+                        <select
+                          value={purgeHours}
+                          onChange={e => { setPurgeHours(e.target.value); setPurgePreviewCount(null); }}
+                          className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                        >
+                          <option value="2">Last 2 Hours</option>
+                          <option value="6">Last 6 Hours</option>
+                          <option value="12">Last 12 Hours</option>
+                          <option value="24">Last 24 Hours</option>
+                          <option value="48">Last 48 Hours</option>
+                          <option value="168">Last 7 Days</option>
+                          <option value="0">All Time (Requires Batch Name)</option>
+                        </select>
+                      </div>
+
+                      <div className="flex items-center pt-5">
+                        <label className="flex items-center gap-2 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={purgeIncludeNull}
+                            onChange={e => { setPurgeIncludeNull(e.target.checked); setPurgePreviewCount(null); }}
+                            className="h-4 w-4 rounded text-rose-600 focus:ring-rose-500 border-slate-300 cursor-pointer"
+                          />
+                          <span className="font-semibold text-slate-700 text-[11px]">
+                            Include untagged / null batch leads
+                          </span>
+                        </label>
+                      </div>
+                    </div>
+                  </>
+                )}
 
                 {/* Scan / Preview Button */}
                 <button
                   type="button"
                   onClick={handlePreviewPurge}
                   disabled={purgePreviewLoading}
-                  className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl font-bold transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                  className={`w-full py-2.5 rounded-xl font-bold transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 ${
+                    purgeAllLeads
+                      ? 'bg-rose-100 hover:bg-rose-200 text-rose-800 border border-rose-200'
+                      : 'bg-slate-100 hover:bg-slate-200 text-slate-800'
+                  }`}
                 >
-                  <Search size={14} className={purgePreviewLoading ? 'animate-spin text-blue-600' : ''} />
-                  <span>{purgePreviewLoading ? 'Scanning Database...' : 'Scan & Preview Matching Leads'}</span>
+                  <Search size={14} className={purgePreviewLoading ? 'animate-spin text-rose-600' : ''} />
+                  <span>
+                    {purgePreviewLoading
+                      ? 'Scanning Database...'
+                      : purgeAllLeads
+                      ? 'Scan & Count ALL Leads in System'
+                      : 'Scan & Preview Matching Leads'}
+                  </span>
                 </button>
 
                 {/* Preview Results Box */}
                 {purgePreviewCount !== null && (
                   <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5 space-y-2.5 animate-in fade-in">
                     <div className="flex items-center justify-between">
-                      <span className="font-bold text-slate-700">Matches Found:</span>
+                      <span className="font-bold text-slate-700">
+                        {purgeAllLeads ? 'Total Leads in System:' : 'Matches Found:'}
+                      </span>
                       <span className={`px-2.5 py-0.5 rounded-lg font-black text-xs ${purgePreviewCount > 0 ? 'bg-rose-100 text-rose-700' : 'bg-slate-200 text-slate-600'}`}>
                         {purgePreviewCount} leads
                       </span>
@@ -2499,6 +2559,22 @@ export default function ImportedSheetsPage() {
                         </div>
                       </div>
                     )}
+
+                    {/* Confirmation input when purging ALL leads */}
+                    {purgeAllLeads && purgePreviewCount > 0 && (
+                      <div className="pt-2 border-t border-rose-200 space-y-1.5">
+                        <label className="text-[11px] font-bold text-rose-800 block">
+                          Type <span className="font-black underline">DELETE ALL</span> to confirm purge:
+                        </label>
+                        <input
+                          type="text"
+                          value={purgeConfirmText}
+                          onChange={e => setPurgeConfirmText(e.target.value)}
+                          placeholder="Type DELETE ALL"
+                          className="w-full px-3 py-2 bg-white border border-rose-300 rounded-xl text-xs font-bold text-rose-700 placeholder:text-rose-300 focus:outline-none focus:ring-2 focus:ring-rose-500"
+                        />
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -2507,7 +2583,7 @@ export default function ImportedSheetsPage() {
               <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-100">
                 <button
                   type="button"
-                  onClick={() => setPurgeModalOpen(false)}
+                  onClick={() => { setPurgeModalOpen(false); setPurgeConfirmText(''); }}
                   disabled={purgeIsExecuting}
                   className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
                 >
@@ -2517,8 +2593,8 @@ export default function ImportedSheetsPage() {
                   <button
                     type="button"
                     onClick={handleExecutePurge}
-                    disabled={purgeIsExecuting}
-                    className="px-6 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-2 shadow-md cursor-pointer disabled:opacity-50"
+                    disabled={purgeIsExecuting || (purgeAllLeads && purgeConfirmText.trim().toUpperCase() !== 'DELETE ALL')}
+                    className="px-6 py-2.5 bg-rose-600 hover:bg-rose-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold transition-all flex items-center gap-2 shadow-md cursor-pointer"
                   >
                     {purgeIsExecuting ? (
                       <>

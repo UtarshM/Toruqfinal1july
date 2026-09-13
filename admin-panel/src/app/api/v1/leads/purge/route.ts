@@ -20,26 +20,29 @@ export async function GET(req: NextRequest) {
 
   try {
     const { searchParams } = new URL(req.url)
+    const purgeAll = searchParams.get('all') === 'true' || searchParams.get('purgeAll') === 'true'
     const importName = searchParams.get('importName')
     const hours = parseInt(searchParams.get('hours') || '0', 10)
     const includeNullImport = searchParams.get('includeNullImport') === 'true'
 
     const where: any = {}
 
-    if (importName) {
-      if (includeNullImport) {
-        where.OR = [
-          { importName: { contains: importName, mode: 'insensitive' } },
-          { importName: null }
-        ]
-      } else {
-        where.importName = { contains: importName, mode: 'insensitive' }
+    if (!purgeAll) {
+      if (importName) {
+        if (includeNullImport) {
+          where.OR = [
+            { importName: { contains: importName, mode: 'insensitive' } },
+            { importName: null }
+          ]
+        } else {
+          where.importName = { contains: importName, mode: 'insensitive' }
+        }
       }
-    }
 
-    if (hours > 0) {
-      const since = new Date(Date.now() - hours * 60 * 60 * 1000)
-      where.createdAt = { gte: since }
+      if (hours > 0) {
+        const since = new Date(Date.now() - hours * 60 * 60 * 1000)
+        where.createdAt = { gte: since }
+      }
     }
 
     const count = await prisma.lead.count({ where })
@@ -61,7 +64,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       matchingCount: count,
       sample,
-      criteria: { importName, hours, includeNullImport }
+      criteria: { purgeAll, importName, hours, includeNullImport }
     })
   } catch (err: any) {
     console.error('[leads/purge GET] Error:', err)
@@ -84,12 +87,18 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json().catch(() => ({}))
-    const { importName, hours, leadIds, includeNullImport } = body
+    const { importName, hours, leadIds, includeNullImport, purgeAll } = body
 
     let targetIds: string[] = []
 
     if (Array.isArray(leadIds) && leadIds.length > 0) {
       targetIds = leadIds
+    } else if (purgeAll === true) {
+      // Purge ALL leads in database
+      const allLeads = await prisma.lead.findMany({
+        select: { id: true }
+      })
+      targetIds = allLeads.map(l => l.id)
     } else {
       const where: any = {}
 
@@ -109,10 +118,10 @@ export async function POST(req: NextRequest) {
         where.createdAt = { gte: since }
       }
 
-      // Safety check: Don't purge whole DB with empty criteria
+      // Safety check: Don't purge whole DB with empty criteria unless purgeAll is explicitly set
       if (!importName && (!hours || Number(hours) <= 0)) {
         return NextResponse.json({
-          error: 'Safety guard: You must specify an importName or hours criteria to purge leads.'
+          error: 'Safety guard: You must specify an importName or hours criteria, or enable purgeAll to delete all leads.'
         }, { status: 400 })
       }
 

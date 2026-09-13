@@ -61,12 +61,12 @@ export async function GET(req: NextRequest) {
       }
     })
 
-    // Always synchronize the consolidated leads spreadsheet
-    await syncSpreadsheetForBatch('leads', uploadDir).catch(e => console.warn('[sheets] leads sync warning:', e))
-
-    // Always regenerate "Policy Renewals" if renewals exist to guarantee 100% fresh live data
-    if (totalRenewals > 0) {
-      await syncRenewalsSpreadsheet(uploadDir).catch(() => {})
+    // Only synchronize heavy Excel spreadsheets when explicitly requested via ?sync=true
+    if (shouldSync) {
+      await syncSpreadsheetForBatch('leads', uploadDir).catch(e => console.warn('[sheets] leads sync warning:', e))
+      if (totalRenewals > 0) {
+        await syncRenewalsSpreadsheet(uploadDir).catch(() => {})
+      }
     }
 
     const leadSearch = req.nextUrl.searchParams.get('leadSearch')?.trim()
