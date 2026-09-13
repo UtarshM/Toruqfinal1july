@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react'
 import AdminLayout from '@/components/layout/AdminLayout'
 import { fetchApi } from '@/lib/api'
 import { Briefcase, AlertTriangle, Calendar, Search, MoreHorizontal, Plus, X } from 'lucide-react'
+import { formatDateDMY } from '@/lib/date-format'
 
 export default function FitnessPage() {
   const [tasks, setTasks] = useState<any[]>([])
@@ -132,7 +133,7 @@ export default function FitnessPage() {
                 <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Test Date</p>
                 <div className="flex items-center gap-1.5 mt-1 text-gray-900 font-bold text-sm">
                   <Calendar size={14} className="text-blue-500" />
-                  {t.testDate ? new Date(t.testDate).toLocaleDateString() : 'TBD'}
+                  {formatDateDMY(t.testDate, 'TBD')}
                 </div>
               </div>
               <div className="text-right">

@@ -5,6 +5,7 @@ import { fetchApi } from '@/lib/api'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { FileText, Plus, Share2, Download, Search, MessageCircle, X, AlertCircle } from 'lucide-react'
+import { formatDateDMY } from '@/lib/date-format'
 
 export default function QuotationsPage() {
   const { user } = useAuth()
@@ -292,7 +293,7 @@ export default function QuotationsPage() {
               <tr key={quote.id} className="hover:bg-gray-50/50 transition-colors">
                 <td className="px-6 py-4">
                   <div className="text-sm font-bold text-gray-900">#{quote.id.slice(0, 8)}</div>
-                  <div className="text-[10px] text-gray-400">{new Date(quote.createdAt).toLocaleDateString()}</div>
+                  <div className="text-[10px] text-gray-400">{formatDateDMY(quote.createdAt)}</div>
                 </td>
                 <td className="px-6 py-4">
                   <div className="text-sm font-bold text-gray-700">{quote.lead?.clientName || 'N/A'}</div>

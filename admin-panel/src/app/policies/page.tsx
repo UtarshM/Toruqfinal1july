@@ -8,6 +8,7 @@ import {
   RefreshCw, Eye, CheckCircle2, User, Trash2, AlertTriangle, Check
 } from 'lucide-react'
 import { POLICY_TYPE_OPTIONS, VEHICLE_TYPE_OPTIONS } from '@/components/leads/LeadPolicySubmissionModal'
+import { formatDateDMY } from '@/lib/date-format'
 
 export default function PoliciesPage() {
   const { user } = useAuth()
@@ -190,7 +191,7 @@ export default function PoliciesPage() {
       `"${p.provider}"`, 
       `"${p.type}"`, 
       p.premiumAmount, 
-      new Date(p.endDate).toLocaleDateString()
+      formatDateDMY(p.endDate)
     ].join(','))
     const csv = [headers.join(','), ...rows].join('\n')
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
@@ -399,7 +400,7 @@ export default function PoliciesPage() {
                     )}
                     <td className="px-6 py-4 font-bold text-gray-900">₹{Number(p.premiumAmount)?.toLocaleString()}</td>
                     <td className="px-6 py-4 text-xs font-semibold text-gray-600">
-                      {p.endDate ? new Date(p.endDate).toLocaleDateString() : 'N/A'}
+                      {formatDateDMY(p.endDate, 'N/A')}
                     </td>
                     
                     {/* Manager/Admin Sales Visibility Checkbox */}

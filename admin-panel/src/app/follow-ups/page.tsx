@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react'
 import AdminLayout from '@/components/layout/AdminLayout'
 import { fetchApi } from '@/lib/api'
 import { Calendar, Clock, Bell, User, CheckCircle2, ChevronRight, Plus, X } from 'lucide-react'
+import { formatDateDMY } from '@/lib/date-format'
 
 export default function FollowupsPage() {
   const [followups, setFollowups] = useState<any[]>([])
@@ -122,7 +123,7 @@ export default function FollowupsPage() {
                     </div>
                     <div className="flex items-center gap-1.5 text-xs font-bold text-gray-400">
                       <Calendar size={14} className="text-blue-500" />
-                      {new Date(f.scheduledAt).toLocaleDateString()}
+                      {formatDateDMY(f.scheduledAt)}
                     </div>
                   </div>
                 </div>

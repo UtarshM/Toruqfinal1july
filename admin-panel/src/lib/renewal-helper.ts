@@ -1,5 +1,6 @@
 import prisma from './prisma'
 import { notify } from './notify'
+import { formatDateDMY } from './date-format'
 
 /**
  * Auto-assigns upcoming renewals that expire in less than 30 days (1 month).
@@ -88,7 +89,7 @@ export async function autoAssignUpcomingRenewals(): Promise<number> {
         await notify({
           userId: targetAssigneeId,
           title: `🔄 Renewal Assigned: ${r.clientName}`,
-          body: `Vehicle ${r.vehicleNo || 'N/A'} is due for renewal on ${expDate.toLocaleDateString('en-IN')}. Please contact the client.`,
+          body: `Vehicle ${r.vehicleNo || 'N/A'} is due for renewal on ${formatDateDMY(expDate)}. Please contact the client.`,
           type: 'action',
           entityType: 'renewal',
           entityId: r.id

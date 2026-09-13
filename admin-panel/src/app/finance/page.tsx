@@ -9,6 +9,7 @@ import {
   Download, Calendar, RefreshCw, CheckCircle2, Clock, AlertCircle,
   FileText, Shield, User, Phone, Car, DollarSign, CreditCard, ChevronRight
 } from 'lucide-react'
+import { formatDateDMY } from '@/lib/date-format'
 
 interface PolicyReceivableItem {
   id: string
@@ -229,8 +230,8 @@ export default function FinancePage() {
       r.pendingAmount,
       `"${r.paymentStatus}"`,
       `"${r.paymentMode}"`,
-      r.issueDate ? new Date(r.issueDate).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' }) : '',
-      r.expiryDate ? new Date(r.expiryDate).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' }) : ''
+      formatDateDMY(r.issueDate),
+      formatDateDMY(r.expiryDate)
     ].join(','))
 
     const csvContent = [headers.join(','), ...rows].join('\n')
@@ -514,7 +515,7 @@ export default function FinancePage() {
                         <td className="px-6 py-4 font-semibold text-slate-600">
                           {item.expiryDate ? (
                             <div>
-                              <p className="font-bold text-slate-800">{new Date(item.expiryDate).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric' })}</p>
+                              <p className="font-bold text-slate-800">{formatDateDMY(item.expiryDate)}</p>
                               <p className="text-[10px] text-blue-600 font-bold">1-Year Term</p>
                             </div>
                           ) : 'N/A'}
@@ -628,7 +629,7 @@ export default function FinancePage() {
                         </span>
                       </td>
                       <td className="px-6 py-4 text-slate-500 font-medium">
-                        {t.date ? new Date(t.date).toLocaleDateString() : '—'}
+                        {formatDateDMY(t.date, '—')}
                       </td>
                     </tr>
                   ))}

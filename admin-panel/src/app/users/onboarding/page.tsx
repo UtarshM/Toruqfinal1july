@@ -8,6 +8,7 @@ import {
   XCircle, Clock, Search, RefreshCw, Eye, Download, UserCheck, AlertCircle,
   X, MessageSquare
 } from 'lucide-react'
+import { formatDateDMY } from '@/lib/date-format'
 
 const getGoogleDriveEmbedUrl = (url: string) => {
   if (!url) return null;
@@ -272,7 +273,7 @@ export default function OnboardingApprovalsPage() {
                           </span>
                         </td>
                         <td className="px-4 py-4 text-xs text-slate-500 font-medium">
-                          {user.createdAt ? new Date(user.createdAt).toLocaleDateString() : 'N/A'}
+                          {formatDateDMY(user.createdAt, 'N/A')}
                         </td>
                         <td className="px-6 py-4 text-right">
                           <button
@@ -358,7 +359,7 @@ export default function OnboardingApprovalsPage() {
                       <Calendar size={16} className="text-rose-500 shrink-0" />
                       <div>
                         <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Date of Birth</p>
-                        <p className="font-semibold text-slate-800 text-xs mt-0.5">{new Date(selectedUser.dateOfBirth).toLocaleDateString()}</p>
+                        <p className="font-semibold text-slate-800 text-xs mt-0.5">{formatDateDMY(selectedUser.dateOfBirth)}</p>
                       </div>
                     </div>
                   )}
@@ -368,7 +369,7 @@ export default function OnboardingApprovalsPage() {
                       <Calendar size={16} className="text-rose-500 shrink-0" />
                       <div>
                         <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Requested Joining Date</p>
-                        <p className="font-semibold text-slate-800 text-xs mt-0.5">{new Date(selectedUser.joiningDate).toLocaleDateString()}</p>
+                        <p className="font-semibold text-slate-800 text-xs mt-0.5">{formatDateDMY(selectedUser.joiningDate)}</p>
                       </div>
                     </div>
                   )}

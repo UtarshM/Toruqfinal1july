@@ -3,6 +3,7 @@ import React, { useEffect, useState } from 'react'
 import AdminLayout from '@/components/layout/AdminLayout'
 import { fetchApi } from '@/lib/api'
 import { Landmark, FileCheck, ArrowRight, User as UserIcon, Clock, Plus, X } from 'lucide-react'
+import { formatDateDMY } from '@/lib/date-format'
 
 export default function LoansPage() {
   const [loans, setLoans] = useState<any[]>([])
@@ -130,7 +131,7 @@ export default function LoansPage() {
                   </div>
                   <p className="text-[10px] text-gray-400 mt-1 font-medium flex items-center gap-1 justify-end">
                     <Clock size={10} />
-                    {new Date(loan.createdAt).toLocaleDateString()}
+                    {formatDateDMY(loan.createdAt)}
                   </p>
                 </div>
               </div>

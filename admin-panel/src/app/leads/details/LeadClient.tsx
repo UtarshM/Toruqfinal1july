@@ -4,6 +4,7 @@ import AdminLayout from '@/components/layout/AdminLayout'
 import { fetchApi } from '@/lib/api'
 import { User, Phone, Mail, MapPin, Car, Calendar, Shield, Clock, FileText, ArrowLeft, History, MessageCircle } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { formatDateDMY } from '@/lib/date-format'
 
 export default function LeadClient({ params }: { params?: Promise<{ id: string }> }) {
   const searchParams = useSearchParams()
@@ -121,7 +122,7 @@ export default function LeadClient({ params }: { params?: Promise<{ id: string }
                       </div>
                       <div className="text-right text-xs">
                         <p className="text-gray-400 font-bold uppercase">Expires</p>
-                        <p className="font-bold text-gray-900">{new Date(p.endDate).toLocaleDateString()}</p>
+                        <p className="font-bold text-gray-900">{formatDateDMY(p.endDate)}</p>
                       </div>
                     </div>
                   ))}

@@ -5,6 +5,7 @@ import { fetchApi } from '@/lib/api'
 import { User, Phone, Mail, MapPin, Car, Calendar, Shield, Clock, FileText, ArrowLeft, History, MessageCircle, AlertCircle, Eye } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import LeadPolicySubmissionModal from '@/components/leads/LeadPolicySubmissionModal'
+import { formatDateDMY } from '@/lib/date-format'
 
 export default function LeadProfilePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
@@ -185,7 +186,7 @@ export default function LeadProfilePage({ params }: { params: Promise<{ id: stri
                       </div>
                       <div className="text-right text-xs">
                         <p className="text-gray-400 font-bold uppercase">Expires</p>
-                        <p className="font-bold text-gray-900">{new Date(p.endDate).toLocaleDateString()}</p>
+                        <p className="font-bold text-gray-900">{formatDateDMY(p.endDate)}</p>
                       </div>
                     </div>
                   ))}

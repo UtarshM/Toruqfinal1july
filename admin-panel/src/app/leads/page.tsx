@@ -34,42 +34,10 @@ const WHATSAPP_TEMPLATES = [
   }
 ]
 
-export function formatDateIST(dateVal: any): string {
-  if (!dateVal) return '—'
-  const d = new Date(dateVal)
-  if (isNaN(d.getTime())) return String(dateVal)
-  let ms = d.getTime()
-  const utcHours = d.getUTCHours()
-  const utcMins = d.getUTCMinutes()
-  // Adjust for legacy SheetJS IST artifact (18:28-18:30 UTC represents midnight IST)
-  if (utcHours === 18 && utcMins >= 28 && utcMins <= 30) {
-    ms += (30 - utcMins) * 60 * 1000 + 1000
-  }
-  return new Intl.DateTimeFormat('en-IN', {
-    timeZone: 'Asia/Kolkata',
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric'
-  }).format(new Date(ms))
-}
+import { formatDateDMY, formatDateTimeDMY, toISTDateInput } from '@/lib/date-format'
 
-export function toISTDateInput(dateVal: any): string {
-  if (!dateVal) return ''
-  const d = new Date(dateVal)
-  if (isNaN(d.getTime())) return ''
-  let ms = d.getTime()
-  const utcHours = d.getUTCHours()
-  const utcMins = d.getUTCMinutes()
-  if (utcHours === 18 && utcMins >= 28 && utcMins <= 30) {
-    ms += (30 - utcMins) * 60 * 1000 + 1000
-  }
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Kolkata',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
-  }).format(new Date(ms))
-}
+export const formatDateIST = formatDateDMY
+export { toISTDateInput, formatDateTimeDMY }
 
 export default function LeadsPage() {
   const { user } = useAuth()
@@ -1706,7 +1674,7 @@ export default function LeadsPage() {
                             <div key={call.id} className="bg-slate-50 border border-slate-100 rounded-xl p-3">
                               <div className="flex items-center justify-between mb-1">
                                 <span className="text-xs font-bold text-slate-800">{call.notes?.startsWith('[Response:') ? 'Lead Response' : (call.outcome || 'Call')}</span>
-                                <span className="text-[10px] text-slate-400">{new Date(call.createdAt).toLocaleString()}</span>
+                                <span className="text-[10px] text-slate-400">{formatDateTimeDMY(call.createdAt)}</span>
                               </div>
                               <p className="text-xs text-slate-600 font-medium">{call.notes || 'No notes'}</p>
                             </div>
@@ -1849,7 +1817,7 @@ export default function LeadsPage() {
                           {detailedLead.calls.filter((c: any) => c.notes?.startsWith('[Response:') || c.notes?.startsWith('[Custom Response]')).map((c: any) => (
                             <div key={c.id} className="bg-slate-50 border border-slate-100 rounded-xl p-3">
                               <p className="text-xs text-slate-700 font-medium">{c.notes}</p>
-                              <p className="text-[10px] text-slate-400 mt-1">{new Date(c.createdAt).toLocaleString()}</p>
+                              <p className="text-[10px] text-slate-400 mt-1">{formatDateTimeDMY(c.createdAt)}</p>
                             </div>
                           ))}
                         </div>

@@ -3,6 +3,7 @@ import { useState } from 'react'
 import AdminLayout from '@/components/layout/AdminLayout'
 import { DownloadCloud, FileText, Users2, BarChart2, RefreshCw } from 'lucide-react'
 import { fetchApi } from '@/lib/api'
+import { formatDateDMY } from '@/lib/date-format'
 
 const REPORT_TYPES = [
   {
@@ -190,7 +191,7 @@ export default function ReportsPage() {
                       <tr key={i} className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
                         {previewType === 'leads' && (
                           <>
-                            <td className="px-4 py-3 text-gray-700 text-xs">{new Date(row.createdAt).toLocaleDateString()}</td>
+                            <td className="px-4 py-3 text-gray-700 text-xs">{formatDateDMY(row.createdAt)}</td>
                             <td className="px-4 py-3 text-gray-700 text-xs font-medium">{row.clientName}</td>
                             <td className="px-4 py-3 text-gray-700 text-xs">{row.vehicleNo || '—'}</td>
                             <td className="px-4 py-3">
@@ -205,7 +206,7 @@ export default function ReportsPage() {
                         )}
                         {previewType === 'revenue' && (
                           <>
-                            <td className="px-4 py-3 text-gray-700 text-xs">{new Date(row.date).toLocaleDateString()}</td>
+                            <td className="px-4 py-3 text-gray-700 text-xs">{formatDateDMY(row.date)}</td>
                             <td className="px-4 py-3">
                               <span className={`capitalize ${row.type === 'income' ? 'text-green-600' : 'text-red-600'} font-bold`}>
                                 {row.type}
@@ -221,7 +222,7 @@ export default function ReportsPage() {
                             <td className="px-4 py-3 text-gray-700 text-xs font-medium">{row.fullName}</td>
                             <td className="px-4 py-3 text-gray-700 text-xs">{row.email}</td>
                             <td className="px-4 py-3 text-gray-700 text-xs">{row.role?.name}</td>
-                            <td className="px-4 py-3 text-gray-700 text-xs">{row.joiningDate ? new Date(row.joiningDate).toLocaleDateString() : '—'}</td>
+                            <td className="px-4 py-3 text-gray-700 text-xs">{formatDateDMY(row.joiningDate, '—')}</td>
                             <td className="px-4 py-3 text-gray-700 text-xs">
                               <span className={`w-2 h-2 rounded-full inline-block mr-2 ${row.isActive ? 'bg-green-500' : 'bg-red-500'}`} />
                               {row.isActive ? 'Active' : 'Inactive'}

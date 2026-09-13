@@ -2,6 +2,7 @@ import { validateAuth } from '@/lib/auth-guard'
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { deleteLeadsWithCascade } from '@/lib/lead-delete-helper'
+import { formatDateDMY } from '@/lib/date-format'
 
 export async function GET(
   req: NextRequest,
@@ -101,14 +102,21 @@ export async function PUT(
     if (registrationDateVal !== undefined) {
       let newRegDate: Date | null = null
       if (registrationDateVal) {
-        const d = new Date(registrationDateVal)
-        if (!isNaN(d.getTime())) {
-          newRegDate = d
+        const str = String(registrationDateVal).trim()
+        const ymd = str.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})/)
+        const dmy = str.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/)
+        if (ymd) {
+          newRegDate = new Date(Date.UTC(parseInt(ymd[1]), parseInt(ymd[2]) - 1, parseInt(ymd[3]), 12, 0, 0))
+        } else if (dmy) {
+          newRegDate = new Date(Date.UTC(parseInt(dmy[3]), parseInt(dmy[2]) - 1, parseInt(dmy[1]), 12, 0, 0))
+        } else {
+          const d = new Date(registrationDateVal)
+          if (!isNaN(d.getTime())) newRegDate = d
         }
       }
       const oldRegDate = currentLead.registrationDate
-      const oldRegDateStr = oldRegDate ? oldRegDate.toISOString().split('T')[0] : ''
-      const newRegDateStr = newRegDate ? newRegDate.toISOString().split('T')[0] : ''
+      const oldRegDateStr = formatDateDMY(oldRegDate)
+      const newRegDateStr = formatDateDMY(newRegDate)
       if (oldRegDateStr !== newRegDateStr) {
         if (isAdmin) {
           data.registrationDate = newRegDate
@@ -126,14 +134,21 @@ export async function PUT(
     if (expiryDateVal !== undefined) {
       let newExpDate: Date | null = null
       if (expiryDateVal) {
-        const d = new Date(expiryDateVal)
-        if (!isNaN(d.getTime())) {
-          newExpDate = d
+        const str = String(expiryDateVal).trim()
+        const ymd = str.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})/)
+        const dmy = str.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/)
+        if (ymd) {
+          newExpDate = new Date(Date.UTC(parseInt(ymd[1]), parseInt(ymd[2]) - 1, parseInt(ymd[3]), 12, 0, 0))
+        } else if (dmy) {
+          newExpDate = new Date(Date.UTC(parseInt(dmy[3]), parseInt(dmy[2]) - 1, parseInt(dmy[1]), 12, 0, 0))
+        } else {
+          const d = new Date(expiryDateVal)
+          if (!isNaN(d.getTime())) newExpDate = d
         }
       }
       const oldExpDate = currentLead.expiryDate
-      const oldExpDateStr = oldExpDate ? oldExpDate.toISOString().split('T')[0] : ''
-      const newExpDateStr = newExpDate ? newExpDate.toISOString().split('T')[0] : ''
+      const oldExpDateStr = formatDateDMY(oldExpDate)
+      const newExpDateStr = formatDateDMY(newExpDate)
       if (oldExpDateStr !== newExpDateStr) {
         if (isAdmin) {
           data.expiryDate = newExpDate

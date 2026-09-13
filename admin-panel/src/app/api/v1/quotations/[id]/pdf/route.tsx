@@ -4,6 +4,7 @@ import { QuotationPDF } from '@/components/pdf/QuotationPDF'
 import React from 'react'
 import { validateAuth } from '@/lib/auth-guard'
 import { pdf } from '@react-pdf/renderer'
+import { formatDateDMY } from '@/lib/date-format'
 
 export async function GET(
   req: NextRequest,
@@ -30,8 +31,8 @@ export async function GET(
 
     const currentDate = new Date()
     const validUntilDate = new Date(currentDate.getTime() + 7 * 24 * 60 * 60 * 1000)
-    const dateStr = currentDate.toLocaleDateString()
-    const validUntilStr = validUntilDate.toLocaleDateString()
+    const dateStr = formatDateDMY(currentDate)
+    const validUntilStr = formatDateDMY(validUntilDate)
 
     // 2. Generate PDF using Web APIs (Blob/ArrayBuffer) for maximum compatibility with Next.js 15
     const pdfInstance = pdf(

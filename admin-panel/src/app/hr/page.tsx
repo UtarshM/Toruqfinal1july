@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react'
 import AdminLayout from '@/components/layout/AdminLayout'
 import { fetchApi } from '@/lib/api'
 import { Plus, Search, Mail, Shield, UserCheck, UserMinus, X, Lock, Calendar, CheckCircle2, XCircle, Clock, AlertCircle, Sparkles, Filter } from 'lucide-react'
+import { formatDateDMY } from '@/lib/date-format'
 import { useAuth } from '@/context/AuthContext'
 import { useRouter } from 'next/navigation'
 
@@ -330,8 +331,8 @@ export default function HRPage() {
                     const isPending = leave.status?.toLowerCase() === 'pending'
                     const isApproved = leave.status?.toLowerCase() === 'approved'
                     const isRejected = leave.status?.toLowerCase() === 'rejected'
-                    const startDateStr = new Date(leave.startDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
-                    const endDateStr = new Date(leave.endDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+                    const startDateStr = formatDateDMY(leave.startDate)
+                    const endDateStr = formatDateDMY(leave.endDate)
 
                     return (
                       <tr key={leave.id} className="hover:bg-gray-50/50 transition-colors">
@@ -419,7 +420,7 @@ export default function HRPage() {
                             </div>
                           ) : (
                             <span className="text-xs font-medium text-gray-400">
-                              Decided {leave.approvedAt ? new Date(leave.approvedAt).toLocaleDateString() : ''}
+                              Decided {leave.approvedAt ? formatDateDMY(leave.approvedAt) : ''}
                             </span>
                           )}
                         </td>
@@ -492,7 +493,7 @@ export default function HRPage() {
                         </span>
                       </td>
                       <td className="px-6 py-5 text-sm text-gray-600">
-                        {emp.joiningDate ? new Date(emp.joiningDate).toLocaleDateString() : 'Not Set'}
+                        {formatDateDMY(emp.joiningDate, 'Not Set')}
                       </td>
                       <td className="px-6 py-5 text-right">
                         <button className="text-blue-600 font-bold text-xs hover:underline">View Profile</button>

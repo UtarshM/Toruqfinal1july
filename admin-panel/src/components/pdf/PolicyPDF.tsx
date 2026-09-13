@@ -1,5 +1,6 @@
 import React from 'react';
 import { Page, Text, View, Document, StyleSheet, Image } from '@react-pdf/renderer';
+import { formatDateDMY } from '@/lib/date-format';
 
 const styles = StyleSheet.create({
   page: { padding: 40, fontFamily: 'Helvetica', fontSize: 10, color: '#333' },
@@ -70,11 +71,11 @@ export const PolicyPDF = ({ data }: { data: any }) => (
         <View style={styles.grid}>
           <View style={styles.gridItem}>
             <Text style={styles.label}>Start Date</Text>
-            <Text style={styles.value}>{new Date(data.startDate).toLocaleDateString()}</Text>
+            <Text style={styles.value}>{formatDateDMY(data.startDate)}</Text>
           </View>
           <View style={styles.gridItem}>
             <Text style={styles.label}>Expiry Date</Text>
-            <Text style={styles.value}>{new Date(data.endDate).toLocaleDateString()}</Text>
+            <Text style={styles.value}>{formatDateDMY(data.endDate)}</Text>
           </View>
         </View>
       </View>

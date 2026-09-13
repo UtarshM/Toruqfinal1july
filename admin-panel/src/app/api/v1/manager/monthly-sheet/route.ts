@@ -3,16 +3,10 @@ import prisma from '@/lib/prisma'
 import { validateAuth } from '@/lib/auth-guard'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import * as XLSX from 'xlsx'
+import { formatDateDMY } from '@/lib/date-format'
 
 function formatDate(date: any): string {
-  if (!date) return ''
-  try {
-    const d = new Date(date)
-    if (isNaN(d.getTime())) return ''
-    return d.toISOString().split('T')[0]
-  } catch {
-    return ''
-  }
+  return formatDateDMY(date)
 }
 
 interface SheetFilterOptions {
@@ -209,7 +203,7 @@ export async function generateMasterSheet(options: SheetFilterOptions) {
 
       rows.push([
         idx + 1,
-        p.startDate ? new Date(p.startDate).toLocaleDateString('en-IN') : '',
+        formatDateDMY(p.startDate),
         p.lead?.vehicleNo || 'N/A',
         formData.customerCategory || formData.category || '',
         formData.model || '',
@@ -217,7 +211,7 @@ export async function generateMasterSheet(options: SheetFilterOptions) {
         p.lead?.clientPhone || 'N/A',
         formData.mobileNo2 || '',
         p.lead?.gvw || '',
-        p.endDate ? new Date(p.endDate).toLocaleDateString('en-IN') : '',
+        formatDateDMY(p.endDate),
         p.provider || '',
         p.type || formData.policyType || '',
         formData.via || '',
@@ -260,7 +254,7 @@ export async function generateMasterSheet(options: SheetFilterOptions) {
 
       rows.push([
         policies.length + lIdx + 1,
-        submission.issuedAt ? new Date(submission.issuedAt).toLocaleDateString('en-IN') : '',
+        formatDateDMY(submission.issuedAt),
         lead.vehicleNo || formData.regNo || 'N/A',
         formData.customerCategory || formData.cat || formData.category || '',
         formData.model || '',
@@ -268,7 +262,7 @@ export async function generateMasterSheet(options: SheetFilterOptions) {
         lead.clientPhone || formData.mobileNo1 || 'N/A',
         formData.mobileNo2 || '',
         lead.gvw || formData.gvw || '',
-        lead.expiryDate ? new Date(lead.expiryDate).toLocaleDateString('en-IN') : '',
+        formatDateDMY(lead.expiryDate),
         submission.issuedProvider || formData.provider || formData.insCompany || 'Torque',
         formData.policyType || 'Comprehensive',
         formData.via || 'Direct',

@@ -2,6 +2,7 @@ import { validateAuth } from '@/lib/auth-guard'
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { notify } from '@/lib/notify'
+import { formatDateDMY } from '@/lib/date-format'
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { context, error } = await validateAuth(req)
@@ -30,9 +31,10 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     // Notify the employee about the decision
     if (leave.userId) {
       const statusTitle = isApproved ? '✅ Leave Application Approved' : '❌ Leave Application Rejected'
+      const dateRange = `${formatDateDMY(leave.startDate)} - ${formatDateDMY(leave.endDate)}`
       const statusBody = isApproved
-        ? `Your leave application (${new Date(leave.startDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })} - ${new Date(leave.endDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}) has been approved by HR.`
-        : `Your leave application (${new Date(leave.startDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })} - ${new Date(leave.endDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}) was rejected.`
+        ? `Your leave application (${dateRange}) has been approved by HR.`
+        : `Your leave application (${dateRange}) was rejected.`
 
       await notify({
         userId: leave.userId,

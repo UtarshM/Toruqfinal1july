@@ -2,6 +2,7 @@ import { validateAuth } from '@/lib/auth-guard'
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { notifyRole } from '@/lib/notify'
+import { formatDateDMY } from '@/lib/date-format'
 
 export async function GET(req: NextRequest) {
   const { context, error } = await validateAuth(req)
@@ -94,7 +95,7 @@ export async function POST(req: NextRequest) {
 
     // Notify Admins / HR about new leave application
     const applicantName = leave.user?.fullName || 'An employee'
-    const dateRangeStr = `${startDate.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })} - ${endDate.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}`
+    const dateRangeStr = `${formatDateDMY(startDate)} - ${formatDateDMY(endDate)}`
     
     await notifyRole('Admin', {
       title: `🏖️ Leave Request: ${applicantName}`,
