@@ -86,7 +86,8 @@ export default function DashboardScreen() {
     useCallback(() => {
       const cached = cache['/dashboard/stats'];
       const lastFetched = cached?.timestamp;
-      if (!lastFetched || Date.now() - lastFetched > 30000) {
+      const cachedLeads = cached?.stats?.total_leads ?? cached?.stats?.leads ?? 0;
+      if (!lastFetched || Date.now() - lastFetched > 10000 || cachedLeads === 0) {
         loadData();
       }
     }, [loadData, cache])
@@ -94,6 +95,7 @@ export default function DashboardScreen() {
 
   const onRefresh = async () => {
     setRefreshing(true);
+    setCache('/dashboard/stats', null);
     await loadData();
     setRefreshing(false);
   };
