@@ -3,7 +3,7 @@ import { useState } from 'react'
 import AdminLayout from '@/components/layout/AdminLayout'
 import { DownloadCloud, FileText, Users2, BarChart2, RefreshCw } from 'lucide-react'
 import { fetchApi } from '@/lib/api'
-import { formatDateDMY } from '@/lib/date-format'
+import { formatDateDMY, getISTDateString } from '@/lib/date-format'
 
 const REPORT_TYPES = [
   {
@@ -36,10 +36,8 @@ const REPORT_TYPES = [
 ]
 
 export default function ReportsPage() {
-  const [from, setFrom] = useState(() => {
-    const d = new Date(); d.setMonth(d.getMonth() - 3); return d.toISOString().split('T')[0]
-  })
-  const [to, setTo] = useState(() => new Date().toISOString().split('T')[0])
+  const [from, setFrom] = useState(() => getISTDateString(-90))
+  const [to, setTo] = useState(() => getISTDateString(0))
   const [loading, setLoading] = useState<string | null>(null)
   const [preview, setPreview] = useState<any>(null)
   const [previewType, setPreviewType] = useState('')

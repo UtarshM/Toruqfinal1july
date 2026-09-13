@@ -5,6 +5,8 @@ import { fetchApi } from '@/lib/api'
 import { Calculator, Calendar, Info, CheckCircle2, Lock } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 
+import { getISTDateString } from '@/lib/date-format'
+
 export default function RateCalculatorPage() {
   const { user } = useAuth()
   const roleUpper = user?.role?.name?.toUpperCase() || ''
@@ -29,7 +31,7 @@ export default function RateCalculatorPage() {
   const [remarks, setRemarks] = useState('')
   const [hasRuleFound, setHasRuleFound] = useState(false)
 
-  const today = new Date().toISOString().split('T')[0]
+  const today = getISTDateString(0)
 
   useEffect(() => {
     fetchInitialData()

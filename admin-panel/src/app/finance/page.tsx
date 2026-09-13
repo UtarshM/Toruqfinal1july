@@ -9,7 +9,7 @@ import {
   Download, Calendar, RefreshCw, CheckCircle2, Clock, AlertCircle,
   FileText, Shield, User, Phone, Car, DollarSign, CreditCard, ChevronRight
 } from 'lucide-react'
-import { formatDateDMY } from '@/lib/date-format'
+import { formatDateDMY, getISTDateString } from '@/lib/date-format'
 
 interface PolicyReceivableItem {
   id: string
@@ -67,7 +67,7 @@ export default function FinancePage() {
     paymentMethod: 'UPI',
     referenceNumber: '',
     description: '',
-    date: new Date().toISOString().split('T')[0]
+    date: getISTDateString(0)
   })
   const [isSubmittingPayment, setIsSubmittingPayment] = useState(false)
 
@@ -83,7 +83,7 @@ export default function FinancePage() {
     payment_method: 'CASH',
     description: '',
     reference_number: '',
-    date: new Date().toISOString().split('T')[0]
+    date: getISTDateString(0)
   })
 
   // Fetch Receivables Data
@@ -149,7 +149,7 @@ export default function FinancePage() {
       paymentMethod: 'UPI',
       referenceNumber: '',
       description: `Installment for Policy ${item.policyNumber} (${item.clientName})`,
-      date: new Date().toISOString().split('T')[0]
+      date: getISTDateString(0)
     })
   }
 

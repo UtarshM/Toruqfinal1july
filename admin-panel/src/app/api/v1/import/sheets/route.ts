@@ -8,11 +8,17 @@ import { syncSpreadsheetForBatch, syncRenewalsSpreadsheet } from '@/lib/spreadsh
 import { getUploadDir } from '@/lib/upload-helper'
 import { deleteLeadsWithCascade } from '@/lib/lead-delete-helper'
 
-function formatDate(date: any): string {
+function toDateOnlyIST(date: any): string {
   if (!date) return ''
   try {
     const d = new Date(date)
-    return isNaN(d.getTime()) ? '' : d.toISOString().split('T')[0]
+    if (isNaN(d.getTime())) return ''
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Kolkata',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).format(d)
   } catch {
     return ''
   }
@@ -117,7 +123,7 @@ export async function GET(req: NextRequest) {
         importedAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         dayOfWeek: 'Today',
-        dateOnly: new Date().toISOString().split('T')[0],
+        dateOnly: toDateOnlyIST(new Date()),
         totalRows: totalRenewals,
         agentCount: 0,
         headers: ['Client Name', 'Phone Number', 'Vehicle No', 'Policy Number', 'Provider / Insurer'],
@@ -141,7 +147,7 @@ export async function GET(req: NextRequest) {
         importedAt: minDate.toISOString(),
         updatedAt: new Date().toISOString(),
         dayOfWeek: days[minDate.getDay()] || 'Today',
-        dateOnly: minDate.toISOString().split('T')[0],
+        dateOnly: toDateOnlyIST(minDate),
         totalRows: totalActiveLeads,
         agentCount: 0,
         headers: ['Client Name', 'Phone Number', 'REG NO / Vehicle No', 'Policy Expiry Date', 'Lead Status'],
@@ -174,7 +180,7 @@ export async function GET(req: NextRequest) {
         importedAt: batchDate.toISOString(),
         updatedAt: (batch._max?.updatedAt ? new Date(batch._max.updatedAt) : batchDate).toISOString(),
         dayOfWeek: days[batchDate.getDay()] || 'Today',
-        dateOnly: batchDate.toISOString().split('T')[0],
+        dateOnly: toDateOnlyIST(batchDate),
         totalRows: batch._count._all,
         agentCount: 0,
         headers: ['Client Name', 'Phone Number', 'REG NO / Vehicle No', 'Policy Expiry Date', 'Lead Status'],

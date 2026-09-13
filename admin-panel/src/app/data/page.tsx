@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import AdminLayout from '@/components/layout/AdminLayout'
 import { useApi } from '@/hooks/useApi'
 import { CheckCircle, XCircle, Clock, RefreshCw, AlertCircle, UserCheck, ShieldAlert, X, Filter } from 'lucide-react'
+import { formatDateTimeDMY } from '@/lib/date-format'
 
 const STATUS_STYLES: Record<string, string> = {
   pending: 'bg-amber-50 text-amber-700 border-amber-200',
@@ -246,7 +247,7 @@ export default function DataApprovalPage() {
                       <tr key={req.id} className="hover:bg-gray-50/50 transition-colors">
                         <td className="px-5 py-4">
                           <p className="text-sm font-bold text-gray-900">{req.requester?.fullName || req.requester?.email || 'System'}</p>
-                          <p className="text-[10px] text-gray-400 mt-0.5">{new Date(req.requestedAt).toLocaleString('en-IN')}</p>
+                          <p className="text-[10px] text-gray-400 mt-0.5">{formatDateTimeDMY(req.requestedAt)}</p>
                         </td>
                         <td className="px-5 py-4">
                           <span className={`inline-block px-2 py-0.5 rounded-md text-xs font-bold ${

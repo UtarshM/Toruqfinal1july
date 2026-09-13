@@ -89,6 +89,12 @@ export function formatDateTimeDMY(dateVal: any, fallback: string = ''): string {
   if (!dateVal) return fallback
   const d = new Date(dateVal)
   if (isNaN(d.getTime())) return fallback
+  let ms = d.getTime()
+  const utcHours = d.getUTCHours()
+  const utcMinutes = d.getUTCMinutes()
+  if (utcHours === 18 && utcMinutes >= 28 && utcMinutes <= 30) {
+    ms += (30 - utcMinutes) * 60 * 1000 + 1000
+  }
   return new Intl.DateTimeFormat('en-IN', {
     timeZone: 'Asia/Kolkata',
     day: '2-digit',
@@ -97,6 +103,17 @@ export function formatDateTimeDMY(dateVal: any, fallback: string = ''): string {
     hour: '2-digit',
     minute: '2-digit',
     hour12: true
-  }).format(d)
+  }).format(new Date(ms))
+}
+
+/**
+ * Get current date string (YYYY-MM-DD) in Asia/Kolkata IST
+ */
+export function getISTDateString(offsetDays: number = 0): string {
+  const d = new Date()
+  if (offsetDays !== 0) {
+    d.setDate(d.getDate() + offsetDays)
+  }
+  return toISTDateInput(d)
 }
 

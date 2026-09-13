@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react'
 import AdminLayout from '@/components/layout/AdminLayout'
 import { fetchApi } from '@/lib/api'
 import { Plus, Search, Mail, Shield, UserCheck, UserMinus, X, Lock, Calendar, CheckCircle2, XCircle, Clock, AlertCircle, Sparkles, Filter } from 'lucide-react'
-import { formatDateDMY } from '@/lib/date-format'
+import { formatDateDMY, getISTDateString } from '@/lib/date-format'
 import { useAuth } from '@/context/AuthContext'
 import { useRouter } from 'next/navigation'
 
@@ -23,7 +23,7 @@ export default function HRPage() {
     email: '',
     password: '',
     roleId: '',
-    joiningDate: new Date().toISOString().split('T')[0]
+    joiningDate: getISTDateString(0)
   })
 
   // Leave Management State
@@ -37,8 +37,8 @@ export default function HRPage() {
   const [newLeave, setNewLeave] = useState({
     userId: '',
     type: 'Casual',
-    startDate: new Date().toISOString().split('T')[0],
-    endDate: new Date().toISOString().split('T')[0],
+    startDate: getISTDateString(0),
+    endDate: getISTDateString(0),
     reason: ''
   })
 

@@ -11,6 +11,7 @@ import {
 import { fetchApi } from '@/lib/api'
 import { useAuth } from '@/context/AuthContext'
 import { formatToDateMonthYear } from '@/components/leads/LeadPolicySubmissionModal'
+import { formatDateDMY, formatDateTimeDMY } from '@/lib/date-format'
 
 interface PolicySubmissionItem {
   leadId: string
@@ -379,18 +380,7 @@ export default function ManagerDocumentsPage() {
 
   const formatDateTime = (dateStr?: string) => {
     if (!dateStr) return '—'
-    try {
-      const d = new Date(dateStr)
-      return d.toLocaleString('en-IN', {
-        day: '2-digit',
-        month: 'short',
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: true
-      })
-    } catch {
-      return '—'
-    }
+    return formatDateTimeDMY(dateStr)
   }
 
   if (user && !isManagerOrAdmin) {

@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 import { fetchApi } from '@/lib/api'
 import { useAuth } from '@/context/AuthContext'
+import { formatDateDMY, formatDateTimeDMY, getISTDateString, toISTDateInput } from '@/lib/date-format'
 
 interface SpreadsheetFile {
   fileName: string
@@ -137,20 +138,7 @@ export default function ImportedSheetsPage() {
 
   const formatDateTime = (dateStr: string | Date | undefined) => {
     if (!dateStr) return '—'
-    try {
-      const d = new Date(dateStr)
-      if (isNaN(d.getTime()) || d.getFullYear() < 2000) return 'Recent'
-      return d.toLocaleString('en-IN', {
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: true
-      })
-    } catch {
-      return '—'
-    }
+    return formatDateTimeDMY(dateStr, 'Recent')
   }
 
   const formatFileSize = (bytes: number) => {
@@ -470,13 +458,10 @@ export default function ImportedSheetsPage() {
 
   // Main file filtering logic
   const filteredFiles = useMemo(() => {
+    const todayStr = getISTDateString(0)
+    const yesterdayStr = getISTDateString(-1)
+    
     const today = new Date()
-    const todayStr = today.toISOString().split('T')[0]
-    
-    const yesterday = new Date(today)
-    yesterday.setDate(yesterday.getDate() - 1)
-    const yesterdayStr = yesterday.toISOString().split('T')[0]
-    
     const sevenDaysAgo = new Date(today)
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
     
@@ -490,7 +475,7 @@ export default function ImportedSheetsPage() {
       }
 
       const fileDate = f.importedAt ? new Date(f.importedAt) : null
-      const dateOnly = f.dateOnly || (fileDate && !isNaN(fileDate.getTime()) ? fileDate.toISOString().split('T')[0] : '')
+      const dateOnly = f.dateOnly || (fileDate && !isNaN(fileDate.getTime()) ? toISTDateInput(fileDate) : '')
       const fileDay = f.dayOfWeek || (fileDate && !isNaN(fileDate.getTime()) ? ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][fileDate.getDay()] : '')
 
       // 1. Sheet / Batch / File name search
@@ -1633,8 +1618,10 @@ export default function ImportedSheetsPage() {
                             }`}
                           >
                             <td className="px-4 py-3 text-slate-400 font-mono text-[10px] text-center">{globalRowNumber}</td>
-                            {previewData.headers.map((_, cIdx) => {
-                              const val = row[cIdx] !== undefined && row[cIdx] !== null ? String(row[cIdx]) : ''
+                            {previewData.headers.map((header, cIdx) => {
+                              const rawVal = row[cIdx] !== undefined && row[cIdx] !== null ? String(row[cIdx]) : ''
+                              const isDateCol = /date|expiry|exp|due|dob|reg_date/i.test(header) || /^\d{4}-\d{2}-\d{2}/.test(rawVal)
+                              const val = isDateCol ? formatDateDMY(rawVal, rawVal) : rawVal
 
                               return (
                                 <td key={cIdx} className="px-4 py-3 whitespace-nowrap font-medium text-slate-800 font-mono">
@@ -2240,9 +2227,11 @@ export default function ImportedSheetsPage() {
                                     />
                                   </td>
                                   <td className="px-4 py-3 text-slate-400 font-mono text-[10px] text-center">{globalRowNumber}</td>
-                                  {previewData.headers.map((_, cIdx) => {
-                                    const val = row[cIdx] !== undefined && row[cIdx] !== null ? String(row[cIdx]) : ''
-                                    const isAgentCell = cIdx === previewData.agentColIdx && val.toLowerCase().trim() === 'agent'
+                                  {previewData.headers.map((header, cIdx) => {
+                                    const rawVal = row[cIdx] !== undefined && row[cIdx] !== null ? String(row[cIdx]) : ''
+                                    const isAgentCell = cIdx === previewData.agentColIdx && rawVal.toLowerCase().trim() === 'agent'
+                                    const isDateCol = !isAgentCell && (/date|expiry|exp|due|dob|reg_date/i.test(header) || /^\d{4}-\d{2}-\d{2}/.test(rawVal))
+                                    const val = isDateCol ? formatDateDMY(rawVal, rawVal) : rawVal
 
                                     return (
                                       <td key={cIdx} className="px-4 py-3 whitespace-nowrap">

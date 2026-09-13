@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react'
 import AdminLayout from '@/components/layout/AdminLayout'
 import { fetchApi } from '@/lib/api'
 import { Briefcase, AlertTriangle, Calendar, Search, MoreHorizontal, Plus, X } from 'lucide-react'
-import { formatDateDMY } from '@/lib/date-format'
+import { formatDateDMY, getISTDateString } from '@/lib/date-format'
 
 export default function FitnessPage() {
   const [tasks, setTasks] = useState<any[]>([])
@@ -13,7 +13,7 @@ export default function FitnessPage() {
   const [newTask, setNewTask] = useState({
     lead_id: '',
     vehicle_number: '',
-    test_date: new Date().toISOString().split('T')[0],
+    test_date: getISTDateString(0),
     fees: ''
   })
 

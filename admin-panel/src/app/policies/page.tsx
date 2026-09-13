@@ -8,7 +8,7 @@ import {
   RefreshCw, Eye, CheckCircle2, User, Trash2, AlertTriangle, Check
 } from 'lucide-react'
 import { POLICY_TYPE_OPTIONS, VEHICLE_TYPE_OPTIONS } from '@/components/leads/LeadPolicySubmissionModal'
-import { formatDateDMY } from '@/lib/date-format'
+import { formatDateDMY, getISTDateString } from '@/lib/date-format'
 
 export default function PoliciesPage() {
   const { user } = useAuth()
@@ -18,7 +18,7 @@ export default function PoliciesPage() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   
   const roleName = (typeof user?.role === 'string' ? user.role : user?.role?.name || '').toUpperCase()
-  const isManagerOrAdmin = roleName.includes('MANAGER') || roleName.includes('ADMIN') || roleName.includes('SUPER')
+  const isManagerOrAdmin = roleName === 'ADMIN' || roleName === 'MANAGER' || roleName === 'SUPERADMIN'
 
   // Bulk Selection & Deletion State (Manager & Admin only)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
@@ -26,10 +26,11 @@ export default function PoliciesPage() {
   const [deleteTarget, setDeleteTarget] = useState<{ id?: string; name?: string; count?: number } | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
 
-  // Date Range State
+  // Date filters in IST
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
 
+  // Form State
   const [newPolicy, setNewPolicy] = useState({
     lead_id: '',
     policy_number: '',
@@ -37,8 +38,8 @@ export default function PoliciesPage() {
     type: 'zero IMT 23 100%',
     vehicle_type: 'LMV - Private Car (CC)',
     premium_amount: '',
-    start_date: new Date().toISOString().split('T')[0],
-    end_date: new Date(new Date().setFullYear(new Date().getFullYear() + 1)).toISOString().split('T')[0]
+    start_date: getISTDateString(0),
+    end_date: getISTDateString(365)
   })
   const [leads, setLeads] = useState<any[]>([])
 

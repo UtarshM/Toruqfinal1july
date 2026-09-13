@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react'
 import AdminLayout from '@/components/layout/AdminLayout'
 import { fetchApi } from '@/lib/api'
 import { Trash2, RotateCcw, AlertTriangle, X } from 'lucide-react'
+import { formatDateTimeDMY } from '@/lib/date-format'
 
 export default function TrashedLeadsPage() {
   const [leads, setLeads] = useState<any[]>([])
@@ -148,7 +149,7 @@ export default function TrashedLeadsPage() {
                     </span>
                   </td>
                   <td className="px-4 py-3 text-xs text-slate-400">
-                    {lead.deletedAt ? new Date(lead.deletedAt).toLocaleString() : '—'}
+                    {lead.deletedAt ? formatDateTimeDMY(lead.deletedAt) : '—'}
                   </td>
                 </tr>
               ))}

@@ -7,6 +7,7 @@ import {
   Phone, GraduationCap, Calendar, UploadCloud, FileText, Check,
   AlertCircle, ShieldCheck, ArrowRight, CheckCircle2, Clock, Trash2, Eye, LogOut
 } from 'lucide-react'
+import { toISTDateInput } from '@/lib/date-format'
 
 export const dynamic = 'force-dynamic'
 
@@ -87,8 +88,8 @@ export default function OnboardingFormPage() {
             personalMobile: data.personalMobile || '',
             homeMobile: data.homeMobile || '',
             highestQualification: data.highestQualification || '',
-            dateOfBirth: data.dateOfBirth ? new Date(data.dateOfBirth).toISOString().split('T')[0] : '',
-            joiningDate: data.joiningDate ? new Date(data.joiningDate).toISOString().split('T')[0] : ''
+            dateOfBirth: toISTDateInput(data.dateOfBirth),
+            joiningDate: toISTDateInput(data.joiningDate)
           })
           
           // Prefill documents

@@ -8,6 +8,7 @@ import {
   MapPin, Phone, UserCheck, RefreshCw, Calendar
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
+import { getISTDateString } from '@/lib/date-format'
 
 // Global memory caches
 const statsCache: Record<string, any> = {}
@@ -18,11 +19,9 @@ export default function DashboardPage() {
   const router = useRouter()
   const [isDeactivated, setIsDeactivated] = useState(false)
   
-  // Date Range State
-  const [startDate, setStartDate] = useState(() => {
-    const d = new Date(); d.setHours(0,0,0,0); return d.toISOString().split('T')[0]
-  })
-  const [endDate, setEndDate] = useState(() => new Date().toISOString().split('T')[0])
+  // Date Range State in Indian Standard Time (IST)
+  const [startDate, setStartDate] = useState(() => getISTDateString(0))
+  const [endDate, setEndDate] = useState(() => getISTDateString(0))
 
   const cacheKey = `${startDate}_${endDate}`
   const [stats, setStats] = useState<any>(statsCache[cacheKey] || null)
