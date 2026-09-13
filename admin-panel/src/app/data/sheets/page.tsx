@@ -106,7 +106,7 @@ export default function ImportedSheetsPage() {
   // Monthly Assignment States
   const [expiryMonthFilter, setExpiryMonthFilter] = useState<number>(0) // 0 = All, 1-12 = month
   const [expiryYearFilter, setExpiryYearFilter] = useState<number>(new Date().getFullYear())
-  const [maxLeadsPerExec, setMaxLeadsPerExec] = useState<number | 'all'>(130) // Capacity limit (130 default)
+  const [maxLeadsPerExec, setMaxLeadsPerExec] = useState<number | 'all'>('all') // Master admin decides quota per assignment (default 'all')
   const [previewCityFilter, setPreviewCityFilter] = useState<string>('all') // 'all', 'morbi', 'rajkot'
   const [showAssignPanel, setShowAssignPanel] = useState(false)
   const [availableExecs, setAvailableExecs] = useState<any[]>([])
@@ -254,7 +254,7 @@ export default function ImportedSheetsPage() {
     } else {
       setPreviewCityFilter('all')
     }
-    setMaxLeadsPerExec(130)
+    setMaxLeadsPerExec('all')
     setPreviewSortCol(null)
     setCurrentPage(1)
     setSelectedPreviewIndices(new Set())
@@ -1934,33 +1934,19 @@ export default function ImportedSheetsPage() {
                             )}
                           </div>
 
-                          {/* Capacity / Quota Settings (e.g. 130 leads each) */}
+                          {/* Capacity / Quota Settings (Decided by Master Admin Every Time) */}
                           <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-2.5">
                             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2.5">
                               <div>
                                 <span className="text-xs font-black text-slate-800 flex items-center gap-1.5">
                                   <Sliders size={14} className="text-indigo-600" />
-                                  Capacity Limit per Sales Person:
+                                  Decide Quota per Sales Executive:
                                 </span>
                                 <p className="text-[11px] text-slate-500 mt-0.5 font-medium">
-                                  Sorts ascending by insurance expiry date and assigns via round-robin with balanced early, mid, and late expiry groups.
+                                  Decide how many leads each person receives this run, or distribute all equally. Sorts by expiry date with balanced early, mid, & late groups.
                                 </p>
                               </div>
                               <div className="flex flex-wrap items-center gap-1.5">
-                                {[130, 100, 150].map(val => (
-                                  <button
-                                    key={val}
-                                    type="button"
-                                    onClick={() => setMaxLeadsPerExec(val)}
-                                    className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer border ${
-                                      maxLeadsPerExec === val
-                                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
-                                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
-                                    }`}
-                                  >
-                                    {val} each {val === 130 && '⭐'}
-                                  </button>
-                                ))}
                                 <button
                                   type="button"
                                   onClick={() => setMaxLeadsPerExec('all')}
@@ -1972,18 +1958,42 @@ export default function ImportedSheetsPage() {
                                 >
                                   All (No Limit)
                                 </button>
-                                <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg px-2 py-1">
+                                {[100, 130, 150, 200].map(val => (
+                                  <button
+                                    key={val}
+                                    type="button"
+                                    onClick={() => setMaxLeadsPerExec(val)}
+                                    className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer border ${
+                                      maxLeadsPerExec === val
+                                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                                    }`}
+                                  >
+                                    {val} each
+                                  </button>
+                                ))}
+                                <div className={`flex items-center gap-1.5 bg-white border rounded-lg px-2.5 py-1 transition-all ${
+                                  typeof maxLeadsPerExec === 'number' && ![100, 130, 150, 200].includes(maxLeadsPerExec)
+                                    ? 'border-indigo-600 ring-2 ring-indigo-500/20'
+                                    : 'border-slate-200'
+                                }`}>
+                                  <span className="text-[11px] text-slate-500 font-bold">Custom:</span>
                                   <input
                                     type="number"
                                     min={1}
-                                    max={10000}
+                                    max={50000}
                                     value={maxLeadsPerExec === 'all' ? '' : maxLeadsPerExec}
                                     onChange={e => {
-                                      const val = parseInt(e.target.value, 10)
-                                      setMaxLeadsPerExec(isNaN(val) || val <= 0 ? 'all' : val)
+                                      const raw = e.target.value.trim()
+                                      if (!raw) {
+                                        setMaxLeadsPerExec('all')
+                                      } else {
+                                        const val = parseInt(raw, 10)
+                                        setMaxLeadsPerExec(isNaN(val) || val <= 0 ? 'all' : val)
+                                      }
                                     }}
-                                    placeholder="Custom"
-                                    className="w-14 text-xs font-bold text-slate-800 outline-none text-center"
+                                    placeholder="e.g. 130"
+                                    className="w-20 text-xs font-black text-indigo-700 outline-none text-center bg-transparent"
                                   />
                                   <span className="text-[10px] text-slate-400 font-bold">each</span>
                                 </div>
@@ -2088,6 +2098,9 @@ export default function ImportedSheetsPage() {
                                   {execCount > 0 && targetTotal > 0 && (
                                     <div className="text-indigo-600 font-bold mt-0.5 text-[11px]">
                                       (~{perPerson} leads each: {earlyShare} early, {midShare} mid, {lateShare} late expiry dates)
+                                      {maxLeadsPerExec !== 'all' && (
+                                        <span className="ml-1.5 text-slate-500 font-medium">(quota: max {maxLeadsPerExec} each)</span>
+                                      )}
                                     </div>
                                   )}
                                 </div>
@@ -2099,7 +2112,7 @@ export default function ImportedSheetsPage() {
                                   {assigning ? (
                                     <><RefreshCw size={16} className="animate-spin" /> Assigning...</>
                                   ) : (
-                                    <><Users size={16} /> Assign {targetTotal} Leads ({perPerson} each)</>
+                                    <><Users size={16} /> Assign {targetTotal} Leads {maxLeadsPerExec !== 'all' ? `(Max ${maxLeadsPerExec} each)` : `(~${perPerson} each)`}</>
                                   )}
                                 </button>
                               </div>
