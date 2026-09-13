@@ -332,24 +332,53 @@ export async function DELETE(
     const deleteLeads = req.nextUrl.searchParams.get('deleteLeads') !== 'false'
 
     let deletedLeadsCount = 0
-    if (deleteLeads && batchName && batchName !== 'all_leads') {
-      if (batchName === 'renewals') {
+    if (deleteLeads && batchName) {
+      if (safeFileName === 'import_renewals.xlsx' || batchName === 'renewals') {
         const delRenewals = await prisma.renewalRecord.deleteMany({}).catch(() => ({ count: 0 }))
         deletedLeadsCount = delRenewals.count
+      } else if (safeFileName === 'import_leads.xlsx' || batchName === 'leads' || batchName === 'all_leads') {
+        const allLeads = await prisma.lead.findMany({ select: { id: true } })
+        if (allLeads.length > 0) {
+          deletedLeadsCount = await deleteLeadsWithCascade(allLeads.map(l => l.id))
+        }
+      } else if (safeFileName === 'import_direct_entry.xlsx' || batchName === 'direct_entry') {
+        const nullLeads = await prisma.lead.findMany({
+          where: { importName: null },
+          select: { id: true }
+        })
+        if (nullLeads.length > 0) {
+          deletedLeadsCount = await deleteLeadsWithCascade(nullLeads.map(l => l.id))
+        }
       } else {
         const cleanBatch = batchName.replace(/[^a-zA-Z0-9]/g, '').toLowerCase()
-        const allLeads = await prisma.lead.findMany({ select: { id: true, importName: true } })
-        const matchedLeadIds = allLeads
-          .filter(l => {
-            if (!l.importName) return false
-            const dbClean = l.importName.replace(/[^a-zA-Z0-9]/g, '').toLowerCase()
-            return dbClean === cleanBatch || dbClean.includes(cleanBatch) || cleanBatch.includes(dbClean)
-          })
-          .map(l => l.id)
+        const matchedLeads = await prisma.lead.findMany({
+          where: {
+            OR: [
+              { importName: batchName },
+              { importName: { contains: batchName, mode: 'insensitive' } },
+              { importName: { contains: cleanBatch, mode: 'insensitive' } }
+            ]
+          },
+          select: { id: true }
+        })
 
-        if (matchedLeadIds.length > 0) {
-          const count = await deleteLeadsWithCascade(matchedLeadIds)
-          deletedLeadsCount = count
+        let targetIds = matchedLeads.map(l => l.id)
+
+        if (targetIds.length === 0) {
+          const allImportLeads = await prisma.lead.findMany({
+            where: { importName: { not: null } },
+            select: { id: true, importName: true }
+          })
+          targetIds = allImportLeads
+            .filter(l => {
+              const dbClean = (l.importName || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase()
+              return dbClean === cleanBatch || dbClean.includes(cleanBatch) || cleanBatch.includes(dbClean)
+            })
+            .map(l => l.id)
+        }
+
+        if (targetIds.length > 0) {
+          deletedLeadsCount = await deleteLeadsWithCascade(targetIds)
         }
       }
     }

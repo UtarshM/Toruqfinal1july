@@ -100,111 +100,98 @@ export async function GET(req: NextRequest) {
       matchingBatchNames = [...new Set(leads.map(l => l.importName || 'direct_entry'))]
     }
 
-    // 2. Read only the master files from server storage
-    const fileNames = ['import_leads.xlsx']
+    // 2. Build list of sheets from DB batches + master files
+    const totalActiveLeads = await prisma.lead.count({
+      where: { status: { not: 'Trashed' }, deletedAt: null }
+    })
+
+    const files: any[] = []
+
+    // A. Master Renewals Sheet
     if (totalRenewals > 0) {
-      fileNames.push('import_renewals.xlsx')
+      files.push({
+        fileName: 'import_renewals.xlsx',
+        displayName: 'Policy Renewals (Master)',
+        batchName: 'Policy Renewals (Master)',
+        sizeBytes: 0,
+        importedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        dayOfWeek: 'Today',
+        dateOnly: new Date().toISOString().split('T')[0],
+        totalRows: totalRenewals,
+        agentCount: 0,
+        headers: ['Client Name', 'Phone Number', 'Vehicle No', 'Policy Number', 'Provider / Insurer'],
+        downloadUrl: '/api/v1/import/sheets/download?file=import_renewals.xlsx'
+      })
     }
 
-    const files = fileNames.map(fileName => {
-      const filePath = path.join(uploadDir, fileName)
-      const stat = fs.statSync(filePath)
-
-      let totalRows = 0
-      let agentCount = 0
-      let headers: string[] = []
-
-      try {
-        const fileBuffer = fs.readFileSync(filePath)
-        const wb = XLSX.read(fileBuffer, { type: 'buffer' })
-        const sheetName = wb.SheetNames[0]
-        if (sheetName) {
-          const rows: any[][] = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1, defval: '' })
-          if (rows.length > 0) {
-            headers = rows[0].map(h => String(h || ''))
-            totalRows = Math.max(0, rows.length - 1)
-
-            const agentColIdx = headers.findIndex(h => h.toLowerCase().trim() === 'agent')
-            if (agentColIdx !== -1) {
-              for (let i = 1; i < rows.length; i++) {
-                const val = String(rows[i]?.[agentColIdx] || '').toLowerCase().trim()
-                if (val === 'agent') agentCount++
-              }
-            }
-          }
-        }
-      } catch (err) {
-        console.error(`[sheets] Error reading file ${fileName}:`, err)
-      }
-
-      // Clean display name without synthetic "import_" prefix
-      const displayName = fileName
-        .replace(/^import_/, '')
-        .replace(/\.(xlsx|csv)$/, '')
-        .replace(/_/g, ' ')
-        + path.extname(fileName)
-
-      // Friendly batch name
-      let batchName = fileName
-        .replace(/^import_/, '')
-        .replace(/\.(xlsx|csv)$/, '')
-        .replace(/_/g, ' ')
-
-      if (fileName === 'import_renewals.xlsx') {
-        batchName = 'Policy Renewals (Master)'
-      } else if (fileName === 'import_leads.xlsx') {
-        batchName = 'Imported Leads (Master)'
-      }
-
-      const matchingDbBatch = dbBatches.find(b => {
-        if (fileName === 'import_leads.xlsx') return true
-        const cleanB = b.importName ? String(b.importName).trim().replace(/[^a-zA-Z0-9_-]/g, '_') : 'direct_entry'
-        return fileName === `import_${cleanB}.xlsx` || fileName.includes(cleanB)
-      })
-
-      // Robust date calculation (never 1970)
-      let rawImportedAt = matchingDbBatch?._min?.createdAt || stat.birthtime || stat.mtime
-      let importedDate = new Date(rawImportedAt)
-      if (isNaN(importedDate.getTime()) || importedDate.getTime() < 946684800000) { // before year 2000
-        importedDate = stat.mtime && stat.mtime.getTime() > 946684800000 ? stat.mtime : new Date()
-      }
-      const importedAt = importedDate.toISOString()
-      const updatedAt = matchingDbBatch?._max?.updatedAt || stat.mtime || importedDate
+    // B. Master Leads Sheet (Consolidated)
+    if (totalActiveLeads > 0) {
+      const minDate = dbBatches.reduce((min, b) => {
+        const d = b._min?.createdAt ? new Date(b._min.createdAt) : null
+        return d && (!min || d < min) ? d : min
+      }, null as Date | null) || new Date()
 
       const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
-      const dayOfWeek = days[importedDate.getDay()] || 'Today'
-      const dateOnly = importedDate.toISOString().split('T')[0]
+      files.push({
+        fileName: 'import_leads.xlsx',
+        displayName: 'Imported Leads (Master)',
+        batchName: 'Imported Leads (Master)',
+        sizeBytes: 0,
+        importedAt: minDate.toISOString(),
+        updatedAt: new Date().toISOString(),
+        dayOfWeek: days[minDate.getDay()] || 'Today',
+        dateOnly: minDate.toISOString().split('T')[0],
+        totalRows: totalActiveLeads,
+        agentCount: 0,
+        headers: ['Client Name', 'Phone Number', 'REG NO / Vehicle No', 'Policy Expiry Date', 'Lead Status'],
+        downloadUrl: '/api/v1/import/sheets/download?file=import_leads.xlsx'
+      })
+    }
 
-      return {
+    // C. Individual Import Batches from Database
+    for (const batch of dbBatches) {
+      if (batch._count._all === 0) continue
+
+      const rawImportName = batch.importName
+      const isNullBatch = !rawImportName
+      const isMasterLeads = rawImportName === 'leads' || rawImportName === 'all_leads'
+      if (isMasterLeads) continue
+
+      const cleanBatch = isNullBatch ? 'direct_entry' : String(rawImportName).trim().replace(/[^a-zA-Z0-9_-]/g, '_')
+      const fileName = `import_${cleanBatch}.xlsx`
+      const displayName = isNullBatch ? 'Direct Entry / Initial Uploads' : String(rawImportName).trim()
+      const batchName = isNullBatch ? 'Direct Entry' : String(rawImportName).trim()
+
+      const batchDate = batch._min?.createdAt ? new Date(batch._min.createdAt) : new Date()
+      const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+
+      files.push({
         fileName,
-        displayName,
+        displayName: displayName.endsWith('.xlsx') || displayName.endsWith('.csv') ? displayName : `${displayName}.xlsx`,
         batchName,
-        sizeBytes: stat.size,
-        importedAt,
-        updatedAt: new Date(updatedAt).toISOString(),
-        dayOfWeek,
-        dateOnly,
-        totalRows,
-        agentCount,
-        headers,
+        sizeBytes: 0,
+        importedAt: batchDate.toISOString(),
+        updatedAt: (batch._max?.updatedAt ? new Date(batch._max.updatedAt) : batchDate).toISOString(),
+        dayOfWeek: days[batchDate.getDay()] || 'Today',
+        dateOnly: batchDate.toISOString().split('T')[0],
+        totalRows: batch._count._all,
+        agentCount: 0,
+        headers: ['Client Name', 'Phone Number', 'REG NO / Vehicle No', 'Policy Expiry Date', 'Lead Status'],
         downloadUrl: `/api/v1/import/sheets/download?file=${fileName}`
-      }
-    })
+      })
+    }
 
-    // Filter out 0-row empty master sheets from display
-    const nonDummyFiles = files.filter(f => {
-      if (f.fileName === 'import_renewals.xlsx' && f.totalRows === 0) return false
-      return true
-    })
-
-    // Sort by newest imported first
-    nonDummyFiles.sort((a, b) => {
+    // Sort: Renewals first, Master Leads second, then newest batches first
+    files.sort((a, b) => {
       if (a.fileName === 'import_renewals.xlsx') return -1
       if (b.fileName === 'import_renewals.xlsx') return 1
+      if (a.fileName === 'import_leads.xlsx') return -1
+      if (b.fileName === 'import_leads.xlsx') return 1
       return new Date(b.importedAt).getTime() - new Date(a.importedAt).getTime()
     })
 
-    return NextResponse.json({ files: nonDummyFiles, matchingLeads, matchingBatchNames })
+    return NextResponse.json({ files, matchingLeads, matchingBatchNames })
   } catch (err: any) {
     console.error('[sheets] Error:', err)
     return NextResponse.json({ error: 'Internal Server Error', details: err?.message }, { status: 500 })
@@ -234,8 +221,6 @@ export async function DELETE(req: NextRequest) {
     let totalDeletedFiles = 0
     let totalDeletedLeads = 0
 
-    const allLeads = deleteLeads ? await prisma.lead.findMany({ select: { id: true, importName: true } }) : []
-
     for (const rawName of fileNames) {
       const safeFileName = path.basename(rawName)
       const filePath = path.join(uploadDir, safeFileName)
@@ -249,18 +234,52 @@ export async function DELETE(req: NextRequest) {
         if (safeFileName === 'import_renewals.xlsx' || batchName === 'renewals') {
           const delRenewals = await prisma.renewalRecord.deleteMany({}).catch(() => ({ count: 0 }))
           totalDeletedLeads += delRenewals.count
+        } else if (safeFileName === 'import_leads.xlsx' || batchName === 'leads' || batchName === 'all_leads') {
+          // Master sheet deletion: purge all leads
+          const allLeads = await prisma.lead.findMany({ select: { id: true } })
+          if (allLeads.length > 0) {
+            const count = await deleteLeadsWithCascade(allLeads.map(l => l.id))
+            totalDeletedLeads += count
+          }
+        } else if (safeFileName === 'import_direct_entry.xlsx' || batchName === 'direct_entry') {
+          const nullLeads = await prisma.lead.findMany({
+            where: { importName: null },
+            select: { id: true }
+          })
+          if (nullLeads.length > 0) {
+            const count = await deleteLeadsWithCascade(nullLeads.map(l => l.id))
+            totalDeletedLeads += count
+          }
         } else {
           const cleanBatch = batchName.replace(/[^a-zA-Z0-9]/g, '').toLowerCase()
-          const matchedLeadIds = allLeads
-            .filter(l => {
-              if (!l.importName) return false
-              const dbClean = l.importName.replace(/[^a-zA-Z0-9]/g, '').toLowerCase()
-              return dbClean === cleanBatch || dbClean.includes(cleanBatch) || cleanBatch.includes(dbClean)
-            })
-            .map(l => l.id)
+          const matchedLeads = await prisma.lead.findMany({
+            where: {
+              OR: [
+                { importName: batchName },
+                { importName: { contains: batchName, mode: 'insensitive' } },
+                { importName: { contains: cleanBatch, mode: 'insensitive' } }
+              ]
+            },
+            select: { id: true }
+          })
 
-          if (matchedLeadIds.length > 0) {
-            const count = await deleteLeadsWithCascade(matchedLeadIds)
+          let targetIds = matchedLeads.map(l => l.id)
+
+          if (targetIds.length === 0) {
+            const allImportLeads = await prisma.lead.findMany({
+              where: { importName: { not: null } },
+              select: { id: true, importName: true }
+            })
+            targetIds = allImportLeads
+              .filter(l => {
+                const dbClean = (l.importName || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase()
+                return dbClean === cleanBatch || dbClean.includes(cleanBatch) || cleanBatch.includes(dbClean)
+              })
+              .map(l => l.id)
+          }
+
+          if (targetIds.length > 0) {
+            const count = await deleteLeadsWithCascade(targetIds)
             totalDeletedLeads += count
           }
         }
@@ -282,7 +301,7 @@ export async function DELETE(req: NextRequest) {
       success: true,
       deletedFilesCount: totalDeletedFiles,
       deletedLeadsCount: totalDeletedLeads,
-      message: `${totalDeletedFiles} spreadsheet(s) deleted successfully.`
+      message: `${totalDeletedFiles} spreadsheet(s) deleted successfully.${totalDeletedLeads > 0 ? ` (${totalDeletedLeads} leads permanently deleted)` : ''}`
     })
   } catch (err: any) {
     console.error('[sheets bulk DELETE] Error:', err)
