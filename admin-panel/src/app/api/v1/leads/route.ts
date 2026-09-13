@@ -3,6 +3,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { deleteLeadsWithCascade } from '@/lib/lead-delete-helper'
 
+export const maxDuration = 60
+export const dynamic = 'force-dynamic'
+
 export async function GET(req: NextRequest) {
   const { error, context } = await validateAuth(req, 'leads.view')
   if (error) return error
@@ -10,6 +13,8 @@ export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url)
     const status = searchParams.get('status')
+    const assignedParam = searchParams.get('assigned')
+    const assignedToParam = searchParams.get('assignedTo')
     const search = searchParams.get('search')
     const importName = searchParams.get('importName')
     const limit = parseInt(searchParams.get('limit') || '5000')
@@ -45,8 +50,6 @@ export async function GET(req: NextRequest) {
     const isAdminOrManager = roleUpper.includes('ADMIN') || roleUpper.includes('MANAGER')
     const isExecutive = !isAdminOrManager && (roleUpper.endsWith('EXECUTIVE') || roleUpper.includes('SALES') || roleUpper.includes('EXECUTIVE') || roleUpper === 'VIEWER')
     
-    console.log('[leads GET DEBUG] context.role:', context?.role, 'roleUpper:', roleUpper, 'isAdminOrManager:', isAdminOrManager, 'isExecutive:', isExecutive)
-    
     if (isExecutive) {
       where.assignedTo = context!.userId
     } else if (roleUpper === 'MANAGER') {
@@ -58,8 +61,24 @@ export async function GET(req: NextRequest) {
       where.assignedTo = { in: [context!.userId, ...teamIds] }
     }
 
-    if (status && status !== 'all') {
-      where.status = status
+    // Specific Assignee filter
+    if (assignedToParam && assignedToParam !== 'all') {
+      if (assignedToParam === 'unassigned') {
+        where.assignedTo = null
+      } else {
+        where.assignedTo = assignedToParam
+      }
+    }
+
+    // Status & Assignment filtering
+    if (status === 'assigned' || assignedParam === 'true') {
+      where.assignedTo = { not: null }
+    } else if (status === 'unassigned' || assignedParam === 'false') {
+      where.assignedTo = null
+    } else if (status === 'Follow Up' || status === 'Follow-up' || status?.toLowerCase() === 'followup') {
+      where.status = { in: ['Follow Up', 'Follow-up'] }
+    } else if (status && status !== 'all') {
+      where.status = { equals: status, mode: 'insensitive' }
     }
 
     if (search) {
@@ -69,7 +88,9 @@ export async function GET(req: NextRequest) {
           { clientName: { contains: cleanSearch, mode: 'insensitive' } },
           { clientPhone: { contains: cleanSearch, mode: 'insensitive' } },
           { vehicleNo: { contains: cleanSearch, mode: 'insensitive' } },
-          { importName: { contains: cleanSearch, mode: 'insensitive' } }
+          { city: { contains: cleanSearch, mode: 'insensitive' } },
+          { importName: { contains: cleanSearch, mode: 'insensitive' } },
+          { existingAgent: { contains: cleanSearch, mode: 'insensitive' } }
         ]
         if (where.OR) {
           where.AND = [{ OR: where.OR }, { OR: searchFilter }]
@@ -111,7 +132,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       leads,
       pagination: {
-        total: leads.length,
+        total,
         limit,
         offset
       }

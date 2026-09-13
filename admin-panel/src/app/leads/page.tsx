@@ -65,6 +65,14 @@ export default function LeadsPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState('')
   const [search, setSearch] = useState(initialSearch)
+  const [debouncedSearch, setDebouncedSearch] = useState(initialSearch)
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search)
+    }, 350)
+    return () => clearTimeout(timer)
+  }, [search])
   const [showAddModal, setShowAddModal] = useState(false)
   const [newLead, setNewLead] = useState({ clientName: '', clientPhone: '', vehicleNo: '', clientEmail: '' })
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -176,9 +184,47 @@ export default function LeadsPage() {
     setCurrentPage(1)
   }, [search, statusFilter, columnSelectedValues, startDate, endDate, sortConfig])
 
+  const fetchData = async () => {
+    setIsLoading(true)
+    setErrorMessage('')
+    try {
+      const params = new URLSearchParams()
+      if (startDate) params.append('startDate', startDate)
+      if (endDate) params.append('endDate', endDate)
+      if (statusFilter && statusFilter !== 'all') params.append('status', statusFilter)
+      if (debouncedSearch && debouncedSearch.trim()) params.append('search', debouncedSearch.trim())
+      params.append('limit', '5000')
+
+      const [leadsData, statsData] = await Promise.all([
+        fetchApi(`/api/v1/leads?${params.toString()}`),
+        fetchApi(`/api/v1/leads/stats${startDate || endDate ? `?startDate=${startDate}&endDate=${endDate}` : ''}`)
+      ])
+      
+      setLeads(leadsData?.leads || [])
+      setColumnSelectedValues({})
+      setStats(statsData?.summary || null)
+    } catch (error: any) {
+      console.error('Failed to fetch leads:', error)
+      setErrorMessage(error.message || 'Failed to load leads from database')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
   useEffect(() => {
     fetchData()
-  }, [startDate, endDate])
+  }, [statusFilter, debouncedSearch, startDate, endDate])
+
+  const fetchEmployees = async () => {
+    try {
+      const data = await fetchApi('/api/v1/users?limit=100')
+      // Only include active users for assignment
+      const activeUsers = Array.isArray(data) ? data.filter((u: any) => u.isActive !== false) : []
+      setEmployees(activeUsers)
+    } catch (error) {
+      console.error('Failed to fetch employees list:', error)
+    }
+  }
 
   useEffect(() => {
     fetchEmployees()
@@ -194,42 +240,6 @@ export default function LeadsPage() {
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
-
-  const fetchData = async () => {
-    setIsLoading(true)
-    setErrorMessage('')
-    try {
-      const params = new URLSearchParams()
-      if (startDate) params.append('startDate', startDate)
-      if (endDate) params.append('endDate', endDate)
-      params.append('limit', '5000')
-
-      const [leadsData, statsData] = await Promise.all([
-        fetchApi(`/api/v1/leads?${params}`),
-        fetchApi(`/api/v1/leads/stats?${params}`)
-      ])
-      
-      setLeads(leadsData?.leads || [])
-      setColumnSelectedValues({})
-      setStats(statsData?.summary || null)
-    } catch (error: any) {
-      console.error('Failed to fetch leads:', error)
-      setErrorMessage(error.message || 'Failed to load leads from database')
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const fetchEmployees = async () => {
-    try {
-      const data = await fetchApi('/api/v1/users?limit=100')
-      // Only include active users for assignment
-      const activeUsers = Array.isArray(data) ? data.filter((u: any) => u.isActive !== false) : []
-      setEmployees(activeUsers)
-    } catch (error) {
-      console.error('Failed to fetch employees list:', error)
-    }
-  }
 
   const fetchLeadDetails = async (id: string) => {
     setIsDrawerLoading(true)
@@ -611,7 +621,9 @@ export default function LeadsPage() {
     // Active Card Filters
     if (statusFilter !== 'all') {
       if (statusFilter === 'assigned') {
-        if (l.assignedTo === null) return false
+        if (!l.assignedTo) return false
+      } else if (statusFilter === 'Follow Up') {
+        if (!l.status?.toLowerCase().includes('follow')) return false
       } else if (l.status?.toUpperCase() !== statusFilter.toUpperCase()) {
         return false
       }
@@ -756,7 +768,7 @@ export default function LeadsPage() {
           icon={<CheckCircle className="text-emerald-600" />} 
           color="bg-white hover:bg-emerald-50/20" 
           isActive={statusFilter === 'assigned'}
-          onClick={() => setStatusFilter('assigned')}
+          onClick={() => setStatusFilter(prev => prev === 'assigned' ? 'all' : 'assigned')}
         />
         <StatCard 
           title="Converted" 
@@ -764,7 +776,7 @@ export default function LeadsPage() {
           icon={<CheckCircle className="text-purple-600" />} 
           color="bg-white hover:bg-purple-50/20" 
           isActive={statusFilter === 'Converted'}
-          onClick={() => setStatusFilter('Converted')}
+          onClick={() => setStatusFilter(prev => prev === 'Converted' ? 'all' : 'Converted')}
         />
         <StatCard 
           title="Followups" 
@@ -772,7 +784,7 @@ export default function LeadsPage() {
           icon={<AlertCircle className="text-amber-600" />} 
           color="bg-white hover:bg-amber-50/20" 
           isActive={statusFilter === 'Follow Up'}
-          onClick={() => setStatusFilter('Follow Up')}
+          onClick={() => setStatusFilter(prev => prev === 'Follow Up' ? 'all' : 'Follow Up')}
         />
       </div>
 
@@ -789,7 +801,7 @@ export default function LeadsPage() {
         <div className="bg-amber-50 border border-amber-200 text-amber-900 p-4 rounded-2xl text-xs font-bold mt-4 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-sm">
           <div className="flex items-center gap-2">
             <AlertCircle size={16} className="text-amber-600 shrink-0" />
-            <span>{leads.length} leads exist in database, but active column or search filters are hiding them.</span>
+            <span>{leads.length} leads loaded, but active column or search filters are hiding them.</span>
           </div>
           <button 
             onClick={() => {
@@ -802,7 +814,7 @@ export default function LeadsPage() {
             }} 
             className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition-all shadow cursor-pointer whitespace-nowrap"
           >
-            Show All {leads.length} Leads
+            Reset All Filters
           </button>
         </div>
       )}
