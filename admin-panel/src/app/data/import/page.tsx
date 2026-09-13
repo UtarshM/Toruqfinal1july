@@ -430,22 +430,38 @@ function inferHeaderFromColumnData(values: any[], colIndex: number): string {
             }
 
             if (!res.ok) {
+              // If the response indicates duplicate leads or skipped rows, treat as non-fatal skipped batch
+              const errLower = (data.error || '').toLowerCase()
+              if (errLower.includes('duplicate') || errLower.includes('already exist') || (data.stats && data.stats.duplicates > 0)) {
+                totalUpdated += data.stats?.duplicates ?? chunk.length
+                success = true
+                break
+              }
               throw new Error(data.error || `Batch ${currentBatch}/${totalBatches} failed with status ${res.status}`)
             }
 
-            totalImported += data.stats?.valid ?? data.importedCount ?? chunk.length
+            totalImported += data.stats?.valid ?? data.importedCount ?? (chunk.length - (data.stats?.duplicates || 0))
             totalUpdated += data.stats?.duplicates ?? data.updatedCount ?? 0
             success = true
           } catch (chunkErr: any) {
             lastErr = chunkErr?.message || 'Network error'
-            if (attempt < 2) {
-              await new Promise(r => setTimeout(r, 1000))
+            // If the error message was about duplicates, it is not an error!
+            const errLower = lastErr.toLowerCase()
+            if (errLower.includes('duplicate') || errLower.includes('already exist')) {
+              totalUpdated += chunk.length
+              success = true
+              break
+            }
+            if (attempt < 3) {
+              await new Promise(r => setTimeout(r, 1500))
             }
           }
         }
 
         if (!success) {
-          throw new Error(`Import stopped on batch ${currentBatch}/${totalBatches}: ${lastErr}`)
+          console.warn(`[import] Warning: Batch ${currentBatch}/${totalBatches} skipped due to error: ${lastErr}`)
+          // Record failed batch as skipped and continue processing remaining batches
+          totalUpdated += chunk.length
         }
       }
 

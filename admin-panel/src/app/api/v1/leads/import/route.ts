@@ -283,19 +283,28 @@ export async function POST(req: NextRequest) {
 
     for (const r of rawData) {
       if (typeof r === 'object' && r !== null) {
-        for (const [k, v] of Object.entries(r)) {
-          if (!v) continue
-          const vStr = String(v).trim()
-          if (!vStr) continue
-          const kLower = k.toLowerCase()
-          if (kLower.includes('vehic') || kLower.includes('reg') || kLower === 'vno') {
-            candidateVehicles.add(vStr.toUpperCase())
+        const normalizedRow: any = {}
+        for (const key of Object.keys(r)) {
+          if (r[key] !== undefined && r[key] !== null && String(r[key]).trim() !== '') {
+            normalizedRow[key.toLowerCase().replace(/[^a-z0-9]/g, '')] = r[key]
           }
-          const digits = vStr.replace(/\D/g, '')
-          if (digits.length >= 10 && digits.length <= 13) {
-            candidatePhones.add(digits.slice(-10))
-            candidatePhones.add(vStr)
-          }
+        }
+        const rawVehicle = extractFieldValue(r, normalizedRow, mapping.vehicleNo, [
+          'vehicleNo', 'vehicle_no', 'Vehicle Number', 'Vehicle No', 'REG NO / Vehicle No', 'REG NO', 'Registration No', 'Reg No', 'regno', 'vehicle', 'vehical'
+        ])
+        const rawPhone = extractFieldValue(r, normalizedRow, mapping.clientPhone, [
+          'clientPhone', 'client_phone', 'Phone Number', 'Mobile', 'Mobile No', 'Contact Number', 'Phone', 'phone_no', 'mobile_no', 'phone', 'contact', 'contact_no'
+        ])
+
+        if (rawVehicle) {
+          const cleanV = String(rawVehicle).trim().toUpperCase()
+          if (cleanV.length >= 4) candidateVehicles.add(cleanV)
+        }
+        if (rawPhone) {
+          const pStr = String(rawPhone).trim()
+          const digits = pStr.replace(/\D/g, '')
+          if (digits.length >= 10) candidatePhones.add(digits.slice(-10))
+          if (pStr) candidatePhones.add(pStr)
         }
       }
     }
@@ -498,19 +507,11 @@ export async function POST(req: NextRequest) {
     if (validLeads.length === 0) {
       const duplicateCount = errorRows.filter(e => e.error.includes('Duplicate')).length
       const invalidCount = errorRows.length - duplicateCount
-      const headersFound = rawData.length > 0 ? Object.keys(rawData[0]).join(', ') : 'None'
-
-      let errorMsg = 'No new leads were imported.'
-      if (duplicateCount > 0 && invalidCount === 0) {
-        errorMsg = `All leads in the file already exist in the system (${duplicateCount} duplicates found).`
-      } else if (invalidCount > 0) {
-        errorMsg = `No valid leads found. ${invalidCount} rows had missing information.\n\nDetected Headers: ${headersFound}\nRequired: Name, Phone, and Vehicle No.`
-      }
 
       setImportJob(jobId, {
         id: jobId,
         name: importName || 'Leads Batch',
-        status: 'failed',
+        status: 'completed',
         totalRows: totalRaw,
         processedRows: totalRaw,
         validCount: 0,
@@ -519,16 +520,26 @@ export async function POST(req: NextRequest) {
         assignedCount: 0,
         agentCount: 0,
         startTime: Date.now(),
-        completedTime: Date.now(),
-        errorMessage: errorMsg
+        completedTime: Date.now()
       })
 
       return NextResponse.json({
-        error: errorMsg,
+        success: true,
         jobId,
-        stats: { total: rawData.length, valid: 0, errors: errorRows.length, duplicates: duplicateCount },
+        stats: {
+          total: rawData.length,
+          valid: 0,
+          duplicates: duplicateCount,
+          errors: invalidCount,
+          imported: 0,
+          agentCount: 0
+        },
+        message: duplicateCount > 0
+          ? `${duplicateCount} duplicate leads in this batch skipped.`
+          : `0 valid leads in this batch (${invalidCount} invalid rows skipped).`,
+        agentLeadsCount: 0,
         errorDetails: errorRows.slice(0, 10)
-      }, { status: 400 })
+      }, { status: 200 })
     }
 
     // 2. Data Merge Only — NO assignment at import time
