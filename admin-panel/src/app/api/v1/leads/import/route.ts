@@ -575,10 +575,7 @@ export async function POST(req: NextRequest) {
       }).catch(() => {})
     }
 
-    // 6. Direct Spreadsheet Synchronization on Disk
-    const uploadDir = getUploadDir()
-    await syncSpreadsheetForBatch(batchImportName, uploadDir).catch(e => console.warn('[leads/import] Batch sync warning:', e))
-    await syncSpreadsheetForBatch('all_leads', uploadDir).catch(e => console.warn('[leads/import] Master sync warning:', e))
+    // 6. Direct Spreadsheet Synchronization: Not needed in import chunk (sheets API reads DB dynamically)
 
     // 7. Complete Job Tracking
     const duplicateCount = errorRows.filter(e => e.error.includes('Duplicate')).length

@@ -33,64 +33,110 @@ export async function POST(req: NextRequest) {
     let totalDeletedFiles = 0
     let totalDeletedLeads = 0
 
-    const allLeads = deleteLeads ? await prisma.lead.findMany({ select: { id: true, importName: true } }) : []
+    // Fetch existing batches from DB
+    const dbBatches = await prisma.lead.groupBy({
+      by: ['importName']
+    })
 
     for (const rawName of rawFileNames) {
       const safeFileName = path.basename(String(rawName).trim())
       const filePath = path.join(uploadDir, safeFileName)
 
-      const batchName = safeFileName
+      const batchSlug = safeFileName
         .replace(/^import_/, '')
         .replace(/\.(xlsx|csv)$/, '')
 
       if (deleteLeads) {
-        if (safeFileName === 'import_renewals.xlsx' || batchName === 'renewals') {
+        if (safeFileName === 'import_renewals.xlsx' || batchSlug === 'renewals') {
           const delRenewals = await prisma.renewalRecord.deleteMany({}).catch(() => ({ count: 0 }))
           totalDeletedLeads += delRenewals.count
+        } else if (safeFileName === 'import_leads.xlsx' || batchSlug === 'leads' || batchSlug === 'all_leads') {
+          const softDel = await prisma.lead.updateMany({
+            where: { status: { not: 'Trashed' }, deletedAt: null },
+            data: { status: 'Trashed', deletedAt: new Date(), deletedBy: context.userId }
+          })
+          totalDeletedLeads += softDel.count
         } else {
-          const cleanBatch = batchName.replace(/[^a-zA-Z0-9]/g, '').toLowerCase()
-          const matchedLeadIds = allLeads
-            .filter(l => {
-              if (!l.importName) return false
-              const dbClean = l.importName.replace(/[^a-zA-Z0-9]/g, '').toLowerCase()
-              return dbClean === cleanBatch || dbClean.includes(cleanBatch) || cleanBatch.includes(dbClean)
-            })
-            .map(l => l.id)
+          let targetImportName: string | null = batchSlug
+          const isDirectEntry = batchSlug === 'direct_entry'
 
-          if (matchedLeadIds.length > 0) {
-            await prisma.leadAssignment.deleteMany({ where: { leadId: { in: matchedLeadIds } } }).catch(() => {})
-            await prisma.leadStatusHistory.deleteMany({ where: { leadId: { in: matchedLeadIds } } }).catch(() => {})
-            await prisma.leadWhatsAppLog.deleteMany({ where: { leadId: { in: matchedLeadIds } } }).catch(() => {})
-            await prisma.call.deleteMany({ where: { leadId: { in: matchedLeadIds } } }).catch(() => {})
-            await prisma.followUp.deleteMany({ where: { leadId: { in: matchedLeadIds } } }).catch(() => {})
-            await prisma.activityLog.deleteMany({ where: { entityId: { in: matchedLeadIds } } }).catch(() => {})
+          const matchedBatch = dbBatches.find(b => {
+            if (!b.importName) return false
+            const clean = String(b.importName).trim().replace(/[^a-zA-Z0-9_-]/g, '_')
+            return clean === batchSlug || b.importName === batchSlug || b.importName.toLowerCase() === batchSlug.toLowerCase()
+          })
 
-            const delResult = await prisma.lead.deleteMany({
-              where: { id: { in: matchedLeadIds } }
-            })
-            totalDeletedLeads += delResult.count
+          if (matchedBatch && matchedBatch.importName) {
+            targetImportName = matchedBatch.importName
+          }
+
+          const leadWhere = isDirectEntry
+            ? { importName: null, status: { not: 'Trashed' }, deletedAt: null }
+            : { importName: targetImportName, status: { not: 'Trashed' }, deletedAt: null }
+
+          const batchLeads = await prisma.lead.findMany({
+            where: leadWhere,
+            select: { id: true }
+          })
+          const batchLeadIds = batchLeads.map(l => l.id)
+
+          if (batchLeadIds.length > 0) {
+            const chunkSize = 500
+            for (let i = 0; i < batchLeadIds.length; i += chunkSize) {
+              const chunk = batchLeadIds.slice(i, i + chunkSize)
+
+              // Decouple foreign relations
+              await Promise.allSettled([
+                prisma.policy.updateMany({ where: { leadId: { in: chunk } }, data: { leadId: null } }),
+                prisma.quotation.updateMany({ where: { leadId: { in: chunk } }, data: { leadId: null } }),
+                prisma.claim.updateMany({ where: { leadId: { in: chunk } }, data: { leadId: null } }),
+                prisma.customer.updateMany({ where: { leadId: { in: chunk } }, data: { leadId: null } }),
+                prisma.renewalRecord.updateMany({ where: { leadId: { in: chunk } }, data: { leadId: null } }),
+                prisma.fitnessWork.updateMany({ where: { leadId: { in: chunk } }, data: { leadId: null } }),
+                prisma.rTOWork.updateMany({ where: { leadId: { in: chunk } }, data: { leadId: null } }),
+                prisma.visit.updateMany({ where: { leadId: { in: chunk } }, data: { leadId: null } }),
+                prisma.loan.updateMany({ where: { leadId: { in: chunk } }, data: { leadId: null } })
+              ])
+
+              // Delete activities and logs
+              await Promise.allSettled([
+                prisma.leadAssignment.deleteMany({ where: { leadId: { in: chunk } } }),
+                prisma.leadStatusHistory.deleteMany({ where: { leadId: { in: chunk } } }),
+                prisma.leadWhatsAppLog.deleteMany({ where: { leadId: { in: chunk } } }),
+                prisma.call.deleteMany({ where: { leadId: { in: chunk } } }),
+                prisma.followUp.deleteMany({ where: { leadId: { in: chunk } } }),
+                prisma.activityLog.deleteMany({ where: { entityId: { in: chunk } } })
+              ])
+
+              // Delete leads
+              const delResult = await prisma.lead.deleteMany({
+                where: { id: { in: chunk } }
+              }).catch(async () => {
+                return await prisma.lead.updateMany({
+                  where: { id: { in: chunk } },
+                  data: { status: 'Trashed', deletedAt: new Date(), deletedBy: context.userId }
+                })
+              })
+
+              totalDeletedLeads += delResult.count
+            }
           }
         }
       }
 
-      // Delete file from disk
-      if (fs.existsSync(filePath)) {
-        try {
+      try {
+        if (fs.existsSync(filePath)) {
           fs.unlinkSync(filePath)
-          totalDeletedFiles++
-        } catch (err: any) {
-          console.warn('[sheets DELETE] Failed to unlink file:', err)
         }
-      } else {
-        totalDeletedFiles++
-      }
+      } catch {}
+      totalDeletedFiles++
     }
 
     return NextResponse.json({
       success: true,
       deletedFilesCount: totalDeletedFiles,
       deletedLeadsCount: totalDeletedLeads,
-      message: `${totalDeletedFiles} spreadsheet(s) deleted successfully.`
+      message: `${totalDeletedFiles} spreadsheet(s) and ${totalDeletedLeads} associated lead(s) deleted successfully.`
     })
   } catch (err: any) {
     console.error('[sheets delete endpoint] Error:', err)

@@ -234,7 +234,7 @@ export default function ImportedSheetsPage() {
     setPreviewSortCol(null)
     setCurrentPage(1)
     try {
-      const res = await fetchApi(`/api/v1/import/sheets/${encodeURIComponent(file.fileName)}?all=true`)
+      const res = await fetchApi(`/api/v1/import/sheets/${encodeURIComponent(file.fileName)}?limit=200`)
       setPreviewData(res)
     } catch (err: any) {
       alert(err.message || 'Failed to load spreadsheet preview.')

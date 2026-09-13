@@ -1,21 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { validateAuth } from '@/lib/auth-guard'
 import prisma from '@/lib/prisma'
-import { notify, notifyRole } from '@/lib/notify'
+import { notifyRole } from '@/lib/notify'
 import { logActivity } from '@/lib/activity-logger'
 
 // GET — list change requests (admins see all, others see their own)
 export async function GET(req: NextRequest) {
   const { context, error } = await validateAuth(req, 'data.view')
-  if (error) return error
+  if (error || !context) return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { searchParams } = new URL(req.url)
   const status = searchParams.get('status') || undefined
-  const isAdmin = context!.permissions.includes('data.approve_changes')
+  const roleUpper = (context.role || '').toUpperCase()
+  const isAdmin = roleUpper.includes('ADMIN') || roleUpper.includes('SUPER') || context.permissions.includes('data.approve_changes')
 
   const requests = await prisma.dataChangeRequest.findMany({
     where: {
-      ...(isAdmin ? {} : { requestedBy: context!.userId }),
+      ...(isAdmin ? {} : { requestedBy: context.userId }),
       ...(status ? { status } : {})
     },
     orderBy: { requestedAt: 'desc' },
@@ -48,7 +49,7 @@ export async function GET(req: NextRequest) {
 // POST — submit a new change request
 export async function POST(req: NextRequest) {
   const { context, error } = await validateAuth(req, 'data.create')
-  if (error) return error
+  if (error || !context) return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await req.json()
   const { entityType, entityId, field, oldValue, newValue, reason } = body
@@ -59,7 +60,7 @@ export async function POST(req: NextRequest) {
 
   const request = await prisma.dataChangeRequest.create({
     data: {
-      requestedBy: context!.userId,
+      requestedBy: context.userId,
       entityType,
       entityId,
       field,
@@ -73,13 +74,13 @@ export async function POST(req: NextRequest) {
   // Notify admins and managers that a change request is pending
   await notifyRole('Admin', {
     title: '📋 New Change Request',
-    body: `${context!.email} wants to change ${field} on ${entityType}`,
+    body: `${context.email} wants to change ${field} on ${entityType}`,
     type: 'action',
     entityType: 'DataChangeRequest',
     entityId: request.id
-  })
+  }).catch(() => {})
 
-  logActivity(context!.userId, 'change_request_submitted', entityType, entityId, {
+  logActivity(context.userId, 'change_request_submitted', entityType, entityId, {
     field, requestId: request.id
   })
 

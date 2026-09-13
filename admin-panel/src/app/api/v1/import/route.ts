@@ -405,9 +405,7 @@ export async function POST(req: NextRequest) {
       }).catch(() => {})
     }
 
-    // Direct sheet sync
-    await syncSpreadsheetForBatch(batchName !== 'default_batch' ? batchName : null, uploadDir).catch(e => console.warn('[import] Batch sync warning:', e))
-    await syncSpreadsheetForBatch('all_leads', uploadDir).catch(e => console.warn('[import] Master sync warning:', e))
+    // Direct sheet sync not needed here as sheets API dynamically queries the database
 
     return NextResponse.json({
       success: true,

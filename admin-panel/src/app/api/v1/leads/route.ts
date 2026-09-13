@@ -2,6 +2,22 @@ import { validateAuth } from '@/lib/auth-guard'
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 
+const VALID_SORT_FIELDS = new Set([
+  'createdAt',
+  'updatedAt',
+  'clientName',
+  'clientPhone',
+  'clientEmail',
+  'status',
+  'vehicleNo',
+  'expiryDate',
+  'registrationDate',
+  'gvw',
+  'city',
+  'importName',
+  'existingAgent'
+])
+
 export async function GET(req: NextRequest) {
   const { error, context } = await validateAuth(req, 'leads.view')
   if (error) return error
@@ -11,8 +27,9 @@ export async function GET(req: NextRequest) {
     const status = searchParams.get('status')
     const search = searchParams.get('search')
     const importName = searchParams.get('importName')
-    const limit = parseInt(searchParams.get('limit') || '5000')
-    const offset = parseInt(searchParams.get('offset') || '0')
+    const limitParam = searchParams.get('limit')
+    const limit = limitParam ? Math.min(5000, Math.max(1, parseInt(limitParam) || 100)) : 100
+    const offset = Math.max(0, parseInt(searchParams.get('offset') || '0') || 0)
 
     const fromParam = searchParams.get('startDate') || searchParams.get('from')
     const toParam = searchParams.get('endDate') || searchParams.get('to')
@@ -21,8 +38,21 @@ export async function GET(req: NextRequest) {
       status: { not: 'Trashed' },
       deletedAt: null
     }
+
     if (importName) {
-      where.importName = importName
+      if (importName === 'direct_entry' || importName === 'Direct Entry') {
+        where.importName = null
+      } else {
+        where.importName = importName
+      }
+    }
+
+    // Agent filter support
+    const agentParam = searchParams.get('agent') || searchParams.get('existingAgent')
+    if (agentParam === 'true' || agentParam === 'Agent' || agentParam === 'agent') {
+      where.existingAgent = 'Agent'
+    } else if (agentParam === 'false' || agentParam === 'none') {
+      where.existingAgent = null
     }
     
     if (fromParam || toParam) {
@@ -42,9 +72,7 @@ export async function GET(req: NextRequest) {
     // RBAC: Dynamic filtering based on role
     const roleUpper = context?.role?.toUpperCase() || ''
     const isAdminOrManager = roleUpper.includes('ADMIN') || roleUpper.includes('MANAGER')
-    const isExecutive = !isAdminOrManager && (roleUpper.endsWith('EXECUTIVE') || roleUpper.includes('SALES') || roleUpper.includes('EXECUTIVE') || roleUpper === 'VIEWER')
-    
-    console.log('[leads GET DEBUG] context.role:', context?.role, 'roleUpper:', roleUpper, 'isAdminOrManager:', isAdminOrManager, 'isExecutive:', isExecutive)
+    const isExecutive = !isAdminOrManager && (roleUpper.endsWith('EXECUTIVE') || roleUpper.includes('SALES') || roleUpper === 'VIEWER')
     
     if (isExecutive) {
       where.assignedTo = context!.userId
@@ -62,12 +90,13 @@ export async function GET(req: NextRequest) {
     }
 
     if (search) {
-      const cleanSearch = search.startsWith('#') ? search.slice(1).trim() : search
+      const cleanSearch = search.startsWith('#') ? search.slice(1).trim() : search.trim()
       if (cleanSearch) {
         const searchFilter = [
           { clientName: { contains: cleanSearch, mode: 'insensitive' } },
           { clientPhone: { contains: cleanSearch, mode: 'insensitive' } },
           { vehicleNo: { contains: cleanSearch, mode: 'insensitive' } },
+          { city: { contains: cleanSearch, mode: 'insensitive' } },
           { importName: { contains: cleanSearch, mode: 'insensitive' } }
         ]
         if (where.OR) {
@@ -79,17 +108,20 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const sortBy = searchParams.get('sortBy') || 'expiryDate'
-    const sortOrder = searchParams.get('sortOrder') || 'desc'
-
+    // Safe sorting: Validate against known fields to eliminate Prisma runtime exceptions
+    const rawSortBy = searchParams.get('sortBy')
+    const sortOrder = searchParams.get('sortOrder')?.toLowerCase() === 'asc' ? 'asc' : 'desc'
     let orderBy: any = [{ expiryDate: 'desc' }, { createdAt: 'desc' }]
-    if (sortBy && sortBy !== 'expiryDate') {
-      orderBy = [{ [sortBy]: sortOrder }]
-    } else if (sortBy === 'expiryDate') {
-      orderBy = [{ expiryDate: sortOrder }, { createdAt: 'desc' }]
+
+    if (rawSortBy && VALID_SORT_FIELDS.has(rawSortBy)) {
+      if (rawSortBy === 'expiryDate') {
+        orderBy = [{ expiryDate: sortOrder }, { createdAt: 'desc' }]
+      } else {
+        orderBy = [{ [rawSortBy]: sortOrder }]
+      }
     }
 
-    let [leads, total] = await Promise.all([
+    const [leads, total] = await Promise.all([
       prisma.lead.findMany({
         where,
         take: limit,
@@ -104,13 +136,10 @@ export async function GET(req: NextRequest) {
       prisma.lead.count({ where })
     ])
 
-    // Filter out trashed leads in memory to be 100% fail-safe
-    leads = leads.filter((l: any) => l.status !== 'Trashed' && !l.deletedAt)
-
     return NextResponse.json({
       leads,
       pagination: {
-        total: leads.length,
+        total,
         limit,
         offset
       }
@@ -139,7 +168,6 @@ export async function POST(req: NextRequest) {
     const clientPhone = (body.clientPhone || body.client_phone) ? String(body.clientPhone || body.client_phone).trim() : null
     let existingAgent = body.existingAgent || body.existing_agent || null
 
-    // Check if this contact number is already known as an Agent or if marked as Agent
     let isAgentLead = false
     if (existingAgent && String(existingAgent).toLowerCase().trim() === 'agent') {
       isAgentLead = true
@@ -163,10 +191,8 @@ export async function POST(req: NextRequest) {
     }
 
     if (isAgentLead) {
-      // Agent contact numbers MUST NOT be assigned to any staff
       assignedTo = null
     } else if (!assignedTo && !isExecutive) {
-      // Round-robin assignment for regular (non-agent) leads
       try {
         const salesExecutives = await prisma.user.findMany({
           where: {
@@ -234,12 +260,27 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: 'ids array is required' }, { status: 400 })
     }
 
-    const formattedIds = ids.map(id => `'${id}'`).join(',')
-    await prisma.$executeRawUnsafe(
-      `UPDATE "leads" SET "deletedAt" = NOW(), "deletedBy" = '${context!.userId}', "status" = 'Trashed' WHERE "id"::text IN (${formattedIds})`
-    )
+    const validIds = ids.filter(id => typeof id === 'string' && /^[0-9a-fA-F-]{36}$/.test(id.trim()))
+    if (validIds.length === 0) {
+      return NextResponse.json({ error: 'No valid lead IDs provided' }, { status: 400 })
+    }
 
-    return NextResponse.json({ success: true, count: ids.length })
+    let updatedCount = 0
+    const chunkSize = 500
+    for (let i = 0; i < validIds.length; i += chunkSize) {
+      const chunk = validIds.slice(i, i + chunkSize)
+      const result = await prisma.lead.updateMany({
+        where: { id: { in: chunk } },
+        data: {
+          deletedAt: new Date(),
+          deletedBy: context!.userId,
+          status: 'Trashed'
+        }
+      })
+      updatedCount += result.count
+    }
+
+    return NextResponse.json({ success: true, count: updatedCount })
   } catch (error: any) {
     console.error('Leads Bulk DELETE Error:', error)
     return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 })

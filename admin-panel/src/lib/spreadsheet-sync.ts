@@ -18,7 +18,7 @@ function formatDate(date: any): string {
 export async function syncSpreadsheetForBatch(batchName: string | null, customUploadDir?: string) {
   const uploadDir = customUploadDir || getUploadDir()
   if (!fs.existsSync(uploadDir)) {
-    fs.mkdirSync(uploadDir, { recursive: true })
+    try { fs.mkdirSync(uploadDir, { recursive: true }) } catch {}
   }
 
   const isAll = batchName === 'all_leads' || batchName === 'leads' || batchName === 'All Active Leads (Master)'
@@ -35,14 +35,12 @@ export async function syncSpreadsheetForBatch(batchName: string | null, customUp
 
   const leads = await prisma.lead.findMany({
     where: whereClause,
-    include: { assignee: true },
+    include: { assignee: { select: { fullName: true } } },
     orderBy: [
       { expiryDate: 'desc' },
       { createdAt: 'desc' }
     ]
   })
-
-  if (leads.length === 0 && !isAll) return null
 
   // Collect all unique custom fields keys across leads in this batch
   const customKeys = new Set<string>()
@@ -121,23 +119,16 @@ export async function syncSpreadsheetForBatch(batchName: string | null, customUp
   const fileName = `import_${cleanBatchName}.xlsx`
   const fullPath = path.join(uploadDir, fileName)
 
+  const ws = XLSX.utils.aoa_to_sheet(rows)
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, 'Leads')
+
+  const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' })
+
   try {
-    const ws = XLSX.utils.aoa_to_sheet(rows)
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, 'Leads')
-    
-    try {
-      XLSX.writeFile(wb, fullPath)
-    } catch (writeErr: any) {
-      const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' })
-      const tempPath = `${fullPath}.tmp`
-      fs.writeFileSync(tempPath, buf)
-      try {
-        fs.renameSync(tempPath, fullPath)
-      } catch {}
-    }
+    fs.writeFileSync(fullPath, buf)
   } catch (err) {
-    console.warn(`[syncSpreadsheetForBatch] Skipped updating locked file ${fileName}:`, err)
+    console.warn(`[syncSpreadsheetForBatch] Skipped disk write for ${fileName}:`, err)
   }
 
   const agentCount = leads.filter(l => l.existingAgent === 'Agent' || (l.existingAgent && String(l.existingAgent).toLowerCase().includes('agent'))).length
@@ -145,26 +136,27 @@ export async function syncSpreadsheetForBatch(batchName: string | null, customUp
   return {
     fileName,
     totalRows: leads.length,
-    agentCount
+    agentCount,
+    buffer: buf
   }
 }
 
 export async function syncRenewalsSpreadsheet(customUploadDir?: string) {
   const uploadDir = customUploadDir || getUploadDir()
   if (!fs.existsSync(uploadDir)) {
-    fs.mkdirSync(uploadDir, { recursive: true })
+    try { fs.mkdirSync(uploadDir, { recursive: true }) } catch {}
   }
 
   const renewals = await prisma.renewalRecord.findMany({
     include: {
-      assignee: true,
-      createdBy: true,
+      assignee: { select: { fullName: true } },
+      createdBy: { select: { fullName: true } },
       lead: {
         include: {
-          assignee: true
+          assignee: { select: { fullName: true } }
         }
       },
-      policy: true
+      policy: { select: { policyNumber: true, provider: true, type: true } }
     },
     orderBy: { policyEndDate: 'asc' }
   })
@@ -193,13 +185,11 @@ export async function syncRenewalsSpreadsheet(customUploadDir?: string) {
   const rows: any[][] = [headers]
 
   renewals.forEach(r => {
-    // Robustly extract the PDF URL
     const leadCf = r.lead?.customFields as any
     const pdfUrl = (Array.isArray(r.documents) && r.documents[0]) || 
                    leadCf?.policySubmission?.issuedPolicyPdfUrl || 
                    '';
 
-    // Robustly extract original salesperson (creator or lead assignee)
     const salesPerson = r.createdBy?.fullName || r.lead?.assignee?.fullName || 'Unassigned'
 
     rows.push([
@@ -227,29 +217,22 @@ export async function syncRenewalsSpreadsheet(customUploadDir?: string) {
   const fileName = 'import_renewals.xlsx'
   const fullPath = path.join(uploadDir, fileName)
 
-  try {
-    const ws = XLSX.utils.aoa_to_sheet(rows)
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, 'Renewals')
+  const ws = XLSX.utils.aoa_to_sheet(rows)
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, 'Renewals')
 
-    try {
-      XLSX.writeFile(wb, fullPath)
-    } catch {
-      const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' })
-      const tempPath = `${fullPath}.tmp`
-      fs.writeFileSync(tempPath, buf)
-      try {
-        fs.renameSync(tempPath, fullPath)
-      } catch {}
-    }
+  const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' })
+
+  try {
+    fs.writeFileSync(fullPath, buf)
   } catch (err) {
-    console.warn(`[syncRenewalsSpreadsheet] Error writing ${fileName}:`, err)
+    console.warn(`[syncRenewalsSpreadsheet] Skipped disk write for ${fileName}:`, err)
   }
 
   return {
     fileName,
     totalRows: renewals.length,
-    agentCount: 0
+    agentCount: 0,
+    buffer: buf
   }
 }
-
