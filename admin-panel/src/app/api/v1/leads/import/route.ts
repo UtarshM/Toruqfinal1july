@@ -185,12 +185,15 @@ export async function POST(req: NextRequest) {
     let rawData: any[] = []
     let importName = ''
     let rawMapping: any = null
+    let duplicateStrategy: 'skip' | 'overwrite' = 'skip'
 
     if (contentType.includes('multipart/form-data')) {
       const formData = await req.formData()
       const file = formData.get('file') as File | null
       const mappingStr = formData.get('mapping') as string | null
       importName = (formData.get('importName') as string) || ''
+      const strat = (formData.get('duplicateStrategy') as string) || ''
+      if (strat === 'overwrite') duplicateStrategy = 'overwrite'
 
       if (!file) {
         return NextResponse.json({ error: 'No file provided' }, { status: 400 })
@@ -249,6 +252,7 @@ export async function POST(req: NextRequest) {
       rawData = body.leads || []
       importName = body.importName || ''
       rawMapping = body.mapping || null
+      if (body.duplicateStrategy === 'overwrite') duplicateStrategy = 'overwrite'
     }
 
     if (!Array.isArray(rawData) || rawData.length === 0) {
@@ -273,11 +277,11 @@ export async function POST(req: NextRequest) {
     })
 
     // 1. Process and Validate Leads in High-Speed Memory Pipeline
-    const validLeads: any[] = []
+    const validLeadsToInsert: any[] = []
+    const leadsToUpdate: { id: string; data: any }[] = []
     const errorRows: any[] = []
-    const vehicleNumbers = new Set<string>()
 
-    // Collect candidate vehicle numbers and phones from THIS chunk only to perform fast indexed query
+    // Collect candidate vehicle registration numbers and phones from THIS chunk only for indexed lookup
     const candidateVehicles = new Set<string>()
     const candidatePhones = new Set<string>()
 
@@ -298,7 +302,9 @@ export async function POST(req: NextRequest) {
 
         if (rawVehicle) {
           const cleanV = String(rawVehicle).trim().toUpperCase()
+          const normV = cleanV.replace(/[^A-Z0-9]/g, '')
           if (cleanV.length >= 4) candidateVehicles.add(cleanV)
+          if (normV.length >= 4) candidateVehicles.add(normV)
         }
         if (rawPhone) {
           const pStr = String(rawPhone).trim()
@@ -311,31 +317,60 @@ export async function POST(req: NextRequest) {
 
     const orClauses: any[] = []
     if (candidateVehicles.size > 0) {
-      orClauses.push({ vehicleNo: { in: Array.from(candidateVehicles), mode: 'insensitive' } })
+      orClauses.push({ vehicleNo: { in: Array.from(candidateVehicles) } })
     }
     if (candidatePhones.size > 0) {
       orClauses.push({ clientPhone: { in: Array.from(candidatePhones) } })
     }
 
-    // High-speed indexed query for this chunk only (takes < 20ms instead of full table scan)
+    // High-speed indexed query for this chunk only
     const existingLeads = orClauses.length > 0 ? await prisma.lead.findMany({
       where: {
         deletedAt: null,
         status: { not: 'Trashed' },
         OR: orClauses
       },
-      select: { vehicleNo: true, clientPhone: true, existingAgent: true }
+      select: {
+        id: true,
+        vehicleNo: true,
+        clientPhone: true,
+        clientName: true,
+        customFields: true,
+        existingAgent: true
+      }
     }) : []
 
-    const existingVehicles = new Set(existingLeads.map(l => l.vehicleNo ? l.vehicleNo.toUpperCase() : null).filter(Boolean))
+    // Build fast lookup maps by registration number and phone
+    const existingByVehicle = new Map<string, typeof existingLeads[0]>()
+    const existingByPhone = new Map<string, typeof existingLeads[0]>()
     const agentPhoneSet = new Set<string>()
-    existingLeads
-      .filter(l => (l.existingAgent === 'Agent' || (l.existingAgent && l.existingAgent.toLowerCase().includes('agent'))) && l.clientPhone)
-      .forEach(l => {
-        agentPhoneSet.add(l.clientPhone!.trim())
-        const norm = normalizePhone(l.clientPhone)
-        if (norm) agentPhoneSet.add(norm)
-      })
+
+    for (const el of existingLeads) {
+      if (el.vehicleNo) {
+        const vClean = el.vehicleNo.trim().toUpperCase()
+        const vNorm = vClean.replace(/[^A-Z0-9]/g, '')
+        existingByVehicle.set(vClean, el)
+        existingByVehicle.set(vNorm, el)
+      }
+      if (el.clientPhone) {
+        const pClean = el.clientPhone.trim()
+        const pNorm = normalizePhone(el.clientPhone)
+        existingByPhone.set(pClean, el)
+        if (pNorm) existingByPhone.set(pNorm, el)
+      }
+      if (el.existingAgent === 'Agent' || (el.existingAgent && el.existingAgent.toLowerCase().includes('agent'))) {
+        if (el.clientPhone) {
+          agentPhoneSet.add(el.clientPhone.trim())
+          const norm = normalizePhone(el.clientPhone)
+          if (norm) agentPhoneSet.add(norm)
+        }
+      }
+    }
+
+    const seenVehiclesInChunk = new Set<string>()
+    const seenPhonesInChunk = new Set<string>()
+    let duplicateSkippedCount = 0
+    let duplicateOverwrittenCount = 0
 
     const totalRaw = rawData.length
     for (let index = 0; index < totalRaw; index++) {
@@ -401,17 +436,9 @@ export async function POST(req: NextRequest) {
       }
 
       const vNo = cleanVehicleNo ? cleanVehicleNo.toUpperCase() : null
+      const normV = vNo ? vNo.replace(/[^A-Z0-9]/g, '') : null
 
-      if (vNo && (vehicleNumbers.has(vNo) || existingVehicles.has(vNo))) {
-        errorRows.push({ row: index + 1, error: `Duplicate Vehicle No: ${vNo}` })
-        continue
-      }
-
-      if (vNo) {
-        vehicleNumbers.add(vNo)
-      }
-
-      // Simplified Agent Detection (only explicit column + known agents)
+      // Simplified Agent Detection
       let isAgent = checkIsAgent(cleanContactNo || null, agentPhoneSet, rawAgent)
       let finalContactNo = cleanContactNo
       if (cleanContactNo && (cleanContactNo.toLowerCase().includes('agent') || cleanContactNo.toLowerCase().includes('broker'))) {
@@ -435,7 +462,7 @@ export async function POST(req: NextRequest) {
         finalExpiryDate = d
       }
 
-      // Collect all custom fields so none of the user's mapped/custom data is lost
+      // Collect custom fields
       const standardFields = [
         'clientName', 'clientPhone', 'clientEmail', 'vehicleNo', 'expiryDate',
         'registrationDate', 'gvw', 'address', 'city', 'existingAgent',
@@ -443,7 +470,6 @@ export async function POST(req: NextRequest) {
       ]
       const customFields: Record<string, any> = {}
 
-      // 1. Include mapped custom columns
       if (Object.keys(mapping).length > 0) {
         for (const [dbKey, headerName] of Object.entries(mapping)) {
           if (!standardFields.includes(dbKey)) {
@@ -455,7 +481,6 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // 2. Include any other non-standard columns directly on row
       Object.keys(row).forEach(k => {
         if (
           !standardFields.includes(k) &&
@@ -468,7 +493,62 @@ export async function POST(req: NextRequest) {
         }
       })
 
-      validLeads.push({
+      // Check duplicate matching by Unique Registration Number (vehicleNo) or Phone Number
+      const existingMatch = (vNo && (existingByVehicle.get(vNo) || (normV && existingByVehicle.get(normV)))) ||
+        (!vNo && cleanContactNo && (existingByPhone.get(cleanContactNo) || existingByPhone.get(normalizePhone(cleanContactNo))))
+
+      const isDuplicateInChunk = (vNo && (seenVehiclesInChunk.has(vNo) || (normV && seenVehiclesInChunk.has(normV)))) ||
+        (!vNo && cleanContactNo && seenPhonesInChunk.has(cleanContactNo))
+
+      if (existingMatch || isDuplicateInChunk) {
+        if (duplicateStrategy === 'overwrite' && existingMatch) {
+          // OVERWRITE / UPDATE existing lead by unique registration number
+          duplicateOverwrittenCount++
+          const existingCf = (existingMatch.customFields && typeof existingMatch.customFields === 'object')
+            ? (existingMatch.customFields as Record<string, any>)
+            : {}
+          const mergedCf = { ...existingCf, ...customFields }
+
+          leadsToUpdate.push({
+            id: existingMatch.id,
+            data: {
+              ...(cleanOwnerName ? { clientName: cleanOwnerName } : {}),
+              ...(finalContactNo ? { clientPhone: finalContactNo } : {}),
+              ...(rawEmail ? { clientEmail: String(rawEmail).trim() } : {}),
+              ...(parsedExpiry ? { expiryDate: parsedExpiry } : {}),
+              ...(parsedRegDate ? { registrationDate: parsedRegDate } : {}),
+              ...(rawGvw ? { gvw: String(rawGvw).trim() } : {}),
+              ...(rawAddress ? { address: String(rawAddress).trim() } : {}),
+              ...(rawCity ? { city: String(rawCity).trim() } : {}),
+              ...(rawTemplate ? { messageTemplate: String(rawTemplate).trim() } : {}),
+              ...(isAgent ? { existingAgent: 'Agent' } : (rawAgent ? { existingAgent: String(rawAgent).trim() } : {})),
+              ...(importName ? { importName: importName.trim() } : {}),
+              ...(Object.keys(mergedCf).length > 0 ? { customFields: mergedCf } : {}),
+              updatedAt: new Date()
+            }
+          })
+          continue
+        } else {
+          // SKIP duplicate lead
+          duplicateSkippedCount++
+          errorRows.push({
+            row: index + 1,
+            error: `Duplicate unique registration/phone (${vNo || cleanContactNo}) skipped`
+          })
+          continue
+        }
+      }
+
+      // Mark as seen in this chunk
+      if (vNo) {
+        seenVehiclesInChunk.add(vNo)
+        if (normV) seenVehiclesInChunk.add(normV)
+      }
+      if (cleanContactNo) {
+        seenPhonesInChunk.add(cleanContactNo)
+      }
+
+      validLeadsToInsert.push({
         vehicleNo: vNo,
         clientName: cleanOwnerName,
         clientPhone: finalContactNo || null,
@@ -484,154 +564,93 @@ export async function POST(req: NextRequest) {
         customFields: Object.keys(customFields).length > 0 ? customFields : undefined,
         status: 'New'
       })
+    }
 
-      // Update progress periodically
-      if (index % 2500 === 0 || index === totalRaw - 1) {
-        const duplicateCount = errorRows.filter(e => e.error.includes('Duplicate')).length
-        setImportJob(jobId, {
-          id: jobId,
-          name: importName || 'Leads Batch',
-          status: 'processing',
-          totalRows: totalRaw,
-          processedRows: index + 1,
-          validCount: validLeads.length,
-          errorCount: errorRows.length - duplicateCount,
-          duplicateCount,
-          assignedCount: 0,
-          agentCount: validLeads.filter(l => l.existingAgent === 'Agent').length,
-          startTime: Date.now()
+    // 2. Perform Inserts in fast batch
+    if (validLeadsToInsert.length > 0) {
+      const CHUNK_SIZE = 1000
+      for (let i = 0; i < validLeadsToInsert.length; i += CHUNK_SIZE) {
+        await prisma.lead.createMany({
+          data: validLeadsToInsert.slice(i, i + CHUNK_SIZE),
+          skipDuplicates: true
         })
       }
     }
 
-    if (validLeads.length === 0) {
-      const duplicateCount = errorRows.filter(e => e.error.includes('Duplicate')).length
-      const invalidCount = errorRows.length - duplicateCount
-
-      setImportJob(jobId, {
-        id: jobId,
-        name: importName || 'Leads Batch',
-        status: 'completed',
-        totalRows: totalRaw,
-        processedRows: totalRaw,
-        validCount: 0,
-        errorCount: invalidCount,
-        duplicateCount,
-        assignedCount: 0,
-        agentCount: 0,
-        startTime: Date.now(),
-        completedTime: Date.now()
-      })
-
-      return NextResponse.json({
-        success: true,
-        jobId,
-        stats: {
-          total: rawData.length,
-          valid: 0,
-          duplicates: duplicateCount,
-          errors: invalidCount,
-          imported: 0,
-          agentCount: 0
-        },
-        message: duplicateCount > 0
-          ? `${duplicateCount} duplicate leads in this batch skipped.`
-          : `0 valid leads in this batch (${invalidCount} invalid rows skipped).`,
-        agentLeadsCount: 0,
-        errorDetails: errorRows.slice(0, 10)
-      }, { status: 200 })
+    // 3. Perform Updates if overwrite strategy is enabled
+    if (leadsToUpdate.length > 0) {
+      const CONCURRENCY = 25
+      for (let i = 0; i < leadsToUpdate.length; i += CONCURRENCY) {
+        const batch = leadsToUpdate.slice(i, i + CONCURRENCY)
+        await Promise.all(
+          batch.map(u => prisma.lead.update({
+            where: { id: u.id },
+            data: u.data
+          }).catch(err => console.warn(`[leads/import] Failed to update lead ${u.id}:`, err)))
+        )
+      }
     }
 
-    // 2. Data Merge Only — NO assignment at import time
-    // All leads are stored as unassigned (assignedTo: null)
-    // Assignment happens separately via Monthly Lead Assignment from Imported Spreadsheets
-
-    // 3. Batch Create Leads in safe chunks of 3,000 records
-    const CHUNK_SIZE = 3000
-    for (let i = 0; i < validLeads.length; i += CHUNK_SIZE) {
-      const chunk = validLeads.slice(i, i + CHUNK_SIZE)
-      await prisma.lead.createMany({
-        data: chunk,
-        skipDuplicates: true
-      })
-    }
-
-    // 5. Create Pending DataChangeRequests and Send Admin Alert for Detected Agents
+    // 4. Lightweight Async Agent Lead Processing for THIS chunk only
     const batchImportName = importName ? importName.trim() : 'batch'
-    const agentLeadsInBatch = await prisma.lead.findMany({
-      where: {
-        importName: batchImportName,
-        existingAgent: 'Agent',
-        status: { not: 'Trashed' },
-        deletedAt: null
-      },
-      select: { id: true, clientName: true, clientPhone: true, vehicleNo: true }
-    })
+    const newAgentVehicles = validLeadsToInsert
+      .filter(l => l.existingAgent === 'Agent' && l.vehicleNo)
+      .map(l => l.vehicleNo as string)
 
-    if (agentLeadsInBatch.length > 0) {
-      // Create pending approval records for each agent lead
-      for (const agLead of agentLeadsInBatch) {
-        const existingReq = await prisma.dataChangeRequest.findFirst({
-          where: {
-            entityType: 'Lead',
-            entityId: agLead.id,
-            field: 'existingAgent',
-            status: 'pending'
+    if (newAgentVehicles.length > 0) {
+      // Execute asynchronously in background so client HTTP response returns immediately (< 300ms)
+      (async () => {
+        try {
+          const agentLeads = await prisma.lead.findMany({
+            where: {
+              importName: batchImportName,
+              vehicleNo: { in: newAgentVehicles },
+              existingAgent: 'Agent'
+            },
+            select: { id: true, clientPhone: true, vehicleNo: true }
+          })
+          for (const agLead of agentLeads) {
+            await prisma.dataChangeRequest.create({
+              data: {
+                requestedBy: context.userId,
+                entityType: 'Lead',
+                entityId: agLead.id,
+                field: 'existingAgent',
+                oldValue: 'Unassigned',
+                newValue: 'Agent',
+                reason: `Detected Agent in import "${batchImportName}" (Contact: ${agLead.clientPhone || agLead.vehicleNo})`,
+                status: 'pending'
+              }
+            }).catch(() => {})
           }
-        })
-        if (!existingReq) {
-          await prisma.dataChangeRequest.create({
-            data: {
-              requestedBy: context.userId,
-              entityType: 'Lead',
-              entityId: agLead.id,
-              field: 'existingAgent',
-              oldValue: 'Unassigned',
-              newValue: 'Agent',
-              reason: `Detected Agent in import "${batchImportName}" (Contact: ${agLead.clientPhone || agLead.vehicleNo})`,
-              status: 'pending'
-            }
-          }).catch(err => console.warn('[leads/import] Failed to create approval request:', err))
+        } catch (err) {
+          console.warn('[leads/import] Async agent processing warning:', err)
         }
-      }
+      })()
+    }
 
-      // Send In-App + Push Notification Alert to all Admins and Super Admins
-      await notifyRole('Admin', {
-        title: `🚨 ${agentLeadsInBatch.length} Agent Leads Detected in "${batchImportName}"`,
-        body: `${agentLeadsInBatch.length} contact(s) detected as Agent/Broker. Held in Pending Approval for Admin review.`,
-        type: 'warning',
-        entityType: 'agent_approval',
-        data: {
-          importName: batchImportName,
-          agentCount: agentLeadsInBatch.length,
-          leads: agentLeadsInBatch.slice(0, 5)
-        }
-      }).catch(() => {})
-
-      await notifyRole('Super Admin', {
-        title: `🚨 ${agentLeadsInBatch.length} Agent Leads Detected in "${batchImportName}"`,
-        body: `${agentLeadsInBatch.length} contact(s) detected as Agent/Broker. Held in Pending Approval for Admin review.`,
-        type: 'warning',
-        entityType: 'agent_approval',
-        data: {
-          importName: batchImportName,
-          agentCount: agentLeadsInBatch.length,
-          leads: agentLeadsInBatch.slice(0, 5)
-        }
+    // 5. Send Admin Notification Alert ONLY on the final batch (prevents 100+ alert spam)
+    const isLastBatch = req.headers.get('x-is-last-batch') === 'true'
+    if (isLastBatch) {
+      notifyRole('Admin', {
+        title: `✅ Import Completed: "${batchImportName}"`,
+        body: `Import batch finished with ${validLeadsToInsert.length} new leads, ${duplicateOverwrittenCount} updated.`,
+        type: 'info',
+        entityType: 'lead_import',
+        data: { importName: batchImportName }
       }).catch(() => {})
     }
 
-    // 6. Spreadsheet Synchronization on Disk (only if requested, not on every streaming chunk)
+    // 6. Spreadsheet Synchronization on Disk (only if requested, safe batch sync only)
     const shouldSyncDisk = req.headers.get('x-sync-disk') === 'true'
     if (shouldSyncDisk) {
       const uploadDir = getUploadDir()
       await syncSpreadsheetForBatch(batchImportName, uploadDir).catch(e => console.warn('[leads/import] Batch sync warning:', e))
-      await syncSpreadsheetForBatch('all_leads', uploadDir).catch(e => console.warn('[leads/import] Master sync warning:', e))
     }
 
     // 7. Complete Job Tracking
-    const duplicateCount = errorRows.filter(e => e.error.includes('Duplicate')).length
-    const agentCount = agentLeadsInBatch.length
+    const invalidCount = errorRows.length - duplicateSkippedCount
+    const totalProcessed = validLeadsToInsert.length + duplicateOverwrittenCount
 
     setImportJob(jobId, {
       id: jobId,
@@ -639,11 +658,11 @@ export async function POST(req: NextRequest) {
       status: 'completed',
       totalRows: totalRaw,
       processedRows: totalRaw,
-      validCount: validLeads.length,
-      errorCount: errorRows.length - duplicateCount,
-      duplicateCount,
+      validCount: totalProcessed,
+      errorCount: invalidCount,
+      duplicateCount: duplicateSkippedCount,
       assignedCount: 0,
-      agentCount,
+      agentCount: validLeadsToInsert.filter(l => l.existingAgent === 'Agent').length,
       startTime: Date.now(),
       completedTime: Date.now()
     })
@@ -653,16 +672,17 @@ export async function POST(req: NextRequest) {
       jobId,
       stats: {
         total: totalRaw,
-        valid: validLeads.length,
-        duplicates: duplicateCount,
-        errors: errorRows.length - duplicateCount,
-        imported: validLeads.length,
-        agentCount
+        valid: validLeadsToInsert.length,
+        imported: validLeadsToInsert.length,
+        updated: duplicateOverwrittenCount,
+        duplicates: duplicateSkippedCount,
+        errors: invalidCount,
+        agentCount: validLeadsToInsert.filter(l => l.existingAgent === 'Agent').length
       },
-      message: `${validLeads.length} leads imported into master database (unassigned). Use Monthly Assignment to distribute leads.`,
-      agentLeadsCount: agentCount,
+      message: `Batch processed: ${validLeadsToInsert.length} created, ${duplicateOverwrittenCount} updated, ${duplicateSkippedCount} duplicates skipped.`,
+      agentLeadsCount: validLeadsToInsert.filter(l => l.existingAgent === 'Agent').length,
       errorDetails: errorRows.slice(0, 10)
-    })
+    }, { status: 200 })
   } catch (err: any) {
     console.error('[leads/import POST] Error:', err)
     setImportJob(jobId, {

@@ -95,7 +95,11 @@ export default function LeadImportPage() {
     total: number
     importedCount: number
     updatedCount: number
+    duplicateCount: number
   } | null>(null)
+
+  // Duplicate Lead Strategy: 'skip' (default) or 'overwrite' (update existing lead by vehicle registration number)
+  const [duplicateStrategy, setDuplicateStrategy] = useState<'skip' | 'overwrite'>('skip')
 
   // Import Name State (sheet/batch name for #search)
   const [importName, setImportName] = useState('')
@@ -379,11 +383,12 @@ function inferHeaderFromColumnData(values: any[], colIndex: number): string {
       localStorage.setItem('torque_active_import_name', batchName)
     }
 
-    // Chunk size: 500 leads per HTTP payload for fast ~400ms serverless execution without timeouts
+    // Chunk size: 500 leads per HTTP payload for fast ~300ms execution without timeouts
     const CHUNK_SIZE = 500
     const totalBatches = Math.ceil(validLeads.length / CHUNK_SIZE)
     let totalImported = 0
     let totalUpdated = 0
+    let totalDuplicates = 0
 
     try {
       for (let i = 0; i < validLeads.length; i += CHUNK_SIZE) {
@@ -401,23 +406,24 @@ function inferHeaderFromColumnData(values: any[], colIndex: number): string {
           totalBatches
         })
 
-        // Retry mechanism (up to 2 retries per chunk for temporary network blips)
+        // Retry mechanism (up to 3 retries per chunk with exponential backoff)
         let attempt = 0
         let success = false
         let lastErr = ''
 
-        while (attempt < 2 && !success) {
+        while (attempt < 3 && !success) {
           attempt++
           try {
             const res = await apiFetch('/api/v1/leads/import', {
               method: 'POST',
               headers: {
                 'x-import-job-id': `${jobId}_b${currentBatch}`,
-                ...(isLastBatch ? { 'x-sync-disk': 'true' } : {})
+                ...(isLastBatch ? { 'x-sync-disk': 'true', 'x-is-last-batch': 'true' } : {})
               },
               body: JSON.stringify({
                 leads: chunk,
-                importName: batchName
+                importName: batchName,
+                duplicateStrategy
               })
             })
 
@@ -430,45 +436,49 @@ function inferHeaderFromColumnData(values: any[], colIndex: number): string {
             }
 
             if (!res.ok) {
-              // If the response indicates duplicate leads or skipped rows, treat as non-fatal skipped batch
               const errLower = (data.error || '').toLowerCase()
               if (errLower.includes('duplicate') || errLower.includes('already exist') || (data.stats && data.stats.duplicates > 0)) {
-                totalUpdated += data.stats?.duplicates ?? chunk.length
+                totalDuplicates += data.stats?.duplicates ?? chunk.length
                 success = true
                 break
               }
               throw new Error(data.error || `Batch ${currentBatch}/${totalBatches} failed with status ${res.status}`)
             }
 
-            totalImported += data.stats?.valid ?? data.importedCount ?? (chunk.length - (data.stats?.duplicates || 0))
-            totalUpdated += data.stats?.duplicates ?? data.updatedCount ?? 0
+            const batchImported = data.stats?.imported ?? data.stats?.valid ?? 0
+            const batchUpdated = data.stats?.updated ?? 0
+            const batchDuplicates = data.stats?.duplicates ?? 0
+
+            totalImported += batchImported
+            totalUpdated += batchUpdated
+            totalDuplicates += batchDuplicates
             success = true
           } catch (chunkErr: any) {
             lastErr = chunkErr?.message || 'Network error'
-            // If the error message was about duplicates, it is not an error!
             const errLower = lastErr.toLowerCase()
             if (errLower.includes('duplicate') || errLower.includes('already exist')) {
-              totalUpdated += chunk.length
+              totalDuplicates += chunk.length
               success = true
               break
             }
             if (attempt < 3) {
-              await new Promise(r => setTimeout(r, 1500))
+              await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt - 1)))
             }
           }
         }
 
         if (!success) {
-          console.warn(`[import] Warning: Batch ${currentBatch}/${totalBatches} skipped due to error: ${lastErr}`)
+          console.warn(`[import] Warning: Batch ${currentBatch}/${totalBatches} failed after 3 attempts: ${lastErr}`)
           // Record failed batch as skipped and continue processing remaining batches
-          totalUpdated += chunk.length
+          totalDuplicates += chunk.length
         }
       }
 
       setImportResult({
         total: validLeads.length,
         importedCount: totalImported,
-        updatedCount: totalUpdated
+        updatedCount: totalUpdated,
+        duplicateCount: totalDuplicates
       })
       setImportProgress(null)
       setStep(3)
@@ -781,6 +791,52 @@ function inferHeaderFromColumnData(values: any[], colIndex: number): string {
                 />
               </div>
 
+              {/* Duplicate Lead Handling Strategy (by Unique Vehicle Reg No) */}
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-[10px] font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                    <RefreshCw size={13} className="text-indigo-600" />
+                    Duplicate Leads Handling
+                  </label>
+                  <span className="text-[9px] bg-slate-200/80 text-slate-600 font-bold px-1.5 py-0.5 rounded">
+                    by Unique Reg No
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setDuplicateStrategy('skip')}
+                    className={`p-2.5 rounded-xl text-left border transition-all cursor-pointer flex flex-col gap-1 ${
+                      duplicateStrategy === 'skip'
+                        ? 'bg-blue-50 border-blue-500 text-blue-900 shadow-sm'
+                        : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-black">Skip Duplicates</span>
+                      {duplicateStrategy === 'skip' && <Check size={12} className="text-blue-600 font-bold" />}
+                    </div>
+                    <span className="text-[10px] text-slate-500 leading-tight">Keep existing records, skip duplicates</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setDuplicateStrategy('overwrite')}
+                    className={`p-2.5 rounded-xl text-left border transition-all cursor-pointer flex flex-col gap-1 ${
+                      duplicateStrategy === 'overwrite'
+                        ? 'bg-indigo-50 border-indigo-500 text-indigo-900 shadow-sm'
+                        : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-black">Overwrite Data</span>
+                      {duplicateStrategy === 'overwrite' && <Check size={12} className="text-indigo-600 font-bold" />}
+                    </div>
+                    <span className="text-[10px] text-slate-500 leading-tight">Update matching unique Reg No records</span>
+                  </button>
+                </div>
+              </div>
+
               {/* Add Column Inline Form */}
               {showAddForm && isAdmin && (
                 <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 space-y-4 shadow-inner animate-in slide-in-from-top-4 duration-200">
@@ -1040,18 +1096,22 @@ function inferHeaderFromColumnData(values: any[], colIndex: number): string {
               </p>
             </div>
 
-            <div className="grid grid-cols-3 gap-4 bg-slate-50 p-5 rounded-2xl border border-slate-100">
-              <div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-100">
+              <div className="bg-white p-3 rounded-xl border border-slate-100 shadow-xs">
                 <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Total Rows</p>
-                <p className="text-xl font-extrabold text-slate-800 mt-1">{importResult.total}</p>
+                <p className="text-lg font-extrabold text-slate-800 mt-1">{importResult.total.toLocaleString()}</p>
               </div>
-              <div>
+              <div className="bg-white p-3 rounded-xl border border-emerald-100 shadow-xs">
                 <p className="text-[10px] text-emerald-600 font-bold uppercase tracking-wider">New Created</p>
-                <p className="text-xl font-extrabold text-emerald-600 mt-1">+{importResult.importedCount}</p>
+                <p className="text-lg font-extrabold text-emerald-600 mt-1">+{importResult.importedCount.toLocaleString()}</p>
               </div>
-              <div>
-                <p className="text-[10px] text-blue-600 font-bold uppercase tracking-wider">Updated</p>
-                <p className="text-xl font-extrabold text-blue-600 mt-1">{importResult.updatedCount}</p>
+              <div className="bg-white p-3 rounded-xl border border-indigo-100 shadow-xs">
+                <p className="text-[10px] text-indigo-600 font-bold uppercase tracking-wider">Overwritten</p>
+                <p className="text-lg font-extrabold text-indigo-600 mt-1">{importResult.updatedCount.toLocaleString()}</p>
+              </div>
+              <div className="bg-white p-3 rounded-xl border border-amber-100 shadow-xs">
+                <p className="text-[10px] text-amber-600 font-bold uppercase tracking-wider">Duplicates Skipped</p>
+                <p className="text-lg font-extrabold text-amber-600 mt-1">{importResult.duplicateCount.toLocaleString()}</p>
               </div>
             </div>
 
