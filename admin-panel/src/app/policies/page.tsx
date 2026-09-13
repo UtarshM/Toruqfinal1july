@@ -7,7 +7,7 @@ import {
   Shield, Search, FileText, Download, Filter, Plus, X, Calendar, 
   RefreshCw, Eye, CheckCircle2, User, Trash2, AlertTriangle, Check
 } from 'lucide-react'
-import { VEHICLE_TYPE_OPTIONS } from '@/components/leads/LeadPolicySubmissionModal'
+import { POLICY_TYPE_OPTIONS, VEHICLE_TYPE_OPTIONS } from '@/components/leads/LeadPolicySubmissionModal'
 
 export default function PoliciesPage() {
   const { user } = useAuth()
@@ -33,7 +33,7 @@ export default function PoliciesPage() {
     lead_id: '',
     policy_number: '',
     provider: '',
-    type: 'Motor',
+    type: 'zero IMT 23 100%',
     vehicle_type: 'LMV - Private Car (CC)',
     premium_amount: '',
     start_date: new Date().toISOString().split('T')[0],
@@ -543,13 +543,12 @@ export default function PoliciesPage() {
                   className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl outline-none" placeholder="e.g. TATA AIG" />
               </div>
               <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Policy Type</label>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Policy Type *</label>
                 <select value={newPolicy.type} onChange={e => setNewPolicy({...newPolicy, type: e.target.value})}
-                  className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl outline-none">
-                  <option>Motor</option>
-                  <option>Health</option>
-                  <option>Life</option>
-                  <option>Commercial</option>
+                  className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl outline-none font-medium">
+                  {POLICY_TYPE_OPTIONS.map((pt) => (
+                    <option key={pt} value={pt}>{pt}</option>
+                  ))}
                 </select>
               </div>
               <div>

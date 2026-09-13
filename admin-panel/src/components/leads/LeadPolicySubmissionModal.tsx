@@ -50,6 +50,16 @@ export const VEHICLE_TYPE_OPTIONS = [
   'CPM - Machine',
 ] as const
 
+export const POLICY_TYPE_OPTIONS = [
+  'zero IMT 23 100%',
+  'NIL Dep with IMT 23 50%',
+  'NIL Dep with Jack Cover',
+  'NIL dep Without Jack cover',
+  'Comprehensive',
+  'Third Party (TP)',
+  'Own Damage (OD)',
+] as const
+
 export function formatToDateMonthYear(dateVal: any): string {
   if (!dateVal) return ''
   const str = String(dateVal).trim()
@@ -111,7 +121,7 @@ export default function LeadPolicySubmissionModal({ leadId, lead, onClose, onUpd
   const [submission, setSubmission] = useState<any>(null)
   const [hpSelection, setHpSelection] = useState<string>('As per RC')
   const [formData, setFormData] = useState<any>({
-    policyType: 'nil dep',
+    policyType: 'zero IMT 23 100%',
     vehicleType: 'LMV - Private Car (CC)',
     customerType: 'Existing',
     customerCategory: 'OPC-Our Premium Customer',
@@ -160,6 +170,7 @@ export default function LeadPolicySubmissionModal({ leadId, lead, onClose, onUpd
           setFormData((prev: any) => ({
             ...prev,
             ...res.submission.formData,
+            policyType: res.submission.formData.policyType || 'zero IMT 23 100%',
             vehicleType: res.submission.formData.vehicleType || 'LMV - Private Car (CC)',
             hpDetails: loadedHp || 'As per RC',
             dueDate: formatToDateMonthYear(res.submission.formData.dueDate) || '',
@@ -347,7 +358,7 @@ export default function LeadPolicySubmissionModal({ leadId, lead, onClose, onUpd
       formData.ncb?.toLowerCase() === 'no'
 
     if (isWithoutNcb) {
-      return `*Policy Type:* ${formData.policyType || 'nil dep'}
+      return `*Policy Type:* ${formData.policyType || 'zero IMT 23 100%'}
 *Vehicle Type:* ${formData.vehicleType || 'LMV - Private Car (CC)'}
 *Customer Type:* ${formData.customerType || 'Existing'}
 *Customer Category:* ${formData.customerCategory || 'OPC-Our Premium Customer'}
@@ -365,7 +376,8 @@ export default function LeadPolicySubmissionModal({ leadId, lead, onClose, onUpd
 *NCB Confirmation:* ${formData.ncbConfirmation || 'No'}`
     }
 
-    return `*Policy Type:* ${formData.policyType || 'nil dep'}
+
+    return `*Policy Type:* ${formData.policyType || 'zero IMT 23 100%'}
 *Vehicle Type:* ${formData.vehicleType || 'LMV - Private Car (CC)'}
 *Customer Type:* ${formData.customerType || 'Existing'}
 *Customer Category:* ${formData.customerCategory || 'OPC-Our Premium Customer'}
@@ -559,14 +571,13 @@ ${formData.paymentMode?.toLowerCase() === 'credit' && formData.dueDate ? `*Due D
                   <div>
                     <label className="text-[11px] font-bold text-slate-600 block mb-1">Policy Type *</label>
                     <select
-                      value={formData.policyType}
+                      value={formData.policyType || 'zero IMT 23 100%'}
                       onChange={e => setFormData({ ...formData, policyType: e.target.value })}
                       className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500"
                     >
-                      <option value="nil dep">Nil Dep (Zero Depreciation)</option>
-                      <option value="comprehensive">Comprehensive</option>
-                      <option value="TP">Third Party (TP)</option>
-                      <option value="OD">Own Damage (OD)</option>
+                      {POLICY_TYPE_OPTIONS.map((pt) => (
+                        <option key={pt} value={pt}>{pt}</option>
+                      ))}
                     </select>
                   </div>
 

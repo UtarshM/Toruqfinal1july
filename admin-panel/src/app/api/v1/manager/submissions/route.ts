@@ -41,7 +41,7 @@ function generateCopyableSummary(formData: any, lead: any): string {
   const mob1 = d.mobileNo1 || lead?.clientPhone || 'NA'
   const mob2 = d.mobileNo2 || 'NA'
   const customerName = lead?.clientName || 'NA'
-  const policyType = d.policyType || 'nil dep'
+  const policyType = d.policyType || 'zero IMT 23 100%'
   const customerType = d.customerType || 'Existing'
   const customerCat = d.customerCategory || 'OPC-Our Premium Customer'
   const rate = d.rate || 'NA'

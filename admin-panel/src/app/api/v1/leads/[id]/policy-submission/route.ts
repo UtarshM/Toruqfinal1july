@@ -82,7 +82,7 @@ export async function GET(
       submission: submission || {
         status: 'Draft',
         formData: {
-          policyType: '',
+          policyType: 'zero IMT 23 100%',
           vehicleType: 'LMV - Private Car (CC)',
           customerType: 'Existing',
           customerCategory: 'OPC-Our Premium Customer',
