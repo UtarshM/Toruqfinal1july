@@ -4,6 +4,7 @@ import prisma from '@/lib/prisma'
 import path from 'path'
 import fs from 'fs'
 import { getUploadDir } from '@/lib/upload-helper'
+import { deleteLeadsWithCascade } from '@/lib/lead-delete-helper'
 
 export async function POST(req: NextRequest) {
   const { context, error } = await validateAuth(req)
@@ -42,8 +43,6 @@ export async function POST(req: NextRequest) {
       const batchName = safeFileName
         .replace(/^import_/, '')
         .replace(/\.(xlsx|csv)$/, '')
-
-import { deleteLeadsWithCascade } from '@/lib/lead-delete-helper'
 
       if (deleteLeads) {
         if (safeFileName === 'import_renewals.xlsx' || batchName === 'renewals') {

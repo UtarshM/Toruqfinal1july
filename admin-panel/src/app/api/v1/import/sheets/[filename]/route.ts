@@ -5,6 +5,7 @@ import path from 'path'
 import fs from 'fs'
 import * as XLSX from 'xlsx'
 import { getUploadDir } from '@/lib/upload-helper'
+import { deleteLeadsWithCascade } from '@/lib/lead-delete-helper'
 
 export async function GET(
   req: NextRequest,
@@ -345,8 +346,6 @@ export async function DELETE(
             return dbClean === cleanBatch || dbClean.includes(cleanBatch) || cleanBatch.includes(dbClean)
           })
           .map(l => l.id)
-
-import { deleteLeadsWithCascade } from '@/lib/lead-delete-helper'
 
         if (matchedLeadIds.length > 0) {
           const count = await deleteLeadsWithCascade(matchedLeadIds)

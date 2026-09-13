@@ -1,6 +1,7 @@
 import { validateAuth } from '@/lib/auth-guard'
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
+import { deleteLeadsWithCascade } from '@/lib/lead-delete-helper'
 
 export async function GET(
   req: NextRequest,
@@ -246,9 +247,32 @@ export async function DELETE(
 
   try {
     const { id } = await params
-    await prisma.$executeRawUnsafe(
-      `UPDATE "leads" SET "deletedAt" = NOW(), "deletedBy" = '${context!.userId}', "status" = 'Trashed' WHERE "id"::text = '${id}'`
-    )
+    const isPermanent = req.nextUrl.searchParams.get('permanent') === 'true'
+
+    if (isPermanent) {
+      await deleteLeadsWithCascade([id])
+      return NextResponse.json({ success: true, permanent: true })
+    }
+
+    try {
+      await prisma.lead.update({
+        where: { id },
+        data: {
+          deletedAt: new Date(),
+          deletedBy: context!.userId,
+          status: 'Trashed'
+        }
+      })
+    } catch {
+      await prisma.lead.update({
+        where: { id },
+        data: {
+          deletedAt: new Date(),
+          status: 'Trashed'
+        }
+      })
+    }
+
     return NextResponse.json({ success: true })
   } catch (error: any) {
     console.error('Lead Detail DELETE Error:', error)

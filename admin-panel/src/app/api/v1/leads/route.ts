@@ -1,6 +1,7 @@
 import { validateAuth } from '@/lib/auth-guard'
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
+import { deleteLeadsWithCascade } from '@/lib/lead-delete-helper'
 
 export async function GET(req: NextRequest) {
   const { error, context } = await validateAuth(req, 'leads.view')
@@ -220,8 +221,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 })
   }
 }
-
-import { deleteLeadsWithCascade } from '@/lib/lead-delete-helper'
 
 // Bulk delete (soft delete by default, or permanent if permanent=true)
 export async function DELETE(req: NextRequest) {

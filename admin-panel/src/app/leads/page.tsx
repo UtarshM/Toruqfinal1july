@@ -124,6 +124,7 @@ export default function LeadsPage() {
   // Bulk Selection State
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [deletePermanently, setDeletePermanently] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
 
   // Detailed Drawer State
@@ -484,10 +485,14 @@ export default function LeadsPage() {
     try {
       await fetchApi('/api/v1/leads', {
         method: 'DELETE',
-        body: JSON.stringify({ ids: Array.from(selectedIds) })
+        body: JSON.stringify({
+          ids: Array.from(selectedIds),
+          permanent: deletePermanently
+        })
       })
       setSelectedIds(new Set())
       setShowDeleteConfirm(false)
+      setDeletePermanently(false)
       fetchData()
     } catch (err: any) {
       alert(err.message || 'Failed to delete leads')
@@ -1865,13 +1870,30 @@ export default function LeadsPage() {
               <div className="w-14 h-14 bg-rose-50 rounded-full flex items-center justify-center mx-auto">
                 <Trash2 size={24} className="text-rose-600" />
               </div>
-              <h2 className="text-lg font-black text-slate-900">Move to Trash?</h2>
+              <h2 className="text-lg font-black text-slate-900">
+                {deletePermanently ? 'Permanently Purge Leads?' : 'Delete Leads?'}
+              </h2>
               <p className="text-xs text-slate-500">
-                {selectedIds.size} lead{selectedIds.size > 1 ? 's' : ''} will be moved to trash. You can restore them later from the Trashed Leads section.
+                {deletePermanently
+                  ? `${selectedIds.size} lead${selectedIds.size > 1 ? 's' : ''} and all associated records will be permanently deleted immediately.`
+                  : `${selectedIds.size} lead${selectedIds.size > 1 ? 's' : ''} will be moved to trash. You can restore them later.`}
               </p>
+
+              <label className="flex items-center justify-center gap-2 cursor-pointer pt-2 select-none">
+                <input
+                  type="checkbox"
+                  checked={deletePermanently}
+                  onChange={e => setDeletePermanently(e.target.checked)}
+                  className="h-4 w-4 rounded text-rose-600 focus:ring-rose-500 border-slate-300 cursor-pointer"
+                />
+                <span className="text-xs font-bold text-rose-700">
+                  Delete permanently (bypass trash)
+                </span>
+              </label>
+
               <div className="flex gap-3 pt-4">
                 <button 
-                  onClick={() => setShowDeleteConfirm(false)} 
+                  onClick={() => { setShowDeleteConfirm(false); setDeletePermanently(false); }} 
                   className="flex-1 px-4 py-3 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-200 transition-all"
                 >
                   Cancel
@@ -1881,7 +1903,9 @@ export default function LeadsPage() {
                   disabled={isDeleting}
                   className="flex-1 px-4 py-3 bg-rose-600 text-white rounded-xl text-xs font-bold shadow-lg hover:bg-rose-700 transition-all disabled:opacity-50"
                 >
-                  {isDeleting ? 'Deleting...' : 'Move to Trash'}
+                  {isDeleting
+                    ? 'Deleting...'
+                    : (deletePermanently ? 'Delete Forever' : 'Move to Trash')}
                 </button>
               </div>
             </div>

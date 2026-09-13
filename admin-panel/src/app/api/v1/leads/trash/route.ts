@@ -1,6 +1,7 @@
 import { validateAuth } from '@/lib/auth-guard'
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
+import { deleteLeadsWithCascade } from '@/lib/lead-delete-helper'
 
 // GET: List trashed (soft-deleted) leads
 export async function GET(req: NextRequest) {
@@ -33,8 +34,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })
   }
 }
-
-import { deleteLeadsWithCascade } from '@/lib/lead-delete-helper'
 
 // POST: Restore leads from trash
 export async function POST(req: NextRequest) {

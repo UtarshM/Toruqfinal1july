@@ -6,6 +6,7 @@ import fs from 'fs'
 import * as XLSX from 'xlsx'
 import { syncSpreadsheetForBatch, syncRenewalsSpreadsheet } from '@/lib/spreadsheet-sync'
 import { getUploadDir } from '@/lib/upload-helper'
+import { deleteLeadsWithCascade } from '@/lib/lead-delete-helper'
 
 function formatDate(date: any): string {
   if (!date) return ''
@@ -243,8 +244,6 @@ export async function DELETE(req: NextRequest) {
         .replace(/^import_/, '')
         .replace(/_\d+\.(xlsx|csv)$/, '')
         .replace(/\.(xlsx|csv)$/, '')
-
-import { deleteLeadsWithCascade } from '@/lib/lead-delete-helper'
 
       if (deleteLeads) {
         if (safeFileName === 'import_renewals.xlsx' || batchName === 'renewals') {
