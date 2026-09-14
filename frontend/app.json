@@ -5,7 +5,7 @@
     "version": "2.0.0",
     "orientation": "portrait",
     "updates": {
-      "url": "https://u.expo.dev/08940434-daad-4f58-9bf2-779b2b79cdba",
+      "url": "https://u.expo.dev/198306a1-cebf-4d90-9d8f-31fb1bb37d95",
       "checkAutomatically": "ON_LOAD",
       "fallbackToCacheTimeout": 0
     },
@@ -74,9 +74,9 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "08940434-daad-4f58-9bf2-779b2b79cdba"
+        "projectId": "198306a1-cebf-4d90-9d8f-31fb1bb37d95"
       }
     },
-    "owner": "jiya1218"
+    "owner": "utkarshmakwana"
   }
 }
