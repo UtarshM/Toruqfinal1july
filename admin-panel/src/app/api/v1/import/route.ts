@@ -31,44 +31,45 @@ function parseImportedDate(dateVal: any): Date | null {
     return new Date(Date.UTC(y, m, day, 12, 0, 0))
   }
 
-  // If numeric Excel serial (e.g. 46322)
+  // If numeric Excel serial (e.g. 40644 or 40644.00011574074)
   if (typeof dateVal === 'number') {
     if (dateVal > 10000 && dateVal < 80000) {
+      const p = XLSX.SSF.parse_date_code(Math.floor(dateVal))
+      if (p && p.y && p.m && p.d) {
+        return new Date(Date.UTC(p.y, p.m - 1, p.d, 12, 0, 0))
+      }
       const d = new Date(Math.round((dateVal - 25569) * 86400 * 1000))
       if (!isNaN(d.getTime())) {
-        const y = d.getUTCFullYear()
-        const m = d.getUTCMonth()
-        const day = d.getUTCDate()
-        return new Date(Date.UTC(y, m, day, 12, 0, 0))
+        return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 12, 0, 0))
       }
     }
   }
 
   const str = String(dateVal).trim()
-  if (!str || str === 'N/A' || str === 'NA') return null
+  if (!str || str.toUpperCase() === 'N/A' || str.toUpperCase() === 'NA' || str === 'null' || str === 'undefined' || str === '—' || str === '-') return null
 
-  // Numeric excel serial in string form (e.g. "46322")
-  if (/^\d{5}$/.test(str)) {
-    const num = parseInt(str, 10)
+  // Numeric excel serial in string form (e.g. "46322" or "40644.00011574074")
+  if (/^\d{5}(\.\d+)?$/.test(str)) {
+    const num = parseFloat(str)
     if (num > 10000 && num < 80000) {
+      const p = XLSX.SSF.parse_date_code(Math.floor(num))
+      if (p && p.y && p.m && p.d) {
+        return new Date(Date.UTC(p.y, p.m - 1, p.d, 12, 0, 0))
+      }
       const d = new Date(Math.round((num - 25569) * 86400 * 1000))
       if (!isNaN(d.getTime())) {
-        const y = d.getUTCFullYear()
-        const m = d.getUTCMonth()
-        const day = d.getUTCDate()
-        return new Date(Date.UTC(y, m, day, 12, 0, 0))
+        return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 12, 0, 0))
       }
     }
   }
 
-  // DD/MM/YYYY or DD-MM-YYYY (or with 2-digit year)
-  const dmyMatch = str.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2,4})/)
-  if (dmyMatch) {
-    const day = parseInt(dmyMatch[1], 10)
-    const month = parseInt(dmyMatch[2], 10) - 1
-    let year = parseInt(dmyMatch[3], 10)
-    if (year < 100) year += year < 50 ? 2000 : 1900
-    if (month >= 0 && month < 12 && day >= 1 && day <= 31) {
+  // DDMMYYYY without delimiters (8 digits e.g. "11042011" or "16122026")
+  const ddmmyyyyMatch = str.match(/^(\d{2})(\d{2})(\d{4})$/)
+  if (ddmmyyyyMatch) {
+    const day = parseInt(ddmmyyyyMatch[1], 10)
+    const month = parseInt(ddmmyyyyMatch[2], 10) - 1
+    const year = parseInt(ddmmyyyyMatch[3], 10)
+    if (month >= 0 && month < 12 && day >= 1 && day <= 31 && year >= 1900 && year <= 2100) {
       return new Date(Date.UTC(year, month, day, 12, 0, 0))
     }
   }
@@ -79,6 +80,28 @@ function parseImportedDate(dateVal: any): Date | null {
     const year = parseInt(pureYmdMatch[1], 10)
     const month = parseInt(pureYmdMatch[2], 10) - 1
     const day = parseInt(pureYmdMatch[3], 10)
+    if (month >= 0 && month < 12 && day >= 1 && day <= 31) {
+      return new Date(Date.UTC(year, month, day, 12, 0, 0))
+    }
+  }
+
+  // DD/MM/YYYY or MM/DD/YYYY (or with 2-digit year)
+  const dmyMatch = str.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2,4})(?:$|\s)/)
+  if (dmyMatch) {
+    let p1 = parseInt(dmyMatch[1], 10)
+    let p2 = parseInt(dmyMatch[2], 10)
+    let year = parseInt(dmyMatch[3], 10)
+    if (year < 100) year += year < 50 ? 2000 : 1900
+
+    let day = p1
+    let month = p2 - 1
+
+    // Disambiguate: If p2 > 12 and p1 <= 12, it must be M/D/Y format (e.g. 4/19/2011)
+    if (p2 > 12 && p1 >= 1 && p1 <= 12) {
+      month = p1 - 1
+      day = p2
+    }
+
     if (month >= 0 && month < 12 && day >= 1 && day <= 31) {
       return new Date(Date.UTC(year, month, day, 12, 0, 0))
     }

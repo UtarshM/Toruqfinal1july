@@ -39,44 +39,45 @@ function parseImportedDate(dateVal: any): Date | null {
     return new Date(Date.UTC(y, m, day, 12, 0, 0))
   }
 
-  // If numeric Excel serial (e.g. 46322)
+  // If numeric Excel serial (e.g. 40644 or 40644.00011574074)
   if (typeof dateVal === 'number') {
     if (dateVal > 10000 && dateVal < 80000) {
+      const p = XLSX.SSF.parse_date_code(Math.floor(dateVal))
+      if (p && p.y && p.m && p.d) {
+        return new Date(Date.UTC(p.y, p.m - 1, p.d, 12, 0, 0))
+      }
       const d = new Date(Math.round((dateVal - 25569) * 86400 * 1000))
       if (!isNaN(d.getTime())) {
-        const y = d.getUTCFullYear()
-        const m = d.getUTCMonth()
-        const day = d.getUTCDate()
-        return new Date(Date.UTC(y, m, day, 12, 0, 0))
+        return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 12, 0, 0))
       }
     }
   }
 
   const str = String(dateVal).trim()
-  if (!str || str === 'N/A' || str === 'NA') return null
+  if (!str || str.toUpperCase() === 'N/A' || str.toUpperCase() === 'NA' || str === 'null' || str === 'undefined' || str === '—' || str === '-') return null
 
-  // Numeric excel serial in string form (e.g. "46322")
-  if (/^\d{5}$/.test(str)) {
-    const num = parseInt(str, 10)
+  // Numeric excel serial in string form (e.g. "46322" or "40644.00011574074")
+  if (/^\d{5}(\.\d+)?$/.test(str)) {
+    const num = parseFloat(str)
     if (num > 10000 && num < 80000) {
+      const p = XLSX.SSF.parse_date_code(Math.floor(num))
+      if (p && p.y && p.m && p.d) {
+        return new Date(Date.UTC(p.y, p.m - 1, p.d, 12, 0, 0))
+      }
       const d = new Date(Math.round((num - 25569) * 86400 * 1000))
       if (!isNaN(d.getTime())) {
-        const y = d.getUTCFullYear()
-        const m = d.getUTCMonth()
-        const day = d.getUTCDate()
-        return new Date(Date.UTC(y, m, day, 12, 0, 0))
+        return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 12, 0, 0))
       }
     }
   }
 
-  // DD/MM/YYYY or DD-MM-YYYY (or with 2-digit year)
-  const dmyMatch = str.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2,4})/)
-  if (dmyMatch) {
-    const day = parseInt(dmyMatch[1], 10)
-    const month = parseInt(dmyMatch[2], 10) - 1
-    let year = parseInt(dmyMatch[3], 10)
-    if (year < 100) year += year < 50 ? 2000 : 1900
-    if (month >= 0 && month < 12 && day >= 1 && day <= 31) {
+  // DDMMYYYY without delimiters (8 digits e.g. "11042011" or "16122026")
+  const ddmmyyyyMatch = str.match(/^(\d{2})(\d{2})(\d{4})$/)
+  if (ddmmyyyyMatch) {
+    const day = parseInt(ddmmyyyyMatch[1], 10)
+    const month = parseInt(ddmmyyyyMatch[2], 10) - 1
+    const year = parseInt(ddmmyyyyMatch[3], 10)
+    if (month >= 0 && month < 12 && day >= 1 && day <= 31 && year >= 1900 && year <= 2100) {
       return new Date(Date.UTC(year, month, day, 12, 0, 0))
     }
   }
@@ -87,6 +88,28 @@ function parseImportedDate(dateVal: any): Date | null {
     const year = parseInt(pureYmdMatch[1], 10)
     const month = parseInt(pureYmdMatch[2], 10) - 1
     const day = parseInt(pureYmdMatch[3], 10)
+    if (month >= 0 && month < 12 && day >= 1 && day <= 31) {
+      return new Date(Date.UTC(year, month, day, 12, 0, 0))
+    }
+  }
+
+  // DD/MM/YYYY or MM/DD/YYYY (or with 2-digit year)
+  const dmyMatch = str.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2,4})(?:$|\s)/)
+  if (dmyMatch) {
+    let p1 = parseInt(dmyMatch[1], 10)
+    let p2 = parseInt(dmyMatch[2], 10)
+    let year = parseInt(dmyMatch[3], 10)
+    if (year < 100) year += year < 50 ? 2000 : 1900
+
+    let day = p1
+    let month = p2 - 1
+
+    // Disambiguate: If p2 > 12 and p1 <= 12, it must be M/D/Y format (e.g. 4/19/2011)
+    if (p2 > 12 && p1 >= 1 && p1 <= 12) {
+      month = p1 - 1
+      day = p2
+    }
+
     if (month >= 0 && month < 12 && day >= 1 && day <= 31) {
       return new Date(Date.UTC(year, month, day, 12, 0, 0))
     }
@@ -174,6 +197,25 @@ function getRowValueByHeader(row: any, mappedHeader: string | undefined | null):
     }
   }
 
+  return null
+}
+
+function cleanPhone(raw: any): string | null {
+  if (!raw) return null
+  const str = String(raw).trim()
+  if (!str) return null
+  const upper = str.toUpperCase()
+  if (upper === 'NA' || upper === 'N/A' || upper === 'NULL' || upper === 'UNDEFINED' || upper === '—' || upper === '-' || upper === '0') {
+    return null
+  }
+  if (str.toLowerCase().includes('torque customer')) return null
+  if (str.toLowerCase().includes('agent')) return null
+
+  // Extract digits only
+  const digits = str.replace(/\D/g, '')
+  if (digits.length >= 10 && digits.length <= 13) {
+    return digits.slice(-10)
+  }
   return null
 }
 
@@ -342,10 +384,10 @@ export async function POST(req: NextRequest) {
           }
         }
         const rawVehicle = extractFieldValue(r, normalizedRow, mapping.vehicleNo, [
-          'vehicleNo', 'vehicle_no', 'Vehicle Number', 'Vehicle No', 'REG NO / Vehicle No', 'REG NO', 'Registration No', 'Reg No', 'regno', 'vehicle', 'vehical'
+          'vehicleNo', 'vehicle_no', 'Vehicle Number', 'Vehicle No', 'REG NO / Vehicle No', 'REG NO', 'Registration No', 'Reg No', 'regno', 'vehicle', 'vehical', 'vehicle_number'
         ])
         const rawPhone = extractFieldValue(r, normalizedRow, mapping.clientPhone, [
-          'clientPhone', 'client_phone', 'Phone Number', 'Mobile', 'Mobile No', 'Contact Number', 'Phone', 'phone_no', 'mobile_no', 'phone', 'contact', 'contact_no'
+          'clientPhone', 'client_phone', 'Phone Number', 'Mobile', 'Mobile No', 'Contact Number', 'Phone', 'phone_no', 'mobile_no', 'phone', 'contact', 'contact_no', 'CONTACT', 'contact number'
         ])
 
         if (rawVehicle) {
@@ -354,11 +396,9 @@ export async function POST(req: NextRequest) {
           if (cleanV.length >= 4) candidateVehicles.add(cleanV)
           if (normV.length >= 4) candidateVehicles.add(normV)
         }
-        if (rawPhone) {
-          const pStr = String(rawPhone).trim()
-          const digits = pStr.replace(/\D/g, '')
-          if (digits.length >= 10) candidatePhones.add(digits.slice(-10))
-          if (pStr) candidatePhones.add(pStr)
+        const validCandPhone = cleanPhone(rawPhone)
+        if (validCandPhone) {
+          candidatePhones.add(validCandPhone)
         }
       }
     }
@@ -434,25 +474,27 @@ export async function POST(req: NextRequest) {
 
       // Extract all core and optional fields cleanly
       const rawVehicle = extractFieldValue(row, normalizedRow, mapping.vehicleNo, [
-        'vehicleNo', 'vehicle_no', 'Vehicle Number', 'Vehicle No', 'REG NO / Vehicle No', 'REG NO', 'Registration No', 'Reg No', 'regno', 'vehicle', 'vehical'
+        'vehicleNo', 'vehicle_no', 'Vehicle Number', 'Vehicle No', 'REG NO / Vehicle No', 'REG NO', 'Registration No', 'Reg No', 'regno', 'vehicle', 'vehical', 'vehicle_number'
       ])
       const rawName = extractFieldValue(row, normalizedRow, mapping.clientName, [
-        'clientName', 'client_name', 'Client Name', 'Owner Name', 'Insured Name', 'Customer Name', 'Party Name', 'name', 'insured', 'customer', 'party'
+        'clientName', 'client_name', 'Client Name', 'Owner Name', 'Insured Name', 'Customer Name', 'Party Name', 'name', 'insured', 'customer', 'party', 'owner_name', 'owner'
       ])
       const rawPhone = extractFieldValue(row, normalizedRow, mapping.clientPhone, [
-        'clientPhone', 'client_phone', 'Phone Number', 'Mobile', 'Mobile No', 'Contact Number', 'Phone', 'phone_no', 'mobile_no', 'phone', 'contact', 'contact_no'
+        'clientPhone', 'client_phone', 'Phone Number', 'Mobile', 'Mobile No', 'Contact Number', 'Phone', 'phone_no', 'mobile_no', 'phone', 'contact', 'contact_no', 'CONTACT', 'contact number'
       ])
       const rawEmail = extractFieldValue(row, normalizedRow, mapping.clientEmail, [
         'clientEmail', 'client_email', 'Email Address', 'Email', 'email_id', 'emailid', 'mail'
       ])
       const rawExpiry = extractFieldValue(row, normalizedRow, mapping.expiryDate, [
-        'expiryDate', 'expiry_date', 'Policy Expiry Date', 'Expiry Date', 'Due Date', 'Policy End Date', 'expiry', 'due_date'
+        'expiryDate', 'expiry_date', 'Policy Expiry Date', 'Expiry Date', 'Due Date', 'Policy End Date', 'expiry', 'due_date',
+        'insurance validity', 'Insurance Validity', 'insurance_validity', 'insurancevalidity', 'insurance', 'Insurance', 'ins validity', 'policy validity'
       ])
       const rawRegDate = extractFieldValue(row, normalizedRow, mapping.registrationDate, [
-        'registrationDate', 'registration_date', 'Registration Date', 'Reg Date', 'reg_date', 'registration'
+        'registrationDate', 'registration_date', 'Registration Date', 'Reg Date', 'reg_date', 'registration', 'registrationdate', 'rc date', 'reg dt'
       ])
       const rawGvw = extractFieldValue(row, normalizedRow, mapping.gvw, [
-        'gvw', 'Gross Vehicle Weight (GVW)', 'Gross Vehicle Weight', 'Gross Weight', 'Weight', 'gross_weight'
+        'gvw', 'Gross Vehicle Weight (GVW)', 'Gross Vehicle Weight', 'Gross Weight', 'Weight', 'gross_weight',
+        'GVW (In Kg.)', 'gvw (in kg.)', 'gvw (in kg)', 'gvw in kg', 'gvwin kg', 'gvw_in_kg', 'gvweight', 'gross weight (in kg)'
       ])
       const rawAddress = extractFieldValue(row, normalizedRow, mapping.address, [
         'address', 'Address', 'Location', 'location'
@@ -461,17 +503,18 @@ export async function POST(req: NextRequest) {
         'city', 'City', 'State', 'state'
       ])
       const rawAgent = extractFieldValue(row, normalizedRow, mapping.existingAgent || mapping.agent || mapping.Agent, [
-        'existingAgent', 'existing_agent', 'Agent', 'agent', 'Broker', 'broker', 'Agent Number', 'Agent No', 'is_agent', 'agent_status'
+        'existingAgent', 'existing_agent', 'Agent', 'agent', 'Broker', 'broker', 'Agent Number', 'Agent No', 'is_agent', 'agent_status', 'agent_number', 'agent_no'
       ])
       const rawTemplate = extractFieldValue(row, normalizedRow, mapping.messageTemplate, [
         'messageTemplate', 'message_template', 'Message Template', 'template'
       ])
 
       const cleanVehicleNo = rawVehicle !== undefined && rawVehicle !== null ? String(rawVehicle).trim() : ''
-      const cleanContactNo = rawPhone !== undefined && rawPhone !== null ? String(rawPhone).trim() : ''
-      const cleanOwnerName = rawName !== undefined && rawName !== null && String(rawName).trim() !== ''
-        ? String(rawName).trim()
-        : (cleanVehicleNo || cleanContactNo || 'Lead Customer')
+      const validPhone = cleanPhone(rawPhone)
+      const cleanContactNo = validPhone || ''
+      const rawNameStr = rawName !== undefined && rawName !== null ? String(rawName).trim() : ''
+      const isNameInvalid = !rawNameStr || ['NA', 'N/A', 'NULL', 'UNDEFINED', '—', '-'].includes(rawNameStr.toUpperCase())
+      const cleanOwnerName = !isNameInvalid ? rawNameStr : (cleanVehicleNo || cleanContactNo || 'Lead Customer')
 
       // Must have at least a Vehicle Number OR a Contact Phone Number to be a valid lead
       if (!cleanVehicleNo && !cleanContactNo) {
@@ -486,8 +529,15 @@ export async function POST(req: NextRequest) {
       const vNo = cleanVehicleNo ? cleanVehicleNo.toUpperCase() : null
       const normV = vNo ? vNo.replace(/[^A-Z0-9]/g, '') : null
 
-      // Simplified Agent Detection
-      let isAgent = checkIsAgent(cleanContactNo || null, agentPhoneSet, rawAgent)
+      // Simplified Agent Detection & Sanitization
+      let cleanAgentVal = rawAgent !== undefined && rawAgent !== null ? String(rawAgent).trim() : null
+      if (cleanAgentVal) {
+        const u = cleanAgentVal.toUpperCase()
+        if (u === 'NA' || u === 'N/A' || u === 'NULL' || u === 'UNDEFINED' || u === '—' || u === '-') {
+          cleanAgentVal = null
+        }
+      }
+      let isAgent = checkIsAgent(cleanContactNo || null, agentPhoneSet, cleanAgentVal)
       let finalContactNo = cleanContactNo
       if (cleanContactNo && (cleanContactNo.toLowerCase().includes('agent') || cleanContactNo.toLowerCase().includes('broker'))) {
         isAgent = true
@@ -569,7 +619,7 @@ export async function POST(req: NextRequest) {
               ...(rawAddress ? { address: String(rawAddress).trim() } : {}),
               ...(rawCity ? { city: String(rawCity).trim() } : {}),
               ...(rawTemplate ? { messageTemplate: String(rawTemplate).trim() } : {}),
-              ...(isAgent ? { existingAgent: 'Agent' } : (rawAgent ? { existingAgent: String(rawAgent).trim() } : {})),
+              ...(isAgent ? { existingAgent: 'Agent' } : (cleanAgentVal ? { existingAgent: cleanAgentVal } : {})),
               ...(importName ? { importName: importName.trim() } : {}),
               ...(Object.keys(mergedCf).length > 0 ? { customFields: mergedCf } : {}),
               updatedAt: new Date()
@@ -607,7 +657,7 @@ export async function POST(req: NextRequest) {
         address: rawAddress ? String(rawAddress).trim() : null,
         city: rawCity ? String(rawCity).trim() : null,
         messageTemplate: rawTemplate ? String(rawTemplate).trim() : null,
-        existingAgent: isAgent ? 'Agent' : (rawAgent ? String(rawAgent).trim() : null),
+        existingAgent: isAgent ? 'Agent' : (cleanAgentVal || null),
         importName: importName ? importName.trim() : null,
         customFields: Object.keys(customFields).length > 0 ? customFields : undefined,
         status: 'New'

@@ -45,7 +45,10 @@ const AVAILABLE_DB_FIELDS = [
   { value: 'registrationDate', label: 'Registration Date' },
   { value: 'gvw', label: 'Gross Vehicle Weight (GVW)' },
   { value: 'address', label: 'Address' },
-  { value: 'city', label: 'City' }
+  { value: 'city', label: 'City' },
+  { value: 'fitnessValidity', label: 'Fitness Validity' },
+  { value: 'puccValidity', label: 'PUCC Validity' },
+  { value: 'permitDate', label: 'Permit Date' }
 ]
 
 const sanitizeFieldKey = (label: string): string => {
@@ -127,24 +130,64 @@ export default function LeadImportPage() {
     return currentMappings.map(field => {
       const match = sheetHeaders.find(h => {
         const header = h.toLowerCase().trim()
+        const normHeader = header.replace(/[^a-z0-9]/g, '')
         const fieldLabel = field.label.toLowerCase().trim()
         const dbFieldName = field.dbField.toLowerCase().trim()
 
-        if (header === fieldLabel) return true
+        if (header === fieldLabel || normHeader === fieldLabel.replace(/[^a-z0-9]/g, '')) return true
 
         // Fallbacks for default fields
-        if (field.dbField === 'clientName') return ['name', 'client name', 'customer name', 'owner name', 'insured name', 'party name', 'insured', 'customer', 'client', 'party'].includes(header)
-        if (field.dbField === 'clientPhone') return ['phone', 'mobile', 'contact', 'client phone', 'mobile no', 'contact no', 'phone no', 'mobile number', 'cust mobile', 'phone_no'].includes(header)
-        if (field.dbField === 'clientEmail') return ['email', 'client email', 'mail', 'email id', 'email_id'].includes(header)
-        if (field.dbField === 'vehicleNo') return ['vehicle', 'vehicle no', 'vehicle number', 'reg no', 'registration no', 'vahan no', 'vehicle_no', 'reg_no', 'rc no', 'registration number'].includes(header)
-        if (field.dbField === 'expiryDate') return ['expiry', 'expiry date', 'policy expiry', 'policy expiry date', 'exp date', 'due date', 'policy end date', 'exp_date', 'policy expiry_date'].includes(header)
-        if (field.dbField === 'registrationDate') return ['registration', 'registration date', 'reg date', 'reg_date'].includes(header)
-        if (field.dbField === 'gvw') return ['gvw', 'gross weight', 'weight', 'gross vehicle weight'].includes(header)
-        if (field.dbField === 'address') return ['address', 'location'].includes(header)
-        if (field.dbField === 'city') return ['city', 'state'].includes(header)
-        if (field.dbField === 'existingAgent') return ['agent', 'broker', 'is agent', 'existing agent', 'is_agent', 'agent status', 'agent?', 'agent number', 'agent name', 'agent contact', 'agent no'].includes(header)
+        if (field.dbField === 'clientName') {
+          return ['name', 'client name', 'customer name', 'owner name', 'insured name', 'party name', 'insured', 'customer', 'client', 'party', 'owner_name', 'owner'].includes(header) ||
+            header.includes('owner name') || header.includes('client name') || header.includes('customer name')
+        }
+        if (field.dbField === 'clientPhone') {
+          return ['phone', 'mobile', 'contact', 'client phone', 'mobile no', 'contact no', 'phone no', 'mobile number', 'cust mobile', 'phone_no', 'contact_no', 'contact number'].includes(header) ||
+            header === 'contact' || header === 'contact no' || normHeader === 'contact' || normHeader === 'contactno'
+        }
+        if (field.dbField === 'clientEmail') {
+          return ['email', 'client email', 'mail', 'email id', 'email_id', 'email address'].includes(header)
+        }
+        if (field.dbField === 'vehicleNo') {
+          return ['vehicle', 'vehicle no', 'vehicle number', 'reg no', 'registration no', 'vahan no', 'vehicle_no', 'reg_no', 'rc no', 'registration number', 'reg no / vehicle no'].includes(header) ||
+            normHeader === 'vehicleno' || normHeader === 'regno'
+        }
+        if (field.dbField === 'expiryDate') {
+          return ['expiry', 'expiry date', 'policy expiry', 'policy expiry date', 'exp date', 'due date', 'policy end date', 'exp_date', 'policy expiry_date', 'insurance validity', 'insurance valid', 'insurance_validity', 'insurance date', 'insurance', 'ins validity', 'ins date', 'policy validity'].includes(header) ||
+            header.includes('insurance validity') || header.includes('policy expiry') || normHeader === 'insurancevalidity' || normHeader === 'policyexpirydate'
+        }
+        if (field.dbField === 'registrationDate') {
+          return ['registration', 'registration date', 'reg date', 'reg_date', 'registration_date', 'reg dt', 'rc date'].includes(header) ||
+            header.includes('registration date') || normHeader === 'registrationdate'
+        }
+        if (field.dbField === 'gvw') {
+          return ['gvw', 'gross weight', 'weight', 'gross vehicle weight', 'gvw (in kg.)', 'gvw (in kg)', 'gvw in kg', 'gvw(in kg.)', 'gvw(in kg)', 'gross vehicle weight (gvw)', 'gross weight (in kg)'].includes(header) ||
+            header.startsWith('gvw') || normHeader.startsWith('gvwin') || normHeader === 'gvw' || normHeader === 'grossvehicleweight'
+        }
+        if (field.dbField === 'address') {
+          return ['address', 'location', 'full address', 'client address', 'owner address'].includes(header) || header.includes('address')
+        }
+        if (field.dbField === 'city') {
+          return ['city', 'state', 'district', 'taluka'].includes(header)
+        }
+        if (field.dbField === 'existingAgent') {
+          return ['agent', 'broker', 'is agent', 'existing agent', 'is_agent', 'agent status', 'agent?', 'agent number', 'agent name', 'agent contact', 'agent no', 'agent_number', 'agent_no'].includes(header) ||
+            header.includes('agent number') || header.includes('agent no') || normHeader === 'agentnumber'
+        }
+        if (field.dbField === 'fitnessValidity') {
+          return ['fitness validity', 'fitness valid', 'fitness date', 'fitness', 'fitness_validity', 'fitness expiry'].includes(header) ||
+            header.includes('fitness validity') || normHeader === 'fitnessvalidity'
+        }
+        if (field.dbField === 'puccValidity') {
+          return ['pucc validity', 'pucc valid', 'pucc date', 'pucc', 'pucc_validity', 'puc validity', 'puc date', 'puc'].includes(header) ||
+            header.includes('pucc validity') || normHeader === 'puccvalidity'
+        }
+        if (field.dbField === 'permitDate') {
+          return ['permit date', 'permit validity', 'permit valid', 'permit_date', 'permit'].includes(header) ||
+            header.includes('permit date') || normHeader === 'permitdate'
+        }
         
-        return header === dbFieldName
+        return header === dbFieldName || normHeader === dbFieldName.replace(/[^a-z0-9]/g, '')
       })
       return { ...field, mappedHeader: match || '' }
     })
@@ -233,12 +276,11 @@ function inferHeaderFromColumnData(values: any[], colIndex: number): string {
     reader.onload = (e) => {
       try {
         const data = e.target?.result
-        // Read without cellDates to avoid SheetJS subtracting browser timezone offset (e.g. -5.5h in IST)
-        // raw: false ensures formatted date strings (e.g. 27-10-2026 or 27/10/2026) are preserved exactly
+        // Read with cellDates: false and raw: true to preserve exact underlying numbers/serials
         const workbook = XLSX.read(data, { type: 'binary', cellDates: false })
         const firstSheetName = workbook.SheetNames[0]
         const worksheet = workbook.Sheets[firstSheetName]
-        const rawAoa: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '', raw: false })
+        const rawAoa: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '', raw: true })
 
         if (rawAoa.length > 1) {
           const headers: string[] = rawAoa[0].map((h: any) => String(h || '').trim())
@@ -251,10 +293,40 @@ function inferHeaderFromColumnData(values: any[], colIndex: number): string {
             }
           }
 
-          const jsonData = rawAoa.slice(1).map(row => {
+          // Pre-identify date columns from headers
+          const dateKeywords = ['date', 'validity', 'expiry', 'exp', 'due', 'fitness', 'pucc', 'permit']
+          const isDateCol = headers.map(h => {
+            const lower = h.toLowerCase()
+            return dateKeywords.some(k => lower.includes(k))
+          })
+
+          const jsonData = rawAoa.slice(1).map((row, rowIdx) => {
             const obj: any = {}
             headers.forEach((h, idx) => {
-              obj[h] = row[idx] !== undefined ? row[idx] : ''
+              let val = row[idx] !== undefined && row[idx] !== null ? row[idx] : ''
+              
+              // Check if cell is an Excel serial number in a date column OR formatted as date in cell.w
+              const cellRef = XLSX.utils.encode_cell({ r: rowIdx + 1, c: idx })
+              const cell = worksheet[cellRef]
+              const hasDateFormatting = cell && cell.w && /[/.-]/.test(cell.w)
+              
+              if (typeof val === 'number' && val > 10000 && val < 80000 && (isDateCol[idx] || hasDateFormatting)) {
+                const p = XLSX.SSF.parse_date_code(Math.floor(val))
+                if (p && p.y && p.m && p.d) {
+                  val = `${String(p.d).padStart(2, '0')}/${String(p.m).padStart(2, '0')}/${p.y}`
+                }
+              } else if (typeof val === 'number') {
+                // If phone / agent / id column stored as numeric, format as whole integer string
+                const hLower = h.toLowerCase()
+                if (hLower.includes('contact') || hLower.includes('phone') || hLower.includes('mobile') || hLower.includes('agent')) {
+                  val = String(Math.floor(val))
+                } else {
+                  val = String(val)
+                }
+              } else {
+                val = String(val).trim()
+              }
+              obj[h] = val
             })
             return obj
           })
@@ -416,6 +488,11 @@ function inferHeaderFromColumnData(values: any[], colIndex: number): string {
         while (attempt < 3 && !success) {
           attempt++
           try {
+            const mappingPayload: Record<string, string> = {}
+            mappings.forEach(m => {
+              if (m.mappedHeader) mappingPayload[m.dbField] = m.mappedHeader
+            })
+
             const res = await apiFetch('/api/v1/leads/import', {
               method: 'POST',
               headers: {
@@ -425,7 +502,8 @@ function inferHeaderFromColumnData(values: any[], colIndex: number): string {
               body: JSON.stringify({
                 leads: chunk,
                 importName: batchName,
-                duplicateStrategy
+                duplicateStrategy,
+                mapping: mappingPayload
               })
             })
 

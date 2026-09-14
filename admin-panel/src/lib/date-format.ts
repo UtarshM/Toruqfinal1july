@@ -28,9 +28,23 @@ export function formatDateDMY(dateVal: any, fallback: string = ''): string {
     return `${dd}/${mm}/${yyyy}`
   }
 
-  // Excel serial number (e.g. 46322)
-  if (/^\d{5}$/.test(str)) {
-    const num = parseInt(str, 10)
+  // DDMMYYYY without delimiters (e.g. 11042011)
+  const ddmmyyyyMatch = str.match(/^(\d{2})(\d{2})(\d{4})$/)
+  if (ddmmyyyyMatch) {
+    const dd = ddmmyyyyMatch[1]
+    const mm = ddmmyyyyMatch[2]
+    const yyyy = ddmmyyyyMatch[3]
+    const dNum = parseInt(dd, 10)
+    const mNum = parseInt(mm, 10)
+    const yNum = parseInt(yyyy, 10)
+    if (mNum >= 1 && mNum <= 12 && dNum >= 1 && dNum <= 31 && yNum >= 1900 && yNum <= 2100) {
+      return `${dd}/${mm}/${yyyy}`
+    }
+  }
+
+  // Excel serial number (e.g. 46322 or 40644.00011574074)
+  if (/^\d{5}(\.\d+)?$/.test(str)) {
+    const num = parseFloat(str)
     if (num > 10000 && num < 80000) {
       const d = new Date(Math.round((num - 25569) * 86400 * 1000))
       const dd = String(d.getUTCDate()).padStart(2, '0')
