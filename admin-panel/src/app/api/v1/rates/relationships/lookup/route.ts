@@ -11,16 +11,21 @@ export async function GET(req: NextRequest) {
     const companyId = searchParams.get('companyId')
     const categoryId = searchParams.get('categoryId')
 
-    if (!companyId || !categoryId) {
-      return NextResponse.json({ error: 'companyId and categoryId are required' }, { status: 400 })
+    if (!companyId) {
+      return NextResponse.json({ error: 'companyId is required' }, { status: 400 })
+    }
+
+    const where: any = {
+      companyId,
+      status: 1 // Must be active
+    }
+    if (categoryId) {
+      where.categoryId = categoryId
     }
 
     const relation = await prisma.quotationRelationship.findFirst({
-      where: {
-        companyId,
-        categoryId,
-        status: 1 // Must be active
-      }
+      where,
+      orderBy: { updatedAt: 'desc' }
     })
 
     if (relation) {
