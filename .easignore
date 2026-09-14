@@ -1,9 +1,11 @@
 # EAS Build ignore — exclude all non-frontend workspace content
 # This reduces the 171 MB+ archive to just the frontend source files
 
-# Other workspace packages (not needed for mobile build)
-admin-panel/
-# admin-apk-expo/ (Must be uploaded for the EAS build of the admin panel APK!)
+# Other workspace packages (ignore heavy source/build files but keep package.json for workspace resolution)
+admin-panel/src/
+admin-panel/public/
+admin-panel/.next/
+admin-panel/node_modules/
 admin-apk/
 api_temp/
 
