@@ -144,28 +144,6 @@ export default function RateCalculatorPage() {
     relationships.filter(r => r.companyId === companyId).map(r => r.categoryId)
   )
 
-  if (user && !isAdmin) {
-    return (
-      <AdminLayout>
-        <div className="flex flex-col items-center justify-center min-h-[60vh] text-center p-8 bg-white rounded-2xl border border-slate-200 shadow-sm">
-          <div className="w-16 h-16 bg-red-50 text-red-600 rounded-2xl flex items-center justify-center mb-4">
-            <Lock size={32} />
-          </div>
-          <h2 className="text-xl font-bold text-slate-900 mb-2">Access Restricted</h2>
-          <p className="text-sm text-slate-500 max-w-md mb-6">
-            Only administrators are authorized to access the Rate Calculator and view internal profit/benefit margins.
-          </p>
-          <a
-            href="/dashboard"
-            className="px-5 py-2.5 bg-slate-900 text-white text-sm font-bold rounded-xl hover:bg-slate-800 transition-all"
-          >
-            Return to Dashboard
-          </a>
-        </div>
-      </AdminLayout>
-    )
-  }
-
   return (
     <AdminLayout>
       <div className="flex items-center justify-between mb-6">
@@ -202,11 +180,11 @@ export default function RateCalculatorPage() {
           {companyId && categoryId && (
             hasRuleFound ? (
               <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-emerald-700 rounded-full text-xs font-semibold border border-emerald-200">
-                <CheckCircle2 size={14} /> Rule Found ({percentage}% + ₹{profit})
+                <CheckCircle2 size={14} /> {isAdmin ? `Rule Found (${percentage}% + ₹${profit})` : 'Preset Rule Applied'}
               </span>
             ) : (
               <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-50 text-amber-700 rounded-full text-xs font-semibold border border-amber-200">
-                <Info size={14} /> No preset rule for this pair (enter % and Profit manually)
+                <Info size={14} /> {isAdmin ? 'No preset rule for this pair (enter % and Profit manually)' : 'No preset rule configured for this company/category'}
               </span>
             )
           )}
@@ -265,30 +243,32 @@ export default function RateCalculatorPage() {
               </select>
             </div>
 
-            {/* Percentage (%) & Profit (₹) Inputs */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
-              <div className="flex items-center gap-3">
-                <label className="w-32 text-sm font-semibold text-slate-600 shrink-0">Percentage (%)</label>
-                <input
-                  type="number"
-                  value={percentage}
-                  onChange={e => setPercentage(e.target.value)}
-                  placeholder="ex: 50"
-                  className="flex-1 bg-white border border-slate-200 rounded-xl py-2 px-3 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
+            {/* Percentage (%) & Profit (₹) Inputs — ONLY visible for Admins to protect internal profit margins */}
+            {isAdmin && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
+                <div className="flex items-center gap-3">
+                  <label className="w-32 text-sm font-semibold text-slate-600 shrink-0">Percentage (%)</label>
+                  <input
+                    type="number"
+                    value={percentage}
+                    onChange={e => setPercentage(e.target.value)}
+                    placeholder="ex: 50"
+                    className="flex-1 bg-white border border-slate-200 rounded-xl py-2 px-3 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
 
-              <div className="flex items-center gap-3">
-                <label className="w-32 text-sm font-semibold text-slate-600 shrink-0">Profit (₹)</label>
-                <input
-                  type="number"
-                  value={profit}
-                  onChange={e => setProfit(e.target.value)}
-                  placeholder="ex: 2500"
-                  className="flex-1 bg-white border border-slate-200 rounded-xl py-2 px-3 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-blue-500"
-                />
+                <div className="flex items-center gap-3">
+                  <label className="w-32 text-sm font-semibold text-slate-600 shrink-0">Profit (₹)</label>
+                  <input
+                    type="number"
+                    value={profit}
+                    onChange={e => setProfit(e.target.value)}
+                    placeholder="ex: 2500"
+                    className="flex-1 bg-white border border-slate-200 rounded-xl py-2 px-3 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
               </div>
-            </div>
+            )}
 
             {/* Remarks (interactive / editable) */}
             <div className="flex items-center gap-4">
@@ -328,95 +308,110 @@ export default function RateCalculatorPage() {
               />
             </div>
 
-            {/* Rate (readonly, auto-calculated with Info tooltip) */}
+            {/* Rate (Customer Rate) */}
             <div className="flex items-center gap-4">
               <div className="w-40 flex items-center gap-1.5 shrink-0">
-                <label className="text-sm font-semibold text-slate-600">Rate</label>
-                <div className="relative group cursor-pointer">
-                  <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-slate-200 hover:bg-emerald-600 hover:text-white text-slate-600 text-[10px] font-bold transition-colors">
-                    i
-                  </span>
-                  <div className="absolute left-6 top-1/2 -translate-y-1/2 hidden group-hover:block w-80 p-4 bg-slate-900 text-white rounded-xl shadow-2xl text-xs z-50 border border-slate-700 space-y-2.5">
-                    <div className="font-bold text-emerald-400 border-b border-slate-700 pb-1.5 flex items-center justify-between">
-                      <span>Rate Calculation Formula</span>
-                      <span className="text-[10px] text-slate-400 font-normal">Step-by-step</span>
-                    </div>
-                    <p className="text-slate-300 font-mono text-[11px] bg-slate-800 p-2 rounded-lg border border-slate-700">
-                      Rate = Total Premium - (Net Premium × % / 100) + Profit
-                    </p>
-                    <div className="space-y-1 text-[11px] text-slate-300">
-                      <div className="flex justify-between">
-                        <span>Net Premium:</span>
-                        <span className="font-semibold text-white">₹{numNet.toLocaleString()}</span>
+                <label className="text-sm font-bold text-slate-700">
+                  {isAdmin ? 'Rate' : 'Customer Rate'}
+                </label>
+                {isAdmin ? (
+                  <div className="relative group cursor-pointer">
+                    <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-slate-200 hover:bg-emerald-600 hover:text-white text-slate-600 text-[10px] font-bold transition-colors">
+                      i
+                    </span>
+                    <div className="absolute left-6 top-1/2 -translate-y-1/2 hidden group-hover:block w-80 p-4 bg-slate-900 text-white rounded-xl shadow-2xl text-xs z-50 border border-slate-700 space-y-2.5">
+                      <div className="font-bold text-emerald-400 border-b border-slate-700 pb-1.5 flex items-center justify-between">
+                        <span>Rate Calculation Formula</span>
+                        <span className="text-[10px] text-slate-400 font-normal">Step-by-step</span>
                       </div>
-                      <div className="flex justify-between">
-                        <span>Discount ({numPct}%):</span>
-                        <span className="font-semibold text-emerald-300">- ₹{(numNet * (numPct / 100)).toLocaleString()}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Profit Added:</span>
-                        <span className="font-semibold text-emerald-300">+ ₹{numProf.toLocaleString()}</span>
-                      </div>
-                      <div className="flex justify-between border-t border-slate-800 pt-1 font-bold text-white">
-                        <span>Calculated Rate:</span>
-                        <span className="text-emerald-400">₹{calculatedRate.toLocaleString()}</span>
+                      <p className="text-slate-300 font-mono text-[11px] bg-slate-800 p-2 rounded-lg border border-slate-700">
+                        Rate = Total Premium - (Net Premium × % / 100) + Profit
+                      </p>
+                      <div className="space-y-1 text-[11px] text-slate-300">
+                        <div className="flex justify-between">
+                          <span>Net Premium:</span>
+                          <span className="font-semibold text-white">₹{numNet.toLocaleString()}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Discount ({numPct}%):</span>
+                          <span className="font-semibold text-emerald-300">- ₹{(numNet * (numPct / 100)).toLocaleString()}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Profit Added:</span>
+                          <span className="font-semibold text-emerald-300">+ ₹{numProf.toLocaleString()}</span>
+                        </div>
+                        <div className="flex justify-between border-t border-slate-800 pt-1 font-bold text-white">
+                          <span>Calculated Rate:</span>
+                          <span className="text-emerald-400">₹{calculatedRate.toLocaleString()}</span>
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="relative group cursor-pointer">
+                    <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-slate-200 text-slate-500 text-[10px] font-bold">
+                      i
+                    </span>
+                    <div className="absolute left-6 top-1/2 -translate-y-1/2 hidden group-hover:block w-64 p-3 bg-slate-900 text-white rounded-xl shadow-2xl text-xs z-50 border border-slate-700">
+                      Final premium rate payable by the customer based on company guidelines.
+                    </div>
+                  </div>
+                )}
               </div>
 
               <input
                 type="number"
                 value={canCalculate ? calculatedRate : ''}
                 readOnly
-                placeholder={canCalculate ? '' : 'Enter Net Premium & Total Premium'}
-                className="flex-1 bg-emerald-50 border border-emerald-200 rounded-xl py-2.5 px-4 text-sm font-bold text-emerald-700 outline-none"
+                placeholder={canCalculate ? '' : (!hasRuleFound && !isAdmin ? 'No preset rule found for this pair' : 'Enter Net Premium & Total Premium')}
+                className="flex-1 bg-emerald-50 border-2 border-emerald-300 rounded-xl py-2.5 px-4 text-sm font-bold text-emerald-800 outline-none"
               />
             </div>
 
-            {/* Benefit (readonly, auto-calculated with Info tooltip) */}
-            <div className="flex items-center gap-4">
-              <div className="w-40 flex items-center gap-1.5 shrink-0">
-                <label className="text-sm font-semibold text-slate-600">Benefit</label>
-                <div className="relative group cursor-pointer">
-                  <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-slate-200 hover:bg-blue-600 hover:text-white text-slate-600 text-[10px] font-bold transition-colors">
-                    i
-                  </span>
-                  <div className="absolute left-6 top-1/2 -translate-y-1/2 hidden group-hover:block w-80 p-4 bg-slate-900 text-white rounded-xl shadow-2xl text-xs z-50 border border-slate-700 space-y-2.5">
-                    <div className="font-bold text-blue-400 border-b border-slate-700 pb-1.5 flex items-center justify-between">
-                      <span>Benefit Calculation Formula</span>
-                      <span className="text-[10px] text-slate-400 font-normal">Step-by-step</span>
-                    </div>
-                    <p className="text-slate-300 font-mono text-[11px] bg-slate-800 p-2 rounded-lg border border-slate-700">
-                      Benefit = Total Premium - Rate
-                    </p>
-                    <div className="space-y-1 text-[11px] text-slate-300">
-                      <div className="flex justify-between">
-                        <span>Total Premium:</span>
-                        <span className="font-semibold text-white">₹{numTotal.toLocaleString()}</span>
+            {/* Benefit (Internal profit margin — ONLY visible to Admins) */}
+            {isAdmin && (
+              <div className="flex items-center gap-4">
+                <div className="w-40 flex items-center gap-1.5 shrink-0">
+                  <label className="text-sm font-semibold text-slate-600">Benefit (Internal)</label>
+                  <div className="relative group cursor-pointer">
+                    <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-slate-200 hover:bg-blue-600 hover:text-white text-slate-600 text-[10px] font-bold transition-colors">
+                      i
+                    </span>
+                    <div className="absolute left-6 top-1/2 -translate-y-1/2 hidden group-hover:block w-80 p-4 bg-slate-900 text-white rounded-xl shadow-2xl text-xs z-50 border border-slate-700 space-y-2.5">
+                      <div className="font-bold text-blue-400 border-b border-slate-700 pb-1.5 flex items-center justify-between">
+                        <span>Benefit Calculation Formula</span>
+                        <span className="text-[10px] text-slate-400 font-normal">Step-by-step</span>
                       </div>
-                      <div className="flex justify-between">
-                        <span>Calculated Rate:</span>
-                        <span className="font-semibold text-slate-300">- ₹{calculatedRate.toLocaleString()}</span>
-                      </div>
-                      <div className="flex justify-between border-t border-slate-800 pt-1 font-bold text-white">
-                        <span>Net Benefit:</span>
-                        <span className="text-blue-400">₹{calculatedBenefit.toLocaleString()}</span>
+                      <p className="text-slate-300 font-mono text-[11px] bg-slate-800 p-2 rounded-lg border border-slate-700">
+                        Benefit = Total Premium - Rate
+                      </p>
+                      <div className="space-y-1 text-[11px] text-slate-300">
+                        <div className="flex justify-between">
+                          <span>Total Premium:</span>
+                          <span className="font-semibold text-white">₹{numTotal.toLocaleString()}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Calculated Rate:</span>
+                          <span className="font-semibold text-slate-300">- ₹{calculatedRate.toLocaleString()}</span>
+                        </div>
+                        <div className="flex justify-between border-t border-slate-800 pt-1 font-bold text-white">
+                          <span>Net Benefit:</span>
+                          <span className="text-blue-400">₹{calculatedBenefit.toLocaleString()}</span>
+                        </div>
                       </div>
                     </div>
                   </div>
                 </div>
-              </div>
 
-              <input
-                type="number"
-                value={canCalculate ? calculatedBenefit : ''}
-                readOnly
-                placeholder={canCalculate ? '' : 'Enter Net Premium & Total Premium'}
-                className="flex-1 bg-blue-50 border border-blue-200 rounded-xl py-2.5 px-4 text-sm font-bold text-blue-700 outline-none"
-              />
-            </div>
+                <input
+                  type="number"
+                  value={canCalculate ? calculatedBenefit : ''}
+                  readOnly
+                  placeholder={canCalculate ? '' : 'Enter Net Premium & Total Premium'}
+                  className="flex-1 bg-blue-50 border border-blue-200 rounded-xl py-2.5 px-4 text-sm font-bold text-blue-700 outline-none"
+                />
+              </div>
+            )}
           </div>
         )}
       </div>

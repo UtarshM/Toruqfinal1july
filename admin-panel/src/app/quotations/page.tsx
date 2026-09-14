@@ -412,16 +412,18 @@ export default function QuotationsPage() {
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-4 bg-slate-50/50 p-3 border border-slate-100 rounded-2xl">
-                <div>
-                  <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-1">Percentage Rule</label>
-                  <input type="text" readOnly value={`${calcData.percentage}%`} className="w-full px-3 py-2 bg-slate-150 rounded-xl outline-none text-xs font-bold text-slate-700 border-none" />
+              {isAdmin && (
+                <div className="grid grid-cols-2 gap-4 bg-slate-50/50 p-3 border border-slate-100 rounded-2xl">
+                  <div>
+                    <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-1">Percentage Rule</label>
+                    <input type="text" readOnly value={`${calcData.percentage}%`} className="w-full px-3 py-2 bg-slate-150 rounded-xl outline-none text-xs font-bold text-slate-700 border-none" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-1">Profit Rule</label>
+                    <input type="text" readOnly value={`₹${calcData.profit}`} className="w-full px-3 py-2 bg-slate-150 rounded-xl outline-none text-xs font-bold text-slate-700 border-none" />
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-1">Profit Rule</label>
-                  <input type="text" readOnly value={`₹${calcData.profit}`} className="w-full px-3 py-2 bg-slate-150 rounded-xl outline-none text-xs font-bold text-slate-700 border-none" />
-                </div>
-              </div>
+              )}
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
