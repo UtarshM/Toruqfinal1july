@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { validateAuth } from '@/lib/auth-guard'
 import prisma from '@/lib/prisma'
-import { deleteLeadsWithCascade } from '@/lib/lead-delete-helper'
+import { deleteLeadsWithCascade, purgeAllLeadsWithCascade, deleteLeadsByBatchWithCascade } from '@/lib/lead-delete-helper'
 
 export const maxDuration = 60
+export const dynamic = 'force-dynamic'
 
 /**
  * GET: Preview leads matching purge criteria before executing deletion
@@ -89,16 +90,19 @@ export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => ({}))
     const { importName, hours, leadIds, includeNullImport, purgeAll } = body
 
+    if (purgeAll === true) {
+      const deletedCount = await purgeAllLeadsWithCascade()
+      return NextResponse.json({
+        success: true,
+        deletedCount,
+        message: `Successfully purged all ${deletedCount} leads and associated records from the database.`
+      })
+    }
+
     let targetIds: string[] = []
 
     if (Array.isArray(leadIds) && leadIds.length > 0) {
       targetIds = leadIds
-    } else if (purgeAll === true) {
-      // Purge ALL leads in database
-      const allLeads = await prisma.lead.findMany({
-        select: { id: true }
-      })
-      targetIds = allLeads.map(l => l.id)
     } else {
       const where: any = {}
 

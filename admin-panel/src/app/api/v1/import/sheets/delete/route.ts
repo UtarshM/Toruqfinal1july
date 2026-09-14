@@ -4,7 +4,7 @@ import prisma from '@/lib/prisma'
 import path from 'path'
 import fs from 'fs'
 import { getUploadDir } from '@/lib/upload-helper'
-import { deleteLeadsWithCascade } from '@/lib/lead-delete-helper'
+import { purgeAllLeadsWithCascade, deleteLeadsByBatchWithCascade, deleteLeadsWithCascade } from '@/lib/lead-delete-helper'
 
 export const maxDuration = 60
 export const dynamic = 'force-dynamic'
@@ -50,53 +50,17 @@ export async function POST(req: NextRequest) {
           const delRenewals = await prisma.renewalRecord.deleteMany({}).catch(() => ({ count: 0 }))
           totalDeletedLeads += delRenewals.count
         } else if (safeFileName === 'import_leads.xlsx' || batchName === 'leads' || batchName === 'all_leads') {
-          // Master sheet deletion: purge all leads
-          const allLeads = await prisma.lead.findMany({ select: { id: true } })
-          if (allLeads.length > 0) {
-            const count = await deleteLeadsWithCascade(allLeads.map(l => l.id))
-            totalDeletedLeads += count
-          }
+          // Master sheet deletion: purge all leads in single atomic transaction (~1.3s)
+          const count = await purgeAllLeadsWithCascade()
+          totalDeletedLeads += count
         } else if (safeFileName === 'import_direct_entry.xlsx' || batchName === 'direct_entry') {
-          const nullLeads = await prisma.lead.findMany({
-            where: { importName: null },
-            select: { id: true }
-          })
-          if (nullLeads.length > 0) {
-            const count = await deleteLeadsWithCascade(nullLeads.map(l => l.id))
-            totalDeletedLeads += count
-          }
+          // Direct entry leads (importName is NULL)
+          const count = await deleteLeadsByBatchWithCascade(null)
+          totalDeletedLeads += count
         } else {
-          const cleanBatch = batchName.replace(/[^a-zA-Z0-9]/g, '').toLowerCase()
-          const matchedLeads = await prisma.lead.findMany({
-            where: {
-              OR: [
-                { importName: batchName },
-                { importName: { contains: batchName, mode: 'insensitive' } },
-                { importName: { contains: cleanBatch, mode: 'insensitive' } }
-              ]
-            },
-            select: { id: true }
-          })
-
-          let targetIds = matchedLeads.map(l => l.id)
-
-          if (targetIds.length === 0) {
-            const allImportLeads = await prisma.lead.findMany({
-              where: { importName: { not: null } },
-              select: { id: true, importName: true }
-            })
-            targetIds = allImportLeads
-              .filter(l => {
-                const dbClean = (l.importName || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase()
-                return dbClean === cleanBatch || dbClean.includes(cleanBatch) || cleanBatch.includes(dbClean)
-              })
-              .map(l => l.id)
-          }
-
-          if (targetIds.length > 0) {
-            const count = await deleteLeadsWithCascade(targetIds)
-            totalDeletedLeads += count
-          }
+          // Specific batch deletion by sheet name in single atomic transaction
+          const count = await deleteLeadsByBatchWithCascade(batchName)
+          totalDeletedLeads += count
         }
       }
 
