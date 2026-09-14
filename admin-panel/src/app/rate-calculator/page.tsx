@@ -2,31 +2,66 @@
 import React, { useState, useEffect } from 'react'
 import AdminLayout from '@/components/layout/AdminLayout'
 import { fetchApi } from '@/lib/api'
-import { Calculator, Calendar, Info, CheckCircle2, Lock } from 'lucide-react'
+import { Calculator, Calendar, Info, CheckCircle2 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
-
 import { getISTDateString } from '@/lib/date-format'
+
+interface CalcTabState {
+  companyId: string
+  categoryId: string
+  netPremium: string
+  totalPremium: string
+  percentage: string
+  profit: string
+  remarks: string
+  hasRuleFound: boolean
+}
+
+const initialCalcState: CalcTabState = {
+  companyId: '',
+  categoryId: '',
+  netPremium: '',
+  totalPremium: '',
+  percentage: '',
+  profit: '',
+  remarks: '',
+  hasRuleFound: false
+}
 
 export default function RateCalculatorPage() {
   const { user } = useAuth()
   const roleUpper = user?.role?.name?.toUpperCase() || ''
   const isAdmin = roleUpper === 'SUPER ADMIN' || roleUpper === 'ADMIN'
 
+  // Calculator Tab: Admins get all 3 tabs; other staff only get 1 calculator
+  const [calcTab, setCalcTab] = useState<1 | 2 | 3>(1)
+
+  // Independent state per calculator tab
+  const [tabData, setTabData] = useState<Record<1 | 2 | 3, CalcTabState>>({
+    1: { ...initialCalcState },
+    2: { ...initialCalcState },
+    3: { ...initialCalcState }
+  })
+
+  // Current active tab (non-admin is always tab 1)
+  const activeTab: 1 | 2 | 3 = isAdmin ? calcTab : 1
+  const current = tabData[activeTab]
+
+  const updateCurrent = (patch: Partial<CalcTabState>) => {
+    setTabData(prev => ({
+      ...prev,
+      [activeTab]: {
+        ...prev[activeTab],
+        ...patch
+      }
+    }))
+  }
+
   // Lists from DB
   const [companies, setCompanies] = useState<any[]>([])
   const [categories, setCategories] = useState<any[]>([])
   const [relationships, setRelationships] = useState<any[]>([])
   const [isLoadingConfig, setIsLoadingConfig] = useState(true)
-
-  // Form State
-  const [companyId, setCompanyId] = useState('')
-  const [categoryId, setCategoryId] = useState('')
-  const [netPremium, setNetPremium] = useState('')
-  const [totalPremium, setTotalPremium] = useState('')
-  const [percentage, setPercentage] = useState<string>('')
-  const [profit, setProfit] = useState<string>('')
-  const [remarks, setRemarks] = useState('')
-  const [hasRuleFound, setHasRuleFound] = useState(false)
 
   const today = getISTDateString(0)
 
@@ -54,68 +89,89 @@ export default function RateCalculatorPage() {
 
   // Auto-match category when company changes if category not set or mismatch
   const handleCompanyChange = (newCompanyId: string) => {
-    setCompanyId(newCompanyId)
-    if (!newCompanyId) return
+    if (!newCompanyId) {
+      updateCurrent({
+        companyId: '',
+        categoryId: '',
+        percentage: '',
+        profit: '',
+        remarks: '',
+        hasRuleFound: false
+      })
+      return
+    }
 
+    let matchedCategoryId = ''
     const selectedComp = companies.find(c => c.id === newCompanyId)
     if (selectedComp) {
-      // Find matching category by name or by relationship
       const matchingCategoryByName = categories.find(
         cat => cat.name.trim().toLowerCase() === selectedComp.name.trim().toLowerCase()
       )
       if (matchingCategoryByName) {
-        setCategoryId(matchingCategoryByName.id)
-        return
-      }
-
-      // Check if there is a relationship for this company
-      const compRel = relationships.find(r => r.companyId === newCompanyId)
-      if (compRel && compRel.categoryId) {
-        setCategoryId(compRel.categoryId)
+        matchedCategoryId = matchingCategoryByName.id
+      } else {
+        const compRel = relationships.find(r => r.companyId === newCompanyId)
+        if (compRel && compRel.categoryId) {
+          matchedCategoryId = compRel.categoryId
+        }
       }
     }
+
+    updateCurrent({
+      companyId: newCompanyId,
+      categoryId: matchedCategoryId
+    })
   }
 
   // Lookup relationship percentage, profit, and remarks when company/category changes
   useEffect(() => {
     const lookupRelationship = async () => {
-      if (companyId && categoryId) {
+      if (current.companyId) {
         try {
-          const res = await fetchApi(`/api/v1/rates/relationships/lookup?companyId=${companyId}&categoryId=${categoryId}`)
+          const catParam = current.categoryId ? `&categoryId=${current.categoryId}` : ''
+          const res = await fetchApi(`/api/v1/rates/relationships/lookup?companyId=${current.companyId}${catParam}`)
           if (res && (res.qtr_percentage > 0 || res.qtr_profit > 0 || res.qtr_remarks)) {
-            setPercentage(res.qtr_percentage ? String(res.qtr_percentage) : '')
-            setProfit(res.qtr_profit ? String(res.qtr_profit) : '')
-            setRemarks(res.qtr_remarks || '')
-            setHasRuleFound(true)
+            updateCurrent({
+              percentage: res.qtr_percentage ? String(res.qtr_percentage) : '',
+              profit: res.qtr_profit ? String(res.qtr_profit) : '',
+              remarks: res.qtr_remarks || '',
+              hasRuleFound: true
+            })
           } else {
-            setPercentage('')
-            setProfit('')
-            setRemarks('')
-            setHasRuleFound(false)
+            updateCurrent({
+              percentage: '',
+              profit: '',
+              remarks: '',
+              hasRuleFound: false
+            })
           }
         } catch (err) {
           console.error('Relationship lookup failed:', err)
-          setPercentage('')
-          setProfit('')
-          setRemarks('')
-          setHasRuleFound(false)
+          updateCurrent({
+            percentage: '',
+            profit: '',
+            remarks: '',
+            hasRuleFound: false
+          })
         }
       } else {
-        setPercentage('')
-        setProfit('')
-        setRemarks('')
-        setHasRuleFound(false)
+        updateCurrent({
+          percentage: '',
+          profit: '',
+          remarks: '',
+          hasRuleFound: false
+        })
       }
     }
 
     lookupRelationship()
-  }, [companyId, categoryId])
+  }, [current.companyId, current.categoryId, activeTab])
 
   // Calculation Logic — exact formula: Total Premium - (Net Premium * Percentage / 100) + Profit
-  const numNet = parseFloat(netPremium) || 0
-  const numTotal = parseFloat(totalPremium) || 0
-  const numPct = parseFloat(percentage) || 0
-  const numProf = parseFloat(profit) || 0
+  const numNet = parseFloat(current.netPremium) || 0
+  const numTotal = parseFloat(current.totalPremium) || 0
+  const numPct = parseFloat(current.percentage) || 0
+  const numProf = parseFloat(current.profit) || 0
 
   const canCalculate = numNet > 0 && numTotal > 0
 
@@ -129,11 +185,6 @@ export default function RateCalculatorPage() {
     ? Math.round(numTotal - calculatedRate)
     : 0
 
-  // Categories that have configured rules for the selected company
-  const validCategoryIdsForCompany = new Set(
-    relationships.filter(r => r.companyId === companyId).map(r => r.categoryId)
-  )
-
   return (
     <AdminLayout>
       <div className="flex items-center justify-between mb-6">
@@ -146,14 +197,35 @@ export default function RateCalculatorPage() {
         </div>
       </div>
 
+      {/* Calculator Tab Selector — ONLY visible for Admins (Other staff have only 1 calculator) */}
+      {isAdmin && (
+        <div className="flex gap-2 mb-6">
+          {[1, 2, 3].map(tab => (
+            <button
+              key={tab}
+              onClick={() => setCalcTab(tab as 1 | 2 | 3)}
+              className={`px-5 py-2.5 rounded-xl text-sm font-bold transition-all ${
+                calcTab === tab
+                  ? 'bg-slate-900 text-white shadow-lg'
+                  : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+              }`}
+            >
+              Rate Calculator - {tab}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Calculator Panel */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm">
         <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-          <h4 className="font-bold text-slate-900">Rate Calculator</h4>
-          {companyId && (
-            hasRuleFound ? (
+          <h4 className="font-bold text-slate-900">
+            {isAdmin ? `Rate Calculator - ${calcTab}` : 'Rate Calculator'}
+          </h4>
+          {current.companyId && (
+            current.hasRuleFound ? (
               <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-emerald-700 rounded-full text-xs font-semibold border border-emerald-200">
-                <CheckCircle2 size={14} /> {isAdmin ? `Rule Found (${percentage}% + ₹${profit})` : 'Preset Rule Applied'}
+                <CheckCircle2 size={14} /> {isAdmin ? `Rule Found (${current.percentage}% + ₹${current.profit})` : 'Preset Rule Applied'}
               </span>
             ) : (
               <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-50 text-amber-700 rounded-full text-xs font-semibold border border-amber-200">
@@ -185,7 +257,7 @@ export default function RateCalculatorPage() {
             <div className="flex items-center gap-4">
               <label className="w-40 text-sm font-semibold text-slate-600 shrink-0">Company</label>
               <select
-                value={companyId}
+                value={current.companyId}
                 onChange={e => handleCompanyChange(e.target.value)}
                 className="flex-1 bg-white border border-slate-200 rounded-xl py-2.5 px-4 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-blue-500"
               >
@@ -196,17 +268,17 @@ export default function RateCalculatorPage() {
               </select>
             </div>
 
-            {/* Percentage (%) & Profit (₹) Inputs — ONLY visible for Admins to protect internal profit margins */}
+            {/* Percentage (%) & Profit (₹) Inputs — ONLY visible for Admins */}
             {isAdmin && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
                 <div className="flex items-center gap-3">
                   <label className="w-32 text-sm font-semibold text-slate-600 shrink-0">Percentage (%)</label>
                   <input
                     type="number"
-                    value={percentage}
-                    onChange={e => setPercentage(e.target.value)}
+                    value={current.percentage}
+                    onChange={e => updateCurrent({ percentage: e.target.value })}
                     placeholder="ex: 50"
-                    className="flex-1 bg-white border border-slate-200 rounded-xl py-2 px-3 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-blue-500"
+                    className="flex-1 bg-white border border-slate-200 rounded-xl py-2.5 px-3 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
 
@@ -214,22 +286,22 @@ export default function RateCalculatorPage() {
                   <label className="w-32 text-sm font-semibold text-slate-600 shrink-0">Profit (₹)</label>
                   <input
                     type="number"
-                    value={profit}
-                    onChange={e => setProfit(e.target.value)}
+                    value={current.profit}
+                    onChange={e => updateCurrent({ profit: e.target.value })}
                     placeholder="ex: 2500"
-                    className="flex-1 bg-white border border-slate-200 rounded-xl py-2 px-3 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-blue-500"
+                    className="flex-1 bg-white border border-slate-200 rounded-xl py-2.5 px-3 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
               </div>
             )}
 
-            {/* Remarks (interactive / editable) */}
+            {/* Remarks */}
             <div className="flex items-center gap-4">
               <label className="w-40 text-sm font-semibold text-slate-600 shrink-0">Remarks</label>
               <input
                 type="text"
-                value={remarks}
-                onChange={e => setRemarks(e.target.value)}
+                value={current.remarks}
+                onChange={e => updateCurrent({ remarks: e.target.value })}
                 placeholder="ex: Enter custom remarks or details"
                 className="flex-1 bg-white border border-slate-200 rounded-xl py-2.5 px-4 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-blue-500"
               />
@@ -240,10 +312,10 @@ export default function RateCalculatorPage() {
               <label className="w-40 text-sm font-semibold text-slate-600 shrink-0">Net Premium</label>
               <input
                 type="number"
-                value={netPremium}
-                onChange={e => setNetPremium(e.target.value)}
+                value={current.netPremium}
+                onChange={e => updateCurrent({ netPremium: e.target.value })}
                 min="0"
-                placeholder="ex: 30000"
+                placeholder="ex: 20000"
                 className="flex-1 bg-white border border-slate-200 rounded-xl py-2.5 px-4 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
@@ -253,8 +325,8 @@ export default function RateCalculatorPage() {
               <label className="w-40 text-sm font-semibold text-slate-600 shrink-0">Total Premium</label>
               <input
                 type="number"
-                value={totalPremium}
-                onChange={e => setTotalPremium(e.target.value)}
+                value={current.totalPremium}
+                onChange={e => updateCurrent({ totalPremium: e.target.value })}
                 min="0"
                 placeholder="ex: 34000"
                 className="flex-1 bg-white border border-slate-200 rounded-xl py-2.5 px-4 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-blue-500"
@@ -316,7 +388,7 @@ export default function RateCalculatorPage() {
                 type="number"
                 value={canCalculate ? calculatedRate : ''}
                 readOnly
-                placeholder={canCalculate ? '' : (!hasRuleFound && !isAdmin ? 'No preset rule found for this pair' : 'Enter Net Premium & Total Premium')}
+                placeholder={canCalculate ? '' : (!current.hasRuleFound && !isAdmin ? 'No preset rule found for this company' : 'Enter Net Premium & Total Premium')}
                 className="flex-1 bg-emerald-50 border-2 border-emerald-300 rounded-xl py-2.5 px-4 text-sm font-bold text-emerald-800 outline-none"
               />
             </div>
@@ -369,4 +441,3 @@ export default function RateCalculatorPage() {
     </AdminLayout>
   )
 }
-
