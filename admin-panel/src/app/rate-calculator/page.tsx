@@ -18,9 +18,6 @@ export default function RateCalculatorPage() {
   const [relationships, setRelationships] = useState<any[]>([])
   const [isLoadingConfig, setIsLoadingConfig] = useState(true)
 
-  // Calculator Tab (1, 2, 3)
-  const [calcTab, setCalcTab] = useState<1 | 2 | 3>(1)
-
   // Form State
   const [companyId, setCompanyId] = useState('')
   const [categoryId, setCategoryId] = useState('')
@@ -79,12 +76,12 @@ export default function RateCalculatorPage() {
     }
   }
 
-  // Lookup relationship percentage, profit, and remarks when company/category/tab changes
+  // Lookup relationship percentage, profit, and remarks when company/category changes
   useEffect(() => {
     const lookupRelationship = async () => {
       if (companyId && categoryId) {
         try {
-          const res = await fetchApi(`/api/v1/rates/relationships/lookup?companyId=${companyId}&categoryId=${categoryId}&calc=${calcTab}`)
+          const res = await fetchApi(`/api/v1/rates/relationships/lookup?companyId=${companyId}&categoryId=${categoryId}`)
           if (res && (res.qtr_percentage > 0 || res.qtr_profit > 0 || res.qtr_remarks)) {
             setPercentage(res.qtr_percentage ? String(res.qtr_percentage) : '')
             setProfit(res.qtr_profit ? String(res.qtr_profit) : '')
@@ -112,7 +109,7 @@ export default function RateCalculatorPage() {
     }
 
     lookupRelationship()
-  }, [companyId, categoryId, calcTab])
+  }, [companyId, categoryId])
 
   // Calculation Logic — exact formula: Total Premium - (Net Premium * Percentage / 100) + Profit
   const numNet = parseFloat(netPremium) || 0
@@ -132,13 +129,6 @@ export default function RateCalculatorPage() {
     ? Math.round(numTotal - calculatedRate)
     : 0
 
-  // Reset form when tab changes
-  const switchTab = (tab: 1 | 2 | 3) => {
-    setCalcTab(tab)
-    setNetPremium('')
-    setTotalPremium('')
-  }
-
   // Categories that have configured rules for the selected company
   const validCategoryIdsForCompany = new Set(
     relationships.filter(r => r.companyId === companyId).map(r => r.categoryId)
@@ -156,27 +146,10 @@ export default function RateCalculatorPage() {
         </div>
       </div>
 
-      {/* Calculator Tab Selector */}
-      <div className="flex gap-2 mb-6">
-        {[1, 2, 3].map(tab => (
-          <button
-            key={tab}
-            onClick={() => switchTab(tab as 1 | 2 | 3)}
-            className={`px-5 py-2.5 rounded-xl text-sm font-bold transition-all ${
-              calcTab === tab
-                ? 'bg-slate-900 text-white shadow-lg'
-                : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
-            }`}
-          >
-            Rate Calculator - {tab}
-          </button>
-        ))}
-      </div>
-
       {/* Calculator Panel */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm">
         <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-          <h4 className="font-bold text-slate-900">Rate Calculator - {calcTab}</h4>
+          <h4 className="font-bold text-slate-900">Rate Calculator</h4>
           {companyId && (
             hasRuleFound ? (
               <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-emerald-700 rounded-full text-xs font-semibold border border-emerald-200">
