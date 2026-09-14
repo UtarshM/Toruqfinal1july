@@ -8,7 +8,8 @@ import {
   Search, Filter, Plus, Upload, CheckCircle, 
   AlertCircle, Users, Calendar, RefreshCw, Phone, MessageCircle, 
   X, Check, Clipboard, ChevronRight, Trash2, ArrowUpDown, ArrowUp, ArrowDown,
-  ChevronDown, FileSpreadsheet, FileText, Shield, Download, ChevronLeft, ChevronsLeft, ChevronsRight
+  ChevronDown, FileSpreadsheet, FileText, Shield, Download, ChevronLeft, ChevronsLeft, ChevronsRight,
+  UserX
 } from 'lucide-react'
 import LeadPolicySubmissionModal from '@/components/leads/LeadPolicySubmissionModal'
 
@@ -139,6 +140,9 @@ export default function LeadsPage() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deletePermanently, setDeletePermanently] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [showDeassignConfirm, setShowDeassignConfirm] = useState(false)
+  const [showDeassignAllConfirm, setShowDeassignAllConfirm] = useState(false)
+  const [isDeassigning, setIsDeassigning] = useState(false)
 
   // Detailed Drawer State
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null)
@@ -516,6 +520,69 @@ export default function LeadsPage() {
     }
   }
 
+  // Bulk de-assign handler for selected leads
+  const handleBulkDeassign = async () => {
+    if (selectedIds.size === 0) return
+    setIsDeassigning(true)
+    try {
+      const res = await fetchApi('/api/v1/leads/unassign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ leadIds: Array.from(selectedIds) })
+      })
+      alert(res.message || `Successfully de-assigned ${selectedIds.size} leads.`)
+      setSelectedIds(new Set())
+      setShowDeassignConfirm(false)
+      fetchData()
+    } catch (err: any) {
+      alert(err.message || 'Failed to de-assign leads')
+    } finally {
+      setIsDeassigning(false)
+    }
+  }
+
+  // De-assign all assigned leads matching current active filters
+  const handleDeassignAllAssigned = async () => {
+    setIsDeassigning(true)
+    try {
+      const res = await fetchApi('/api/v1/leads/unassign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          unassignAll: true,
+          startDate: startDate || undefined,
+          endDate: endDate || undefined
+        })
+      })
+      alert(res.message || 'Successfully de-assigned all assigned leads.')
+      setShowDeassignAllConfirm(false)
+      setSelectedIds(new Set())
+      fetchData()
+    } catch (err: any) {
+      alert(err.message || 'Failed to de-assign all assigned leads')
+    } finally {
+      setIsDeassigning(false)
+    }
+  }
+
+  // Quick single-lead de-assign from table row
+  const handleQuickDeassign = async (leadId: string, leadName: string) => {
+    if (!confirm(`Are you sure you want to de-assign "${leadName}"? This will return the lead to the unassigned pool.`)) return
+    try {
+      await fetchApi('/api/v1/leads/unassign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ leadIds: [leadId] })
+      })
+      fetchData()
+      if (detailedLead && detailedLead.id === leadId) {
+        fetchLeadDetails(leadId)
+      }
+    } catch (err: any) {
+      alert(err.message || 'Failed to de-assign lead')
+    }
+  }
+
   // Toggle selection
   const toggleSelect = (id: string) => {
     const newSet = new Set(selectedIds)
@@ -710,6 +777,18 @@ export default function LeadsPage() {
           <p className="text-sm text-slate-500 mt-1">Track monthly renewals and employee performance.</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
+          {/* Bulk De-assign Button */}
+          {isAdmin && selectedIds.size > 0 && (
+            <button 
+              onClick={() => setShowDeassignConfirm(true)}
+              disabled={isDeassigning}
+              className="flex items-center gap-2 px-4 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition-all shadow-md cursor-pointer disabled:opacity-50"
+              title="De-assign selected leads and return them to the unassigned pool"
+            >
+              <UserX size={14} />
+              {isDeassigning ? 'De-assigning...' : `De-assign (${selectedIds.size})`}
+            </button>
+          )}
           {/* Bulk Delete Button */}
           {selectedIds.size > 0 && (
             <button 
@@ -787,6 +866,29 @@ export default function LeadsPage() {
           onClick={() => setStatusFilter(prev => prev === 'Follow Up' ? 'all' : 'Follow Up')}
         />
       </div>
+
+      {/* Active "Assigned" Banner with De-assign All Action */}
+      {statusFilter === 'assigned' && (
+        <div className="bg-emerald-50 border border-emerald-200 text-emerald-900 p-4 rounded-2xl text-xs font-bold mt-4 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-xs">
+          <div className="flex items-center gap-2">
+            <CheckCircle size={16} className="text-emerald-600 shrink-0" />
+            <span>
+              Showing <strong>{stats?.assigned || filteredLeads.length}</strong> assigned leads. You can select specific leads to de-assign, or de-assign all back to the unassigned pool.
+            </span>
+          </div>
+          {isAdmin && (stats?.assigned || 0) > 0 && (
+            <button 
+              onClick={() => setShowDeassignAllConfirm(true)} 
+              disabled={isDeassigning}
+              className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer whitespace-nowrap flex items-center gap-1.5 shrink-0"
+              title="De-assign all leads currently assigned to advisors"
+            >
+              <UserX size={14} />
+              De-assign All ({stats?.assigned}) Leads
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Error notification if any */}
       {errorMessage && (
@@ -1108,12 +1210,26 @@ export default function LeadsPage() {
                     <td className="px-3 py-3 text-xs text-slate-600 max-w-[100px] truncate">{company}</td>
                     <td className="px-3 py-3 text-xs text-slate-600 whitespace-nowrap">{tpFull}</td>
                     <td className="px-3 py-3 text-xs text-slate-600 max-w-[110px] truncate">{via}</td>
-                    <td className="px-3 py-3 text-xs text-slate-600 max-w-[120px] truncate">
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                        lead.assignee?.fullName ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'
-                      }`}>
-                        {lead.assignee?.fullName || 'Unassigned'}
-                      </span>
+                    <td className="px-3 py-3 text-xs text-slate-600 max-w-[140px]" onClick={e => e.stopPropagation()}>
+                      <div className="flex items-center gap-1.5">
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold truncate ${
+                          lead.assignee?.fullName ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'
+                        }`}>
+                          {lead.assignee?.fullName || 'Unassigned'}
+                        </span>
+                        {isAdmin && lead.assignedTo && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleQuickDeassign(lead.id, lead.clientName || 'Lead')
+                            }}
+                            title="De-assign this lead (return to unassigned pool)"
+                            className="p-1 hover:bg-amber-100 text-slate-400 hover:text-amber-700 rounded-md transition-all cursor-pointer shrink-0"
+                          >
+                            <UserX size={13} />
+                          </button>
+                        )}
+                      </div>
                     </td>
 
                     {/* Policy / Docs Column */}
@@ -1524,16 +1640,28 @@ export default function LeadsPage() {
                                 <span className="text-[10px] bg-slate-100 text-slate-500 font-bold px-2 py-0.5 rounded-md">{detailedLead.assignee?.role?.name || 'Executive'}</span>
                               </div>
                             ) : (
-                              <select 
-                                value={detailedLead.assignedTo || 'unassigned'}
-                                onChange={e => handleUpdateLeadAssignee(e.target.value)}
-                                className="w-full bg-white border border-slate-200 rounded-xl p-2.5 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-slate-100"
-                              >
-                                <option value="unassigned">Unassigned (Leave Open)</option>
-                                {employees.map(emp => (
-                                  <option key={emp.id} value={emp.id}>{emp.fullName} ({emp.role?.name})</option>
-                                ))}
-                              </select>
+                              <>
+                                <select 
+                                  value={detailedLead.assignedTo || 'unassigned'}
+                                  onChange={e => handleUpdateLeadAssignee(e.target.value)}
+                                  className="w-full bg-white border border-slate-200 rounded-xl p-2.5 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-slate-100"
+                                >
+                                  <option value="unassigned">Unassigned (Leave Open)</option>
+                                  {employees.map(emp => (
+                                    <option key={emp.id} value={emp.id}>{emp.fullName} ({emp.role?.name})</option>
+                                  ))}
+                                </select>
+                                {detailedLead.assignedTo && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleUpdateLeadAssignee('unassigned')}
+                                    className="mt-2.5 w-full flex items-center justify-center gap-1.5 py-2 px-3 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                                  >
+                                    <UserX size={13} />
+                                    De-assign Lead (Return to Pool)
+                                  </button>
+                                )}
+                              </>
                             )}
                           </div>
 
@@ -1923,6 +2051,77 @@ export default function LeadsPage() {
                   {isDeleting
                     ? 'Deleting...'
                     : (deletePermanently ? 'Delete Forever' : 'Move to Trash')}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk De-assign Confirmation Modal */}
+      {showDeassignConfirm && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-3xl w-full max-w-sm p-8 shadow-2xl border border-slate-100">
+            <div className="text-center space-y-4">
+              <div className="w-14 h-14 bg-amber-50 rounded-full flex items-center justify-center mx-auto">
+                <UserX size={24} className="text-amber-600" />
+              </div>
+              <h2 className="text-lg font-black text-slate-900">
+                De-assign Selected Leads?
+              </h2>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                {selectedIds.size} lead{selectedIds.size > 1 ? 's' : ''} will be de-assigned from their current auto advisor and returned to the unassigned lead pool.
+              </p>
+              <div className="flex gap-3 pt-4">
+                <button 
+                  onClick={() => setShowDeassignConfirm(false)} 
+                  className="flex-1 px-4 py-3 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-200 transition-all cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={handleBulkDeassign}
+                  disabled={isDeassigning}
+                  className="flex-1 px-4 py-3 bg-amber-600 text-white rounded-xl text-xs font-bold shadow-lg hover:bg-amber-700 transition-all disabled:opacity-50 cursor-pointer"
+                >
+                  {isDeassigning ? 'De-assigning...' : 'Confirm De-assign'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* De-assign ALL Assigned Leads Confirmation Modal */}
+      {showDeassignAllConfirm && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-3xl w-full max-w-sm p-8 shadow-2xl border border-slate-100">
+            <div className="text-center space-y-4">
+              <div className="w-14 h-14 bg-amber-100 rounded-full flex items-center justify-center mx-auto">
+                <UserX size={24} className="text-amber-700" />
+              </div>
+              <h2 className="text-lg font-black text-slate-900">
+                De-assign All Assigned Leads?
+              </h2>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                This will de-assign all <strong className="text-slate-800">{stats?.assigned || 'assigned'} leads</strong> currently assigned to advisors and return them to the unassigned pool.
+              </p>
+              <div className="bg-amber-50 border border-amber-200 text-amber-900 p-3 rounded-xl text-[11px] font-medium text-left">
+                ⚠️ Advisors will lose access to these leads until they are re-assigned.
+              </div>
+              <div className="flex gap-3 pt-4">
+                <button 
+                  onClick={() => setShowDeassignAllConfirm(false)} 
+                  className="flex-1 px-4 py-3 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-200 transition-all cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={handleDeassignAllAssigned}
+                  disabled={isDeassigning}
+                  className="flex-1 px-4 py-3 bg-amber-600 text-white rounded-xl text-xs font-bold shadow-lg hover:bg-amber-700 transition-all disabled:opacity-50 cursor-pointer"
+                >
+                  {isDeassigning ? 'De-assigning...' : 'De-assign All'}
                 </button>
               </div>
             </div>
