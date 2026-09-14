@@ -1,5 +1,5 @@
 "use client"
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useMemo } from 'react'
 import AdminLayout from '@/components/layout/AdminLayout'
 import { fetchApi } from '@/lib/api'
 import { useAuth } from '@/context/AuthContext'
@@ -143,6 +143,14 @@ export default function LeadsPage() {
   const [showDeassignConfirm, setShowDeassignConfirm] = useState(false)
   const [showDeassignAllConfirm, setShowDeassignAllConfirm] = useState(false)
   const [isDeassigning, setIsDeassigning] = useState(false)
+
+  // Only selected leads that are ACTUALLY assigned to an advisor
+  const selectedAssignedIds = useMemo(() => {
+    return Array.from(selectedIds).filter(id => {
+      const lead = leads.find(l => l.id === id)
+      return Boolean(lead?.assignedTo)
+    })
+  }, [selectedIds, leads])
 
   // Detailed Drawer State
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null)
@@ -522,15 +530,15 @@ export default function LeadsPage() {
 
   // Bulk de-assign handler for selected leads
   const handleBulkDeassign = async () => {
-    if (selectedIds.size === 0) return
+    if (selectedAssignedIds.length === 0) return
     setIsDeassigning(true)
     try {
       const res = await fetchApi('/api/v1/leads/unassign', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ leadIds: Array.from(selectedIds) })
+        body: JSON.stringify({ leadIds: selectedAssignedIds })
       })
-      alert(res.message || `Successfully de-assigned ${selectedIds.size} leads.`)
+      alert(res.message || `Successfully de-assigned ${selectedAssignedIds.length} leads.`)
       setSelectedIds(new Set())
       setShowDeassignConfirm(false)
       fetchData()
@@ -777,16 +785,16 @@ export default function LeadsPage() {
           <p className="text-sm text-slate-500 mt-1">Track monthly renewals and employee performance.</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          {/* Bulk De-assign Button */}
-          {isAdmin && selectedIds.size > 0 && (
+          {/* Bulk De-assign Button — Only shown when at least one SELECTED lead is actually assigned */}
+          {isAdmin && selectedAssignedIds.length > 0 && (
             <button 
               onClick={() => setShowDeassignConfirm(true)}
               disabled={isDeassigning}
               className="flex items-center gap-2 px-4 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition-all shadow-md cursor-pointer disabled:opacity-50"
-              title="De-assign selected leads and return them to the unassigned pool"
+              title="De-assign selected assigned leads and return them to the unassigned pool"
             >
               <UserX size={14} />
-              {isDeassigning ? 'De-assigning...' : `De-assign (${selectedIds.size})`}
+              {isDeassigning ? 'De-assigning...' : `De-assign (${selectedAssignedIds.length})`}
             </button>
           )}
           {/* Bulk Delete Button */}
@@ -2070,7 +2078,7 @@ export default function LeadsPage() {
                 De-assign Selected Leads?
               </h2>
               <p className="text-xs text-slate-500 leading-relaxed">
-                {selectedIds.size} lead{selectedIds.size > 1 ? 's' : ''} will be de-assigned from their current auto advisor and returned to the unassigned lead pool.
+                {selectedAssignedIds.length} assigned lead{selectedAssignedIds.length > 1 ? 's' : ''} will be de-assigned from their auto advisor and returned to the unassigned lead pool.
               </p>
               <div className="flex gap-3 pt-4">
                 <button 
