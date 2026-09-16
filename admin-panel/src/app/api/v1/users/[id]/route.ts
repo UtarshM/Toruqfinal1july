@@ -2,6 +2,7 @@ import { validateAuth } from '@/lib/auth-guard'
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { getFriendlyDocName } from '@/lib/document-utils'
 
 export async function GET(
   req: NextRequest,
@@ -41,11 +42,27 @@ export async function GET(
       where: {
         entityType: 'User',
         entityId: id
+      },
+      orderBy: { createdAt: 'asc' }
+    })
+
+    const enrichedDocs = userDocs.map(doc => {
+      const rawPath = doc.filePath || ''
+      const friendlyName = getFriendlyDocName(doc.fileName)
+      return {
+        ...doc,
+        name: friendlyName,
+        fileName: doc.fileName,
+        filePath: rawPath,
+        fileUrl: rawPath,
+        url: rawPath,
+        downloadUrl: `/api/v1/users/${id}/documents/${doc.id}?download=true`,
+        viewUrl: `/api/v1/users/${id}/documents/${doc.id}`
       }
     })
     
     // Clone to ensure modifications are serialized
-    const userObj = { ...user, documents: userDocs }
+    const userObj = { ...user, documents: enrichedDocs }
 
     return NextResponse.json(userObj)
   } catch (error) {
@@ -128,6 +145,37 @@ export async function PATCH(
       }
     } catch (authErr) {
       console.warn('[users PATCH] Failed to sync user with Supabase Auth:', authErr)
+    }
+
+    // Notify employee of revision or approval
+    if (body.onboardingRemark !== undefined) {
+      try {
+        if (body.onboardingRemark) {
+          await prisma.notification.create({
+            data: {
+              userId: id,
+              title: '⚠️ Profile / KYC Revision Required',
+              body: `Admin requested changes: ${body.onboardingRemark}`,
+              type: 'warning',
+              entityType: 'User',
+              entityId: id
+            }
+          })
+        } else {
+          await prisma.notification.create({
+            data: {
+              userId: id,
+              title: '✅ KYC / Profile Approved',
+              body: 'Your profile and KYC documents have been verified and approved.',
+              type: 'success',
+              entityType: 'User',
+              entityId: id
+            }
+          })
+        }
+      } catch (notifErr) {
+        console.warn('Failed to send user notification on remark change:', notifErr)
+      }
     }
 
     return NextResponse.json(user)

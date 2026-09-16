@@ -8,8 +8,12 @@ import {
   CheckCircle2, Circle, XCircle, X, Search, RefreshCw,
   User, BookOpen, AlertCircle, Clock, Check, UserMinus, ShieldAlert,
   Key, Eye, EyeOff, Phone, Calendar, GraduationCap, Building2,
-  Briefcase, FileText, ChevronRight, Lock, ExternalLink, Copy, Sparkles
+  Briefcase, FileText, ChevronRight, Lock, ExternalLink, Copy, Sparkles,
+  Download, FileDown, FileCheck, Image as ImageIcon,
+  RotateCcw, AlertTriangle, MessageSquare, Send
 } from 'lucide-react'
+import { formatDateDMY } from '@/lib/date-format'
+import { getFriendlyDocName, getGoogleDriveEmbedUrl, getDocTypeInfo, resolveDocUrl } from '@/lib/document-utils'
 
 export default function UsersPage() {
   const { user: currentUser, token, isLoading: authLoading } = useAuth()
@@ -41,6 +45,15 @@ export default function UsersPage() {
   // Profile Modal State
   const [selectedUserProfile, setSelectedUserProfile] = useState<any>(null)
   const [profileLoading, setProfileLoading] = useState(false)
+  const [isCompilingPdf, setIsCompilingPdf] = useState(false)
+  const [previewDoc, setPreviewDoc] = useState<any>(null)
+
+  // Revert / Request Clarification Modal State
+  const [revertUser, setRevertUser] = useState<any>(null)
+  const [revertText, setRevertText] = useState('')
+  const [revertPauseAccess, setRevertPauseAccess] = useState(false)
+  const [revertLoading, setRevertLoading] = useState(false)
+  const [revertError, setRevertError] = useState('')
 
   // Password Modal State
   const [passwordUser, setPasswordUser] = useState<any>(null)
@@ -327,6 +340,171 @@ export default function UsersPage() {
     })
   }
 
+  // Download All KYC Documents as 1 Merged PDF
+  const handleDownloadAllPdf = async (userId: string, userName: string) => {
+    setIsCompilingPdf(true)
+    try {
+      const res = await fetch(`/api/v1/users/${userId}/compile-pdf`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || 'Failed to compile single PDF')
+      }
+      const blob = await res.blob()
+      const blobUrl = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = blobUrl
+      const safeName = (userName || 'Employee').replace(/[^a-zA-Z0-9_-]/g, '_')
+      link.setAttribute('download', `${safeName}_Complete_KYC_Dossier.pdf`)
+      document.body.appendChild(link)
+      link.click()
+      link.parentNode?.removeChild(link)
+      window.URL.revokeObjectURL(blobUrl)
+      setNotification({
+        type: 'success',
+        message: `All KYC documents for ${userName} compiled into a single PDF and downloaded!`
+      })
+    } catch (err: any) {
+      console.error('PDF download error:', err)
+      setNotification({
+        type: 'error',
+        message: err.message || 'Failed to download compiled PDF'
+      })
+    } finally {
+      setIsCompilingPdf(false)
+    }
+  }
+
+  // Download Individual Document
+  const handleDownloadSingleDoc = (userId: string, userName: string, doc: any) => {
+    if (doc.id) {
+      const downloadUrl = `/api/v1/users/${userId}/documents/${doc.id}?download=true`
+      window.open(downloadUrl, '_blank')
+      return
+    }
+    const rawUrl = resolveDocUrl(doc)
+    if (rawUrl) window.open(rawUrl, '_blank')
+  }
+
+  // Open Document in Preview Modal
+  const handleOpenDoc = (doc: any) => {
+    setPreviewDoc(doc)
+  }
+
+  // Open Revert Modal
+  const handleOpenRevertModal = (u: any) => {
+    setRevertUser(u)
+    setRevertText(u.onboardingRemark || '')
+    setRevertPauseAccess(u.isActive === false)
+    setRevertError('')
+  }
+
+  // Submit Revert Request
+  const handleSubmitRevert = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!revertUser) return
+    if (!revertText.trim()) {
+      setRevertError('Please enter the reason or documents required for reversion.')
+      return
+    }
+
+    setRevertLoading(true)
+    setRevertError('')
+    try {
+      const res = await apiFetch(`/api/v1/users/${revertUser.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          onboardingRemark: revertText.trim(),
+          ...(revertPauseAccess ? { isActive: false } : {})
+        })
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to submit revert request')
+
+      // Update local states
+      if (selectedUserProfile?.id === revertUser.id) {
+        setSelectedUserProfile((prev: any) => ({
+          ...prev,
+          onboardingRemark: revertText.trim(),
+          ...(revertPauseAccess ? { isActive: false } : {})
+        }))
+      }
+      setUsers((prev) =>
+        prev.map((u) =>
+          u.id === revertUser.id
+            ? { ...u, onboardingRemark: revertText.trim(), ...(revertPauseAccess ? { isActive: false } : {}) }
+            : u
+        )
+      )
+
+      setNotification({
+        type: 'success',
+        message: `Profile for ${revertUser.fullName} has been reverted with requested changes.`
+      })
+      setRevertUser(null)
+    } catch (err: any) {
+      setRevertError(err.message || 'Failed to revert profile.')
+    } finally {
+      setRevertLoading(false)
+    }
+  }
+
+  // Clear Revert / Approve
+  const handleClearRevert = async (u: any) => {
+    try {
+      const res = await apiFetch(`/api/v1/users/${u.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          onboardingRemark: null,
+          isActive: true
+        })
+      })
+      if (!res.ok) throw new Error('Failed to approve profile')
+
+      if (selectedUserProfile?.id === u.id) {
+        setSelectedUserProfile((prev: any) => ({
+          ...prev,
+          onboardingRemark: null,
+          isActive: true
+        }))
+      }
+      setUsers((prev) =>
+        prev.map((usr) => (usr.id === u.id ? { ...usr, onboardingRemark: null, isActive: true } : usr))
+      )
+      setNotification({
+        type: 'success',
+        message: `Reversion cleared. ${u.fullName} is now active and approved!`
+      })
+    } catch (err: any) {
+      setNotification({ type: 'error', message: err.message || 'Failed to approve profile' })
+    }
+  }
+
+  // Copy WhatsApp Revert Message
+  const handleCopyRevertWhatsApp = (u: any, text: string) => {
+    const portalUrl = typeof window !== 'undefined' ? `${window.location.origin}/onboarding/form` : 'https://app.torqueadvisors.com/onboarding/form'
+    const msg = `⚠️ Torque Auto Advisors - Document / Profile Reversion\n━━━━━━━━━━━━━━━━━━━━━━━━━\nHello ${u.fullName},\n\nYour profile and KYC submission have been reviewed by our Administration team.\n\n📌 Action Required:\n👉 ${text}\n\n🔗 Please update and re-upload here:\n${portalUrl}\n━━━━━━━━━━━━━━━━━━━━━━━━━\nThank you.`
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      navigator.clipboard.writeText(msg)
+    }
+    setNotification({
+      type: 'success',
+      message: 'Reversion notice copied to clipboard! You can send it directly via WhatsApp/Email.'
+    })
+  }
+
+  // Send WhatsApp Revert Message
+  const handleSendRevertWhatsApp = (u: any, text: string) => {
+    const portalUrl = typeof window !== 'undefined' ? `${window.location.origin}/onboarding/form` : 'https://app.torqueadvisors.com/onboarding/form'
+    const msg = `⚠️ Torque Auto Advisors - Document / Profile Reversion\n━━━━━━━━━━━━━━━━━━━━━━━━━\nHello ${u.fullName},\n\nYour profile and KYC submission have been reviewed by our Administration team.\n\n📌 Action Required:\n👉 ${text}\n\n🔗 Please update and re-upload here:\n${portalUrl}\n━━━━━━━━━━━━━━━━━━━━━━━━━\nThank you.`
+    const phone = (u.personalMobile || '').replace(/\D/g, '')
+    const url = phone ? `https://wa.me/${phone}?text=${encodeURIComponent(msg)}` : `https://wa.me/?text=${encodeURIComponent(msg)}`
+    window.open(url, '_blank')
+  }
+
   // Submit Password Change
   const handleSavePassword = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -590,15 +768,26 @@ export default function UsersPage() {
                         </span>
                       </td>
                       <td className="px-4 py-4">
-                        {u.isActive ? (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-50 text-emerald-700 rounded-lg text-[11px] font-bold border border-emerald-200">
-                            <CheckCircle2 size={12} /> Active
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-rose-50 text-rose-700 rounded-lg text-[11px] font-bold border border-rose-200">
-                            <Clock size={12} /> Inactive / Pending
-                          </span>
-                        )}
+                        <div className="flex flex-col gap-1 items-start">
+                          {u.isActive ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-50 text-emerald-700 rounded-lg text-[11px] font-bold border border-emerald-200">
+                              <CheckCircle2 size={12} /> Active
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-rose-50 text-rose-700 rounded-lg text-[11px] font-bold border border-rose-200">
+                              <Clock size={12} /> Inactive / Pending
+                            </span>
+                          )}
+                          {u.onboardingRemark && (
+                            <span
+                              className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-50 text-amber-800 rounded-md text-[10px] font-black border border-amber-300 tracking-wider cursor-pointer hover:bg-amber-100 transition-colors"
+                              title={`Admin Reversion Note: ${u.onboardingRemark}`}
+                              onClick={() => handleOpenProfile(u)}
+                            >
+                              <AlertTriangle size={10} /> REVERTED
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex items-center justify-end gap-1.5">
@@ -615,6 +804,16 @@ export default function UsersPage() {
                           >
                             <User size={15}/>
                           </button>
+                          {isAdmin && (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenRevertModal(u)}
+                              className="p-1.5 text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all cursor-pointer"
+                              title="Revert Profile / Ask Documents"
+                            >
+                              <RotateCcw size={15}/>
+                            </button>
+                          )}
                           {isAdmin && (
                             <button
                               type="button"
@@ -728,6 +927,47 @@ export default function UsersPage() {
                     </div>
                   </div>
 
+                  {/* Reversion / Revision Active Alert Banner */}
+                  {selectedUserProfile.onboardingRemark && (
+                    <div className="p-4 bg-amber-50/95 border border-amber-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs animate-in fade-in">
+                      <div className="flex items-start gap-3 min-w-0">
+                        <div className="p-2 bg-amber-100 text-amber-700 rounded-xl shrink-0 mt-0.5">
+                          <AlertTriangle size={18} />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-[10px] font-black uppercase tracking-wider text-amber-800 bg-amber-200/80 px-2 py-0.5 rounded-md border border-amber-300">
+                              Profile Reverted / Action Required
+                            </span>
+                            <span className="text-xs text-amber-600 font-semibold">
+                              Employee has been asked to update details
+                            </span>
+                          </div>
+                          <p className="text-sm font-bold text-amber-950 mt-1.5">
+                            &quot;{selectedUserProfile.onboardingRemark}&quot;
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenRevertModal(selectedUserProfile)}
+                          className="px-3 py-1.5 bg-white hover:bg-amber-100 text-amber-900 border border-amber-300 font-bold text-xs rounded-xl shadow-xs transition-all cursor-pointer"
+                        >
+                          Edit Request
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleClearRevert(selectedUserProfile)}
+                          className="flex items-center gap-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs transition-all cursor-pointer"
+                        >
+                          <Check size={13} /> Approve & Clear
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Personal & Contact Details */}
                   <div className="space-y-3">
                     <h3 className="font-bold text-gray-900 flex items-center gap-2">
@@ -746,7 +986,7 @@ export default function UsersPage() {
                       <div>
                         <span className="text-[10px] text-gray-400 uppercase font-bold block">Date of Birth</span>
                         <p className="font-semibold text-gray-800 mt-0.5">
-                          {selectedUserProfile.dateOfBirth ? new Date(selectedUserProfile.dateOfBirth).toLocaleDateString() : 'Not provided'}
+                          {selectedUserProfile.dateOfBirth ? formatDateDMY(selectedUserProfile.dateOfBirth) : 'Not provided'}
                         </p>
                       </div>
                       <div>
@@ -766,7 +1006,7 @@ export default function UsersPage() {
                       <div>
                         <span className="text-[10px] text-gray-400 uppercase font-bold block">Date of Joining</span>
                         <p className="font-semibold text-gray-800 mt-0.5">
-                          {selectedUserProfile.joiningDate ? new Date(selectedUserProfile.joiningDate).toLocaleDateString() : 'Not recorded'}
+                          {selectedUserProfile.joiningDate ? formatDateDMY(selectedUserProfile.joiningDate) : 'Not recorded'}
                         </p>
                       </div>
                       <div>
@@ -786,33 +1026,98 @@ export default function UsersPage() {
 
                   {/* Documents Attached */}
                   <div className="space-y-3">
-                    <h3 className="font-bold text-gray-900 flex items-center gap-2">
-                      <FileText size={14} className="text-blue-600" />
-                      KYC & Attached Documents ({selectedUserProfile.documents?.length || 0})
-                    </h3>
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-1 border-b border-gray-100">
+                      <h3 className="font-bold text-gray-900 flex items-center gap-2">
+                        <FileText size={16} className="text-blue-600" />
+                        KYC & Attached Documents ({selectedUserProfile.documents?.length || 0})
+                      </h3>
+                      {selectedUserProfile.documents && selectedUserProfile.documents.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => handleDownloadAllPdf(selectedUserProfile.id, selectedUserProfile.fullName)}
+                          disabled={isCompilingPdf}
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl text-xs font-bold shadow-xs hover:shadow transition-all disabled:opacity-50 cursor-pointer self-start sm:self-auto"
+                          title="Compile all documents into a single consolidated PDF dossier"
+                        >
+                          {isCompilingPdf ? (
+                            <>
+                              <RefreshCw size={13} className="animate-spin" /> Compiling 1 PDF...
+                            </>
+                          ) : (
+                            <>
+                              <FileDown size={13} /> Download All as 1 Merged PDF
+                            </>
+                          )}
+                        </button>
+                      )}
+                    </div>
+
                     {selectedUserProfile.documents && selectedUserProfile.documents.length > 0 ? (
-                      <div className="space-y-2">
-                        {selectedUserProfile.documents.map((doc: any) => (
-                          <div key={doc.id} className="flex items-center justify-between p-3 bg-gray-50 border border-gray-100 rounded-xl">
-                            <div className="flex items-center gap-2">
-                              <FileText size={14} className="text-gray-400" />
-                              <span className="font-semibold text-gray-800">{doc.name || doc.type || 'Document'}</span>
+                      <div className="grid grid-cols-1 gap-2.5">
+                        {selectedUserProfile.documents.map((doc: any, docIdx: number) => {
+                          const friendlyName = doc.name || getFriendlyDocName(doc.fileName)
+                          const rawUrl = resolveDocUrl(doc)
+                          const typeInfo = getDocTypeInfo(doc.fileName, rawUrl)
+
+                          return (
+                            <div
+                              key={doc.id || docIdx}
+                              className="flex items-center justify-between p-3.5 bg-white hover:bg-slate-50 border border-gray-200/80 hover:border-blue-200 rounded-2xl shadow-xs transition-all"
+                            >
+                              <div className="flex items-center gap-3 min-w-0">
+                                <div className={`w-10 h-10 rounded-xl ${typeInfo.bg} ${typeInfo.border} border flex items-center justify-center shrink-0`}>
+                                  {typeInfo.type === 'image' ? (
+                                    <ImageIcon size={18} className={typeInfo.color} />
+                                  ) : (
+                                    <FileText size={18} className={typeInfo.color} />
+                                  )}
+                                </div>
+                                <div className="min-w-0">
+                                  <h4 className="font-bold text-xs sm:text-sm text-gray-900 truncate">
+                                    {friendlyName}
+                                  </h4>
+                                  <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                                    <span className="text-[10px] font-black uppercase px-1.5 py-0.5 bg-slate-100 text-slate-700 border border-slate-200 rounded-md tracking-wider">
+                                      {doc.fileName || 'DOCUMENT'}
+                                    </span>
+                                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md ${typeInfo.bg} ${typeInfo.color}`}>
+                                      {typeInfo.label}
+                                    </span>
+                                    {doc.createdAt && (
+                                      <span className="text-[11px] text-gray-400 font-medium">
+                                        Uploaded: {formatDateDMY(doc.createdAt)}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-2 shrink-0 ml-3">
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenDoc(doc)}
+                                  className="flex items-center gap-1 px-3 py-1.5 bg-slate-50 hover:bg-blue-50 border border-slate-200 hover:border-blue-300 text-slate-700 hover:text-blue-700 font-bold text-xs rounded-xl transition-all cursor-pointer shadow-xs"
+                                  title="View document"
+                                >
+                                  <Eye size={13} /> View / Open
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDownloadSingleDoc(selectedUserProfile.id, selectedUserProfile.fullName, doc)}
+                                  className="flex items-center gap-1 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-700 font-bold text-xs rounded-xl transition-all cursor-pointer shadow-xs"
+                                  title="Download individual document"
+                                >
+                                  <Download size={13} /> Download
+                                </button>
+                              </div>
                             </div>
-                            {doc.fileUrl && (
-                              <a
-                                href={doc.fileUrl}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="text-blue-600 font-bold flex items-center gap-1 hover:underline"
-                              >
-                                View File <ExternalLink size={11} />
-                              </a>
-                            )}
-                          </div>
-                        ))}
+                          )
+                        })}
                       </div>
                     ) : (
-                      <p className="text-gray-400 italic">No KYC documents uploaded for this profile yet.</p>
+                      <p className="text-gray-400 italic text-xs py-4 text-center bg-gray-50 rounded-xl">
+                        No KYC documents uploaded for this profile yet.
+                      </p>
                     )}
                   </div>
                 </>
@@ -832,6 +1137,16 @@ export default function UsersPage() {
                     className="flex items-center gap-1.5 px-3.5 py-2 bg-amber-50 border border-amber-200 text-amber-800 hover:bg-amber-100 rounded-xl font-bold text-xs transition-all cursor-pointer shadow-xs"
                   >
                     <Key size={14} /> Change Password
+                  </button>
+                )}
+                {isAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => handleOpenRevertModal(selectedUserProfile)}
+                    className="flex items-center gap-1.5 px-3.5 py-2 bg-rose-50 border border-rose-200 text-rose-800 hover:bg-rose-100 rounded-xl font-bold text-xs transition-all cursor-pointer shadow-xs"
+                    title="Revert profile and request missing documents or clarifications"
+                  >
+                    <RotateCcw size={14} /> Revert / Ask Documents
                   </button>
                 )}
                 <button
@@ -862,6 +1177,121 @@ export default function UsersPage() {
               >
                 Close
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── KYC Document In-App Preview Modal ── */}
+      {previewDoc && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col h-[85vh] animate-in zoom-in-95 duration-200">
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-950">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="p-2 bg-blue-500/10 text-blue-400 rounded-xl">
+                  <FileText size={20} />
+                </div>
+                <div className="min-w-0">
+                  <h3 className="font-bold text-sm text-slate-100 truncate">
+                    {previewDoc.name || getFriendlyDocName(previewDoc.fileName)}
+                  </h3>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <span className="text-[10px] font-black uppercase px-1.5 py-0.5 bg-slate-800 text-slate-300 rounded border border-slate-700">
+                      {previewDoc.fileName || 'DOCUMENT'}
+                    </span>
+                    {selectedUserProfile?.fullName && (
+                      <span className="text-[11px] text-slate-400 truncate">
+                        Employee: {selectedUserProfile.fullName}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (selectedUserProfile) {
+                      handleDownloadSingleDoc(selectedUserProfile.id, selectedUserProfile.fullName, previewDoc)
+                    }
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs rounded-xl border border-slate-700 transition-all cursor-pointer"
+                  title="Download File"
+                >
+                  <Download size={13} /> Download
+                </button>
+                {resolveDocUrl(previewDoc) && (
+                  <a
+                    href={resolveDocUrl(previewDoc)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-xl transition-all shadow-xs"
+                    title="Open in new window"
+                  >
+                    <ExternalLink size={13} /> Open in New Tab
+                  </a>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setPreviewDoc(null)}
+                  className="p-1.5 hover:bg-slate-800 rounded-xl text-slate-400 hover:text-white transition-all cursor-pointer ml-1"
+                  title="Close preview"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+            </div>
+
+            {/* Viewer Body */}
+            <div className="flex-1 bg-slate-950 flex items-center justify-center p-4 overflow-hidden relative">
+              {(() => {
+                const rawUrl = resolveDocUrl(previewDoc)
+                const embedUrl = getGoogleDriveEmbedUrl(rawUrl)
+                const typeInfo = getDocTypeInfo(previewDoc.fileName, rawUrl)
+
+                if (embedUrl) {
+                  return (
+                    <iframe
+                      src={embedUrl}
+                      className="w-full h-full border-none rounded-xl bg-white"
+                      title="Google Drive Document Preview"
+                      allow="autoplay"
+                    />
+                  )
+                }
+
+                if (typeInfo.type === 'image' && rawUrl) {
+                  return (
+                    <div className="w-full h-full flex items-center justify-center overflow-auto p-4">
+                      <img
+                        src={rawUrl}
+                        alt={previewDoc.fileName || 'Preview'}
+                        className="max-w-full max-h-full object-contain rounded-xl shadow-lg border border-slate-800"
+                      />
+                    </div>
+                  )
+                }
+
+                if (rawUrl) {
+                  return (
+                    <iframe
+                      src={rawUrl}
+                      className="w-full h-full border-none rounded-xl bg-white"
+                      title="Document Preview"
+                    />
+                  )
+                }
+
+                return (
+                  <div className="text-center p-8 text-slate-400">
+                    <FileText size={40} className="mx-auto text-slate-600 mb-2" />
+                    <p className="font-bold text-sm text-slate-300">Preview not available directly</p>
+                    <p className="text-xs text-slate-500 mt-1">Please use the Download button or Open in New Tab.</p>
+                  </div>
+                )
+              })()}
             </div>
           </div>
         </div>
@@ -969,6 +1399,151 @@ export default function UsersPage() {
                   {passwordLoading ? <RefreshCw size={14} className="animate-spin" /> : <Lock size={14} />}
                   {passwordLoading ? 'Updating...' : 'Update Password'}
                 </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Revert / Request Changes Modal ── */}
+      {revertUser && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg p-6 space-y-5 animate-in zoom-in-95 duration-150">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-gray-100 pb-3.5">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-rose-50 text-rose-600 rounded-xl">
+                  <RotateCcw size={20} />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-gray-900">Revert Profile & Request Documents</h3>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Target: <span className="font-bold text-gray-700">{revertUser.fullName}</span> ({revertUser.email})
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setRevertUser(null)}
+                className="p-1.5 hover:bg-gray-100 rounded-xl text-gray-400 hover:text-gray-600 transition-all cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {revertError && (
+              <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold rounded-xl flex items-center gap-2">
+                <AlertCircle size={14} className="shrink-0" />
+                <span>{revertError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSubmitRevert} className="space-y-4">
+              {/* Quick Preset Chips */}
+              <div>
+                <label className="text-[11px] font-black text-gray-400 uppercase tracking-wider block mb-1.5">
+                  Quick Document Requirements (Click to Add):
+                </label>
+                <div className="flex flex-wrap gap-1.5">
+                  {[
+                    'Clear Aadhaar Card (Front & Back)',
+                    'Valid PAN Card photo',
+                    'Bank Passbook / Cancelled Cheque',
+                    'Degree / Qualification Marksheet',
+                    'School / College Leaving Certificate',
+                    'Passport size photograph',
+                    'Updated residential address proof'
+                  ].map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => {
+                        setRevertText((prev) => {
+                          const trimmed = prev.trim()
+                          if (!trimmed) return preset
+                          if (trimmed.includes(preset)) return trimmed
+                          return `${trimmed}, ${preset}`
+                        })
+                      }}
+                      className="px-2.5 py-1 bg-slate-100 hover:bg-rose-50 hover:text-rose-700 text-slate-700 rounded-lg text-[11px] font-bold border border-slate-200 transition-all cursor-pointer"
+                    >
+                      + {preset}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Requirement Remarks Textarea */}
+              <div>
+                <label className="text-[11px] font-black text-gray-700 uppercase tracking-wider block mb-1">
+                  Specify Required Documents & Clarifications:
+                </label>
+                <textarea
+                  required
+                  rows={4}
+                  value={revertText}
+                  onChange={(e) => setRevertText(e.target.value)}
+                  placeholder="e.g. Your Aadhaar card scan is blurry. Please re-upload clear front and back photos of your Aadhaar card and your highest degree marksheet..."
+                  className="w-full px-3.5 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-semibold text-gray-900 focus:bg-white focus:border-rose-500 outline-none transition-all resize-none shadow-xs"
+                />
+                <p className="text-[11px] text-gray-400 mt-1">
+                  This note will be shown to the employee upon login at <span className="font-semibold text-gray-600">/onboarding/form</span> and sent to their notification center.
+                </p>
+              </div>
+
+              {/* Pause Portal Access Checkbox */}
+              <label className="flex items-center gap-2 p-3 bg-amber-50/70 border border-amber-200 rounded-xl cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={revertPauseAccess}
+                  onChange={(e) => setRevertPauseAccess(e.target.checked)}
+                  className="w-4 h-4 rounded text-rose-600 focus:ring-rose-500 border-gray-300"
+                />
+                <span className="text-xs font-bold text-amber-900">
+                  Temporarily pause active system access until employee submits requested items
+                </span>
+              </label>
+
+              {/* Modal Actions */}
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 pt-2 border-t border-gray-100">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleCopyRevertWhatsApp(revertUser, revertText)}
+                    disabled={!revertText.trim()}
+                    className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-2 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 rounded-xl text-xs font-bold transition-all disabled:opacity-50 cursor-pointer shadow-xs"
+                    title="Copy formatted WhatsApp message"
+                  >
+                    <Copy size={13} /> Copy WhatsApp
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSendRevertWhatsApp(revertUser, revertText)}
+                    disabled={!revertText.trim()}
+                    className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded-xl text-xs font-bold transition-all disabled:opacity-50 cursor-pointer shadow-xs"
+                    title="Send directly via WhatsApp"
+                  >
+                    <Send size={13} /> WhatsApp
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setRevertUser(null)}
+                    className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={revertLoading || !revertText.trim()}
+                    className="flex items-center justify-center gap-1.5 px-5 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-all disabled:opacity-50 shadow-sm cursor-pointer"
+                  >
+                    {revertLoading ? <RefreshCw size={13} className="animate-spin" /> : <RotateCcw size={13} />}
+                    Submit Revert
+                  </button>
+                </div>
               </div>
             </form>
           </div>
