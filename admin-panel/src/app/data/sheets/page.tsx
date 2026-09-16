@@ -107,6 +107,7 @@ export default function ImportedSheetsPage() {
   // Monthly Assignment States
   const [expiryMonthFilter, setExpiryMonthFilter] = useState<number>(0) // 0 = All, 1-12 = month
   const [expiryYearFilter, setExpiryYearFilter] = useState<number>(new Date().getFullYear())
+  const [expiryDateTypeFilter, setExpiryDateTypeFilter] = useState<'all' | 'insurance' | 'fitness' | 'permit'>('all')
   const [maxLeadsPerExec, setMaxLeadsPerExec] = useState<number | 'all'>('all') // Master admin decides quota per assignment (default 'all')
   const [previewCityFilter, setPreviewCityFilter] = useState<string>('morbi') // Morbi branch only
   const [showAssignPanel, setShowAssignPanel] = useState(false)
@@ -565,43 +566,80 @@ export default function ImportedSheetsPage() {
     if (!previewData?.rows) return []
     let rows = previewData.rows
 
-    // Filter by expiry month and year if selected
+    // Filter by expiry month and year if selected (Insurance / Fitness / Permit / All)
     if (previewData.headers && (expiryMonthFilter > 0 || (expiryYearFilter && expiryYearFilter > 0))) {
-      const expiryColIdx = previewData.headers.findIndex(h => {
+      let targetColIndices: number[] = []
+      previewData.headers.forEach((h, idx) => {
         const hLower = h.toLowerCase().replace(/[^a-z0-9]/g, '')
-        return hLower.includes('expiry') || hLower.includes('validity') || hLower.includes('duedate') || hLower.includes('policyend')
+        if (expiryDateTypeFilter === 'insurance') {
+          if (hLower.includes('insurance') || hLower.includes('policy') || (hLower.includes('expiry') && !hLower.includes('fitness') && !hLower.includes('permit'))) {
+            targetColIndices.push(idx)
+          }
+        } else if (expiryDateTypeFilter === 'fitness') {
+          if (hLower.includes('fitness') || hLower.includes('fitvalid') || hLower.includes('fitexp')) {
+            targetColIndices.push(idx)
+          }
+        } else if (expiryDateTypeFilter === 'permit') {
+          if (hLower.includes('permit') || hLower.includes('prmtexp') || hLower.includes('prmtvalid')) {
+            targetColIndices.push(idx)
+          }
+        } else {
+          // 'all' / auto-detect: any expiry, validity, due date, fitness, permit, policy end
+          if (hLower.includes('expiry') || hLower.includes('validity') || hLower.includes('duedate') || hLower.includes('policyend') || hLower.includes('fitness') || hLower.includes('permit')) {
+            targetColIndices.push(idx)
+          }
+        }
       })
-      if (expiryColIdx !== -1) {
+
+      // If specific column not found, fallback to any expiry/validity column
+      if (targetColIndices.length === 0) {
+        const fallbackIdx = previewData.headers.findIndex(h => {
+          const hLower = h.toLowerCase().replace(/[^a-z0-9]/g, '')
+          return hLower.includes('expiry') || hLower.includes('validity') || hLower.includes('duedate') || hLower.includes('policyend')
+        })
+        if (fallbackIdx !== -1) targetColIndices.push(fallbackIdx)
+      }
+
+      if (targetColIndices.length > 0) {
         rows = rows.filter(row => {
-          const cellVal = String(row[expiryColIdx] || '').trim()
-          if (!cellVal || cellVal === '—' || cellVal === 'NA' || cellVal.toLowerCase() === 'null') return false
-          
-          let d: Date | null = null
-          // Try DD/MM/YYYY or DD-MM-YYYY or D/M/YYYY
-          const dmyMatch = cellVal.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2,4})/)
-          if (dmyMatch) {
-            let yr = parseInt(dmyMatch[3], 10)
-            if (yr < 100) yr += yr < 50 ? 2000 : 1900
-            const m = parseInt(dmyMatch[2], 10) - 1
-            const day = parseInt(dmyMatch[1], 10)
-            d = new Date(yr, m, day)
-          }
-          if (!d || isNaN(d.getTime())) {
-            // Try YYYY-MM-DD
-            const ymdMatch = cellVal.match(/^(\d{4})[/\-.](\d{1,2})[/\-.](\d{1,2})/)
-            if (ymdMatch) {
-              d = new Date(parseInt(ymdMatch[1], 10), parseInt(ymdMatch[2], 10) - 1, parseInt(ymdMatch[3], 10))
+          return targetColIndices.some(colIdx => {
+            const cellVal = String(row[colIdx] || '').trim()
+            if (!cellVal || cellVal === '—' || cellVal === 'NA' || cellVal.toLowerCase() === 'null') return false
+            
+            let d: Date | null = null
+            // Try DD/MM/YYYY or DD-MM-YYYY or D/M/YYYY
+            const dmyMatch = cellVal.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2,4})/)
+            if (dmyMatch) {
+              let yr = parseInt(dmyMatch[3], 10)
+              if (yr < 100) yr += yr < 50 ? 2000 : 1900
+              const m = parseInt(dmyMatch[2], 10) - 1
+              const day = parseInt(dmyMatch[1], 10)
+              d = new Date(yr, m, day)
             }
-          }
-          if (!d || isNaN(d.getTime())) {
-            d = new Date(cellVal)
-          }
-          if (!d || isNaN(d.getTime())) return false
+            if (!d || isNaN(d.getTime())) {
+              // Try YYYY-MM-DD
+              const ymdMatch = cellVal.match(/^(\d{4})[/\-.](\d{1,2})[/\-.](\d{1,2})/)
+              if (ymdMatch) {
+                d = new Date(parseInt(ymdMatch[1], 10), parseInt(ymdMatch[2], 10) - 1, parseInt(ymdMatch[3], 10))
+              }
+            }
+            // Excel serial number
+            if ((!d || isNaN(d.getTime())) && /^\d{5}(\.\d+)?$/.test(cellVal)) {
+              const num = parseFloat(cellVal)
+              if (num > 10000 && num < 80000) {
+                d = new Date(Math.round((num - 25569) * 86400 * 1000))
+              }
+            }
+            if (!d || isNaN(d.getTime())) {
+              d = new Date(cellVal)
+            }
+            if (!d || isNaN(d.getTime())) return false
 
-          const matchYear = expiryYearFilter > 0 ? d.getFullYear() === expiryYearFilter : true
-          const matchMonth = expiryMonthFilter > 0 ? (d.getMonth() + 1) === expiryMonthFilter : true
+            const matchYear = expiryYearFilter > 0 ? d.getFullYear() === expiryYearFilter : true
+            const matchMonth = expiryMonthFilter > 0 ? (d.getMonth() + 1) === expiryMonthFilter : true
 
-          return matchYear && matchMonth
+            return matchYear && matchMonth
+          })
         })
       }
     }
@@ -672,7 +710,7 @@ export default function ImportedSheetsPage() {
     }
 
     return rows
-  }, [previewData, previewSearch, previewAgentFilter, previewSortCol, previewSortOrder, expiryMonthFilter, expiryYearFilter, previewCityFilter])
+  }, [previewData, previewSearch, previewAgentFilter, previewSortCol, previewSortOrder, expiryMonthFilter, expiryYearFilter, expiryDateTypeFilter, previewCityFilter])
 
   // Pagination for preview modal
   const totalFilteredRows = filteredPreviewRows.length
@@ -1557,6 +1595,17 @@ export default function ImportedSheetsPage() {
                   </div>
                   <div className="flex items-center gap-2">
                     <select
+                      value={expiryDateTypeFilter}
+                      onChange={e => setExpiryDateTypeFilter(e.target.value as any)}
+                      className="bg-white border border-blue-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                      title="Choose which expiry date column to filter"
+                    >
+                      <option value="all">All Dates (Insurance / Fitness / Permit)</option>
+                      <option value="insurance">Insurance Expiry</option>
+                      <option value="fitness">Fitness Expiry</option>
+                      <option value="permit">Permit Expiry</option>
+                    </select>
+                    <select
                       value={expiryMonthFilter}
                       onChange={e => handleExpiryMonthChange(Number(e.target.value))}
                       className="bg-white border border-blue-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
@@ -1632,7 +1681,10 @@ export default function ImportedSheetsPage() {
                             <td className="px-4 py-3 text-slate-400 font-mono text-[10px] text-center">{globalRowNumber}</td>
                             {previewData.headers.map((header, cIdx) => {
                               const rawVal = row[cIdx] !== undefined && row[cIdx] !== null ? String(row[cIdx]) : ''
-                              const isDateCol = /date|expiry|exp|due|dob|reg_date/i.test(header) || /^\d{4}-\d{2}-\d{2}/.test(rawVal)
+                              const isDateCol = /date|expiry|exp|due|dob|reg_date|validity|permit|fitness|insurance|puc|pucc|passing|tax/i.test(header) ||
+                                /^\d{4}[/-]\d{1,2}[/-]\d{1,2}/.test(rawVal) ||
+                                /^\d{1,2}[/-]\d{1,2}[/-]\d{2,4}/.test(rawVal) ||
+                                (/^\d{5}(\.\d+)?$/.test(rawVal) && parseFloat(rawVal) > 30000 && parseFloat(rawVal) < 70000)
                               const val = isDateCol ? formatDateDMY(rawVal, rawVal) : rawVal
 
                               return (
@@ -2242,7 +2294,10 @@ export default function ImportedSheetsPage() {
                                   {previewData.headers.map((header, cIdx) => {
                                     const rawVal = row[cIdx] !== undefined && row[cIdx] !== null ? String(row[cIdx]) : ''
                                     const isAgentCell = cIdx === previewData.agentColIdx && rawVal.toLowerCase().trim() === 'agent'
-                                    const isDateCol = !isAgentCell && (/date|expiry|exp|due|dob|reg_date/i.test(header) || /^\d{4}-\d{2}-\d{2}/.test(rawVal))
+                                    const isDateCol = !isAgentCell && (/date|expiry|exp|due|dob|reg_date|validity|permit|fitness|insurance|puc|pucc|passing|tax/i.test(header) ||
+                                      /^\d{4}[/-]\d{1,2}[/-]\d{1,2}/.test(rawVal) ||
+                                      /^\d{1,2}[/-]\d{1,2}[/-]\d{2,4}/.test(rawVal) ||
+                                      (/^\d{5}(\.\d+)?$/.test(rawVal) && parseFloat(rawVal) > 30000 && parseFloat(rawVal) < 70000))
                                     const val = isDateCol ? formatDateDMY(rawVal, rawVal) : rawVal
 
                                     return (

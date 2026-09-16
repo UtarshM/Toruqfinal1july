@@ -22,8 +22,17 @@ export async function GET(
       where: { id },
       include: {
         role: { include: { permissions: true } },
+        manager: { select: { id: true, fullName: true, email: true } },
         permissions: true,
-        documents: true
+        documents: true,
+        _count: {
+          select: {
+            assignedLeads: true,
+            createdQuotes: true,
+            claims: true,
+            renewalAssignments: true
+          }
+        }
       }
     })
     if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 })
@@ -75,6 +84,10 @@ export async function PATCH(
         ...(body.fullName !== undefined && { fullName: body.fullName }),
         ...(body.email !== undefined && { email: body.email }),
         ...(body.personalMobile !== undefined && { personalMobile: body.personalMobile }),
+        ...(body.homeMobile !== undefined && { homeMobile: body.homeMobile }),
+        ...(body.highestQualification !== undefined && { highestQualification: body.highestQualification }),
+        ...(body.dateOfBirth !== undefined && { dateOfBirth: body.dateOfBirth ? new Date(body.dateOfBirth) : null }),
+        ...(body.joiningDate !== undefined && { joiningDate: body.joiningDate ? new Date(body.joiningDate) : null }),
         ...(roleId !== undefined && { roleId: roleId || null }),
         ...(managerId !== undefined && { managerId: managerId || null }),
         ...(isActive !== undefined && { isActive }),
@@ -89,15 +102,16 @@ export async function PATCH(
       },
       include: {
         role: { select: { id: true, name: true } },
-        manager: { select: { id: true, fullName: true } },
+        manager: { select: { id: true, fullName: true, email: true } },
         permissions: { select: { id: true, name: true } }
       }
     })
 
-    // Sync updated user metadata, role, and active status to Supabase Auth
+    // Sync updated user metadata, role, password, and active status to Supabase Auth
     try {
       const authUpdates: any = {}
       if (body.email) authUpdates.email = body.email
+      if (body.password) authUpdates.password = body.password
       const metadataUpdates: any = {}
       if (user.role?.name) metadataUpdates.role = user.role.name
       if (user.fullName) metadataUpdates.full_name = user.fullName

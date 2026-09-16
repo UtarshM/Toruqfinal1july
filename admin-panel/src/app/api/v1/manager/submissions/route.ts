@@ -8,7 +8,6 @@ function formatToDateMonthYear(dateVal: any): string {
   const str = String(dateVal).trim()
   if (!str || str === 'N/A' || str === 'NA') return ''
 
-  // Pure DD/MM/YYYY or DD-MM-YYYY
   const dmyMatch = str.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/)
   if (dmyMatch) {
     const dd = dmyMatch[1].padStart(2, '0')
@@ -17,30 +16,20 @@ function formatToDateMonthYear(dateVal: any): string {
     return `${dd}/${mm}/${yyyy}`
   }
 
-  // Pure YYYY-MM-DD
-  const pureYmdMatch = str.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})$/)
-  if (pureYmdMatch) {
-    const yyyy = pureYmdMatch[1]
-    const mm = pureYmdMatch[2].padStart(2, '0')
-    const dd = pureYmdMatch[3].padStart(2, '0')
+  const ymdMatch = str.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})/)
+  if (ymdMatch) {
+    const yyyy = ymdMatch[1]
+    const mm = ymdMatch[2].padStart(2, '0')
+    const dd = ymdMatch[3].padStart(2, '0')
     return `${dd}/${mm}/${yyyy}`
   }
 
-  // Parse as Date with IST (Asia/Kolkata) timezone
-  const d = new Date(dateVal)
-  if (!isNaN(d.getTime())) {
-    let ms = d.getTime()
-    const utcHours = d.getUTCHours()
-    const utcMinutes = d.getUTCMinutes()
-    if (utcHours === 18 && utcMinutes >= 28 && utcMinutes <= 30) {
-      ms += (30 - utcMinutes) * 60 * 1000 + 1000
-    }
-    return new Intl.DateTimeFormat('en-IN', {
-      timeZone: 'Asia/Kolkata',
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric'
-    }).format(new Date(ms))
+  const parsed = new Date(str)
+  if (!isNaN(parsed.getTime())) {
+    const dd = String(parsed.getDate()).padStart(2, '0')
+    const mm = String(parsed.getMonth() + 1).padStart(2, '0')
+    const yyyy = parsed.getFullYear()
+    return `${dd}/${mm}/${yyyy}`
   }
 
   return str
@@ -190,7 +179,7 @@ export async function GET(req: NextRequest) {
       if (cf.policySubmission) {
         const sub = cf.policySubmission
         const rawStatus = sub.status || 'Draft'
-        
+
         // Normalize status for filtering
         let normalizedStatus = rawStatus
         if (rawStatus === 'Approved') normalizedStatus = 'Documents_Approved'
@@ -268,7 +257,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json()
-    const { 
+    const {
       leadId, action, revertReason, notes, visibleToSalesPerson,
       policyNumber, provider, policyType, issuedPolicyPdfUrl,
       totalPremium, paidAmount, pendingAmount, paymentMode, startDate, endDate
@@ -342,7 +331,7 @@ export async function POST(req: NextRequest) {
               data: { leadId, clientName: lead.clientName, vehicleNo: lead.vehicleNo, managerName }
             }
           })
-        } catch {}
+        } catch { }
       }
 
       return NextResponse.json({
@@ -541,7 +530,7 @@ export async function POST(req: NextRequest) {
               entityId: leadId
             }
           })
-        } catch {}
+        } catch { }
       }
 
       return NextResponse.json({
@@ -601,7 +590,7 @@ export async function POST(req: NextRequest) {
               entityId: leadId
             }
           })
-        } catch {}
+        } catch { }
       }
 
       return NextResponse.json({
