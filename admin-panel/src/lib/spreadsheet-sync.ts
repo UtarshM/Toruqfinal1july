@@ -55,6 +55,20 @@ export async function syncSpreadsheetForBatch(batchName: string | null, customUp
 
   if (leads.length === 0 && !isAll) return null
 
+  const cleanBatchName = isAll ? 'leads' : isDirect ? 'direct_entry' : String(batchName).trim().replace(/[^a-zA-Z0-9_-]/g, '_')
+  const fileName = `import_${cleanBatchName}.xlsx`
+  const fullPath = path.join(uploadDir, fileName)
+
+  // Safety guard for serverless: If batch is extremely large (> 15,000 rows), avoid synchronous in-memory XLSX generation that crashes lambdas
+  if (leads.length > 15000) {
+    console.log(`[syncSpreadsheetForBatch] Skipped heavy disk sync for ${leads.length} rows to prevent serverless timeout. File generated on-demand when downloaded.`)
+    return {
+      fileName,
+      totalRows: leads.length,
+      agentCount: 0
+    }
+  }
+
   // Collect all unique custom fields keys across leads in this batch
   const customKeys = new Set<string>()
   leads.forEach(l => {
@@ -127,10 +141,6 @@ export async function syncSpreadsheetForBatch(batchName: string | null, customUp
 
     rows.push(row)
   })
-
-  const cleanBatchName = isAll ? 'leads' : isDirect ? 'direct_entry' : String(batchName).trim().replace(/[^a-zA-Z0-9_-]/g, '_')
-  const fileName = `import_${cleanBatchName}.xlsx`
-  const fullPath = path.join(uploadDir, fileName)
 
   try {
     const ws = XLSX.utils.aoa_to_sheet(rows)

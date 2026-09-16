@@ -497,7 +497,7 @@ function inferHeaderFromColumnData(values: any[], colIndex: number): string {
               method: 'POST',
               headers: {
                 'x-import-job-id': `${jobId}_b${currentBatch}`,
-                ...(isLastBatch ? { 'x-sync-disk': 'true', 'x-is-last-batch': 'true' } : {})
+                ...(isLastBatch ? { 'x-is-last-batch': 'true' } : {})
               },
               body: JSON.stringify({
                 leads: chunk,

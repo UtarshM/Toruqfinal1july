@@ -739,11 +739,11 @@ export async function POST(req: NextRequest) {
       }).catch(() => {})
     }
 
-    // 6. Spreadsheet Synchronization on Disk (only if requested, safe batch sync only)
+    // 6. Spreadsheet Synchronization on Disk (non-blocking background task, never block HTTP response)
     const shouldSyncDisk = req.headers.get('x-sync-disk') === 'true'
     if (shouldSyncDisk) {
       const uploadDir = getUploadDir()
-      await syncSpreadsheetForBatch(batchImportName, uploadDir).catch(e => console.warn('[leads/import] Batch sync warning:', e))
+      syncSpreadsheetForBatch(batchImportName, uploadDir).catch(e => console.warn('[leads/import] Background batch sync warning:', e))
     }
 
     // 7. Complete Job Tracking
