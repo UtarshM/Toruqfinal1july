@@ -11,7 +11,7 @@ import {
 } from 'lucide-react'
 import { fetchApi } from '@/lib/api'
 import { useAuth } from '@/context/AuthContext'
-import { formatDateDMY, formatDateTimeDMY, getISTDateString, toISTDateInput } from '@/lib/date-format'
+import { formatDateDMY, formatDateTimeDMY, getISTDateString, toISTDateInput, getISTDateParts } from '@/lib/date-format'
 
 interface SpreadsheetFile {
   fileName: string
@@ -606,37 +606,12 @@ export default function ImportedSheetsPage() {
             const cellVal = String(row[colIdx] || '').trim()
             if (!cellVal || cellVal === '—' || cellVal === 'NA' || cellVal.toLowerCase() === 'null') return false
             
-            let d: Date | null = null
-            // Try DD/MM/YYYY or DD-MM-YYYY or D/M/YYYY
-            const dmyMatch = cellVal.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2,4})/)
-            if (dmyMatch) {
-              let yr = parseInt(dmyMatch[3], 10)
-              if (yr < 100) yr += yr < 50 ? 2000 : 1900
-              const m = parseInt(dmyMatch[2], 10) - 1
-              const day = parseInt(dmyMatch[1], 10)
-              d = new Date(yr, m, day)
-            }
-            if (!d || isNaN(d.getTime())) {
-              // Try YYYY-MM-DD
-              const ymdMatch = cellVal.match(/^(\d{4})[/\-.](\d{1,2})[/\-.](\d{1,2})/)
-              if (ymdMatch) {
-                d = new Date(parseInt(ymdMatch[1], 10), parseInt(ymdMatch[2], 10) - 1, parseInt(ymdMatch[3], 10))
-              }
-            }
-            // Excel serial number
-            if ((!d || isNaN(d.getTime())) && /^\d{5}(\.\d+)?$/.test(cellVal)) {
-              const num = parseFloat(cellVal)
-              if (num > 10000 && num < 80000) {
-                d = new Date(Math.round((num - 25569) * 86400 * 1000))
-              }
-            }
-            if (!d || isNaN(d.getTime())) {
-              d = new Date(cellVal)
-            }
-            if (!d || isNaN(d.getTime())) return false
+            // Strictly evaluate date parts in Asia/Kolkata (IST) timezone only
+            const parts = getISTDateParts(cellVal)
+            if (!parts) return false
 
-            const matchYear = expiryYearFilter > 0 ? d.getFullYear() === expiryYearFilter : true
-            const matchMonth = expiryMonthFilter > 0 ? (d.getMonth() + 1) === expiryMonthFilter : true
+            const matchYear = expiryYearFilter > 0 ? parts.year === expiryYearFilter : true
+            const matchMonth = expiryMonthFilter > 0 ? parts.month === expiryMonthFilter : true
 
             return matchYear && matchMonth
           })
@@ -695,14 +670,9 @@ export default function ImportedSheetsPage() {
       if (expiryColIdx !== -1) {
         rows = [...rows].sort((a, b) => {
           const parseD = (v: any) => {
-            const s = String(v || '').trim()
-            const m = s.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2,4})/)
-            if (m) {
-              let yr = parseInt(m[3], 10)
-              if (yr < 100) yr += yr < 50 ? 2000 : 1900
-              return new Date(yr, parseInt(m[2], 10) - 1, parseInt(m[1], 10)).getTime()
-            }
-            return new Date(s).getTime() || 0
+            const parts = getISTDateParts(v)
+            if (!parts) return 0
+            return parts.year * 10000 + parts.month * 100 + parts.day
           }
           return parseD(a[expiryColIdx]) - parseD(b[expiryColIdx])
         })
@@ -1591,7 +1561,8 @@ export default function ImportedSheetsPage() {
                 <div className="flex flex-col sm:flex-row sm:items-center gap-3">
                   <div className="flex items-center gap-2">
                     <CalendarDays size={16} className="text-blue-600" />
-                    <span className="text-xs font-black text-slate-800">Filter by Expiry Month:</span>
+                    <span className="text-xs font-black text-slate-800">Filter by Expiry (IST Only):</span>
+                    <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 text-[10px] font-black rounded uppercase tracking-wider">IST Asia/Kolkata</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <select

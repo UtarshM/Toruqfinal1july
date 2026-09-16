@@ -131,3 +131,21 @@ export function getISTDateString(offsetDays: number = 0): string {
   return toISTDateInput(d)
 }
 
+/**
+ * Convert any date into an IST Date parts object ({ day, month, year })
+ * strictly evaluated in Asia/Kolkata (IST) timezone.
+ */
+export function getISTDateParts(dateVal: any): { day: number; month: number; year: number } | null {
+  if (!dateVal) return null
+  const formatted = formatDateDMY(dateVal)
+  if (!formatted) return null
+  const m = formatted.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+  if (!m) return null
+  return {
+    day: parseInt(m[1], 10),
+    month: parseInt(m[2], 10),
+    year: parseInt(m[3], 10)
+  }
+}
+
+

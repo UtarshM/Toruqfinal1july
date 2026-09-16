@@ -35,10 +35,10 @@ const WHATSAPP_TEMPLATES = [
   }
 ]
 
-import { formatDateDMY, formatDateTimeDMY, toISTDateInput } from '@/lib/date-format'
+import { formatDateDMY, formatDateTimeDMY, toISTDateInput, getISTDateParts } from '@/lib/date-format'
 
 export const formatDateIST = formatDateDMY
-export { toISTDateInput, formatDateTimeDMY }
+export { toISTDateInput, formatDateTimeDMY, getISTDateParts }
 
 export default function LeadsPage() {
   const { user } = useAuth()
@@ -727,10 +727,16 @@ export default function LeadsPage() {
     else if (sortConfig.key === 'phone2') { aVal = getLeadColumnValue(a, 'phone2'); bVal = getLeadColumnValue(b, 'phone2'); }
     else if (sortConfig.key === 'regNo') { aVal = a.vehicleNo || ''; bVal = b.vehicleNo || ''; }
     else if (sortConfig.key === 'expiryDate') { 
-      // Earliest expiry date first when sorting ascending (nulls last)
-      const farFuture = 9999999999999
-      aVal = a.expiryDate ? new Date(a.expiryDate).getTime() : (sortConfig.direction === 'asc' ? farFuture : -1)
-      bVal = b.expiryDate ? new Date(b.expiryDate).getTime() : (sortConfig.direction === 'asc' ? farFuture : -1)
+      // Earliest expiry date first when sorting ascending (nulls last) strictly in IST
+      const farFuture = 99999999
+      const parseIST = (val: any) => {
+        const parts = getISTDateParts(val)
+        return parts ? parts.year * 10000 + parts.month * 100 + parts.day : null
+      }
+      const aValIST = parseIST(a.expiryDate)
+      const bValIST = parseIST(b.expiryDate)
+      aVal = aValIST !== null ? aValIST : (sortConfig.direction === 'asc' ? farFuture : -1)
+      bVal = bValIST !== null ? bValIST : (sortConfig.direction === 'asc' ? farFuture : -1)
     }
     else if (sortConfig.key === 'gvw') { aVal = parseFloat(a.gvw || '0') || 0; bVal = parseFloat(b.gvw || '0') || 0; }
     else if (sortConfig.key === 'cat') { aVal = getLeadColumnValue(a, 'cat'); bVal = getLeadColumnValue(b, 'cat'); }
