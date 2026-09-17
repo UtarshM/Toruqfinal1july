@@ -326,8 +326,8 @@ export default function ImportedSheetsPage() {
       const monthQuery = month > 0 ? `&month=${month}` : ''
       const yearQuery = year > 0 ? `&year=${year}` : ''
       const cityQuery = city !== 'all' ? `&city=${encodeURIComponent(city)}` : ''
-      // Whenever month is filtered, or forceAll is true, or rowsPerPage is 'all', fetch all leads!
-      const shouldLoadAll = forceAll || month > 0 || rowsPerPage === 'all'
+      // Whenever month or year is filtered, or forceAll is true, or rowsPerPage is 'all', fetch all leads!
+      const shouldLoadAll = forceAll || month > 0 || year > 0 || rowsPerPage === 'all'
       const limitQuery = shouldLoadAll ? '&limit=all' : `&limit=${Math.max(100, Number(rowsPerPage) || 100)}`
       const res = await fetchApi(
         `/api/v1/import/sheets/${encodeURIComponent(selectedFile.fileName)}?${limitQuery.slice(1)}${batchQuery}${monthQuery}${yearQuery}${cityQuery}`
@@ -695,7 +695,12 @@ export default function ImportedSheetsPage() {
 
     // Filter by city / branch (Morbi Branch)
     if (previewCityFilter !== 'all' && previewData.headers) {
-      const isMorbiFile = selectedFile && (selectedFile.batchName || selectedFile.fileName || '').toLowerCase().includes('morbi')
+      const isMorbiFile = Boolean(
+        selectedFile && (
+          (selectedFile.batchName || selectedFile.fileName || '').toLowerCase().includes('morbi') ||
+          (previewData.rows && previewData.rows.some(r => String(r[7] || '').toLowerCase().includes('morbi')))
+        )
+      )
       if (!isMorbiFile) {
         const cityFilterLower = previewCityFilter.toLowerCase().trim()
         const cityColIdx = previewData.headers.findIndex(h => {
@@ -1950,7 +1955,7 @@ export default function ImportedSheetsPage() {
                                   previewAgentFilter === 'all' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:text-slate-900'
                                 }`}
                               >
-                                All ({previewData.rows.length})
+                                All ({previewData.totalRows || previewData.rows.length})
                               </button>
                               <button
                                 onClick={() => setPreviewAgentFilter('agent')}
@@ -2031,7 +2036,7 @@ export default function ImportedSheetsPage() {
                             <option value={250}>250</option>
                             <option value={500}>500</option>
                             <option value={1000}>1000</option>
-                            <option value="all">All ({previewData.rows.length})</option>
+                            <option value="all">All ({previewData.totalRows || previewData.rows.length})</option>
                           </select>
                         </div>
                       </div>

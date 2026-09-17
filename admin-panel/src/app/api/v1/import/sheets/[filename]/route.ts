@@ -205,7 +205,21 @@ export async function GET(
 
     const cityParam = url.searchParams.get('city')?.trim()
     if (cityParam && cityParam !== 'all') {
-      whereClause.city = { contains: cityParam, mode: 'insensitive' }
+      const isMorbiTarget = cityParam.toLowerCase().includes('morbi')
+      const isMorbiBatch = (batchParam || '').toLowerCase().includes('morbi') || (batchName || '').toLowerCase().includes('morbi')
+      // If the file/batch is already Morbi, all leads in it belong to Morbi branch
+      if (!(isMorbiTarget && isMorbiBatch)) {
+        whereClause.AND = [
+          ...(whereClause.AND || []),
+          {
+            OR: [
+              { city: { contains: cityParam, mode: 'insensitive' } },
+              { address: { contains: cityParam, mode: 'insensitive' } },
+              { importName: { contains: cityParam, mode: 'insensitive' } }
+            ]
+          }
+        ]
+      }
     }
 
     if (searchParam) {
