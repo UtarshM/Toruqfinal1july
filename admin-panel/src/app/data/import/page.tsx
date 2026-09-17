@@ -106,6 +106,7 @@ export default function LeadImportPage() {
 
   // Import Name State (sheet/batch name for #search)
   const [importName, setImportName] = useState('')
+  const [previewMode, setPreviewMode] = useState<'all' | 'validPhones'>('all')
 
   // Fetch mappings from DB settings on mount (runs once, never overwrites active detected mappings)
   useEffect(() => {
@@ -1134,23 +1135,63 @@ function inferHeaderFromColumnData(values: any[], colIndex: number): string {
                 </span>
               </div>
 
-              <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-                <div className="bg-slate-50 border-b border-slate-100 px-6 py-4 flex items-center gap-2">
-                  <Eye size={14} className="text-slate-400" />
-                  <h4 className="text-xs font-bold text-slate-600 uppercase tracking-widest">Active Mapping Preview (First 5 Rows)</h4>
-                </div>
-                
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left">
-                    <thead className="bg-slate-50/50 border-b border-slate-100 text-xs text-slate-400 font-bold">
-                      <tr>
-                        {mappings.map(m => (
-                          <th key={m.dbField} className="px-6 py-3 whitespace-nowrap">{m.label}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-50 text-xs font-medium text-slate-600">
-                      {parsedRows.slice(0, 5).map((row, idx) => (
+              {(() => {
+                const phoneMapping = mappings.find(m => m.dbField === 'clientPhone')
+                const phoneHeader = phoneMapping?.mappedHeader
+                let phoneCount = 0
+                if (phoneHeader) {
+                  for (let i = 0; i < parsedRows.length; i++) {
+                    const v = String(parsedRows[i]?.[phoneHeader] || '').trim()
+                    if (v && !['NA', 'N/A', 'NULL', '—', '-'].includes(v.toUpperCase()) && /\d{7,12}/.test(v)) {
+                      phoneCount++
+                    }
+                  }
+                }
+
+                let displayRows = parsedRows.slice(0, 5)
+                if (previewMode === 'validPhones' && phoneHeader) {
+                  const withPhone: any[] = []
+                  for (let i = 0; i < parsedRows.length && withPhone.length < 5; i++) {
+                    const v = String(parsedRows[i]?.[phoneHeader] || '').trim()
+                    if (v && !['NA', 'N/A', 'NULL', '—', '-'].includes(v.toUpperCase()) && /\d{7,12}/.test(v)) {
+                      withPhone.push(parsedRows[i])
+                    }
+                  }
+                  if (withPhone.length > 0) displayRows = withPhone
+                }
+
+                return (
+                  <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden space-y-0">
+                    <div className="bg-slate-50 border-b border-slate-100 px-6 py-3 flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <Eye size={14} className="text-slate-400" />
+                        <h4 className="text-xs font-bold text-slate-600 uppercase tracking-widest">
+                          {previewMode === 'validPhones' ? 'Active Mapping Preview (Sample Rows with Phone Numbers)' : 'Active Mapping Preview (First 5 Rows)'}
+                        </h4>
+                      </div>
+                      {phoneHeader && phoneCount > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setPreviewMode(p => p === 'all' ? 'validPhones' : 'all')}
+                          className="text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-3 py-1 rounded-lg border border-indigo-200 transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs"
+                        >
+                          <CheckCircle2 size={12} className="text-emerald-600" />
+                          <span><strong>{phoneCount.toLocaleString()}</strong> Phone Numbers Found • {previewMode === 'validPhones' ? 'Show First 5 Rows' : 'View Phone Samples'}</span>
+                        </button>
+                      )}
+                    </div>
+                    
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left">
+                        <thead className="bg-slate-50/50 border-b border-slate-100 text-xs text-slate-400 font-bold">
+                          <tr>
+                            {mappings.map(m => (
+                              <th key={m.dbField} className="px-6 py-3 whitespace-nowrap">{m.label}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-50 text-xs font-medium text-slate-600">
+                          {displayRows.map((row, idx) => (
                         <tr key={idx} className="hover:bg-slate-50/30">
                           {mappings.map(m => {
                             const val = m.mappedHeader ? row[m.mappedHeader] : null
@@ -1182,6 +1223,7 @@ function inferHeaderFromColumnData(values: any[], colIndex: number): string {
                   </table>
                 </div>
               </div>
+            )})()}
             </div>
 
           </div>
