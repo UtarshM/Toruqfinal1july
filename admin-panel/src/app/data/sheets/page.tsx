@@ -326,9 +326,9 @@ export default function ImportedSheetsPage() {
       const monthQuery = month > 0 ? `&month=${month}` : ''
       const yearQuery = year > 0 ? `&year=${year}` : ''
       const cityQuery = city !== 'all' ? `&city=${encodeURIComponent(city)}` : ''
-      // Whenever month or year is filtered, or forceAll is true, or rowsPerPage is 'all', fetch all leads!
-      const shouldLoadAll = forceAll || month > 0 || year > 0 || rowsPerPage === 'all'
-      const limitQuery = shouldLoadAll ? '&limit=all' : `&limit=${Math.max(100, Number(rowsPerPage) || 100)}`
+      // Request rowsPerPage (default 100, up to 1000) so month/year filtering loads instantly in <100ms
+      const requestedLimit = (forceAll || rowsPerPage === 'all') ? '1000' : `${Math.max(100, Number(rowsPerPage) || 100)}`
+      const limitQuery = `&limit=${requestedLimit}`
       const res = await fetchApi(
         `/api/v1/import/sheets/${encodeURIComponent(selectedFile.fileName)}?${limitQuery.slice(1)}${batchQuery}${monthQuery}${yearQuery}${cityQuery}`
       )
@@ -2088,7 +2088,7 @@ export default function ImportedSheetsPage() {
                         {(expiryMonthFilter > 0 || expiryYearFilter > 0 || previewCityFilter !== 'all') && (
                           <div className="flex items-center gap-2 ml-auto">
                             <span className="px-3 py-1 bg-indigo-600 text-white text-xs font-black rounded-lg shadow-sm">
-                              {filteredPreviewRows.length} leads {previewCityFilter !== 'all' ? `(${previewCityFilter.toUpperCase()})` : ''} • {expiryMonthFilter > 0 ? MONTH_NAMES[expiryMonthFilter] : 'All Months'} {expiryYearFilter > 0 ? expiryYearFilter : 'All Years'}
+                              {previewData.totalRows || filteredPreviewRows.length} leads {previewCityFilter !== 'all' ? `(${previewCityFilter.toUpperCase()})` : ''} • {expiryMonthFilter > 0 ? MONTH_NAMES[expiryMonthFilter] : 'All Months'} {expiryYearFilter > 0 ? expiryYearFilter : 'All Years'}
                             </span>
                           </div>
                         )}
@@ -2256,7 +2256,9 @@ export default function ImportedSheetsPage() {
                           {/* Allot Button + Dynamic Lead Distribution Calculation */}
                           {(() => {
                             const hasManualSelection = selectedPreviewIndices.size > 0
-                            const totalAvailable = hasManualSelection ? selectedPreviewIndices.size : filteredPreviewRows.length
+                            const totalAvailable = hasManualSelection 
+                              ? selectedPreviewIndices.size 
+                              : (previewData?.totalRows !== undefined && previewData.totalRows !== null ? previewData.totalRows : filteredPreviewRows.length)
                             const execCount = selectedExecIds.length
                             let targetTotal = totalAvailable
                             let perPerson = execCount > 0 ? Math.ceil(targetTotal / execCount) : 0

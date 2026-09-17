@@ -108,8 +108,8 @@ export async function POST(req: NextRequest) {
     let skippedExecutivesOnLeave: string[] = []
 
     if (month && year && Number(month) > 0 && Number(year) > 0) {
-      const monthStart = new Date(year, month - 1, 1)
-      const monthEnd = new Date(year, month, 0, 23, 59, 59, 999)
+      const monthStart = new Date(Date.UTC(Number(year), Number(month) - 1, 1, 0, 0, 0))
+      const monthEnd = new Date(Date.UTC(Number(year), Number(month), 0, 23, 59, 59, 999))
       const approvedLeaves = await prisma.leaveRequest.findMany({
         where: {
           userId: { in: executives.map(e => e.id) },

@@ -66,8 +66,8 @@ export async function GET(req: NextRequest) {
     }
 
     // Get leave requests for the target month
-    const monthStart = new Date(year, month - 1, 1)
-    const monthEnd = new Date(year, month, 0) // Last day of the month
+    const monthStart = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0))
+    const monthEnd = new Date(Date.UTC(year, month, 0, 23, 59, 59, 999)) // Last millisecond of the month
 
     const leaveRequests = await prisma.leaveRequest.findMany({
       where: {

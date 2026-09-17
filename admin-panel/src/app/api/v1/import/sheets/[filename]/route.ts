@@ -187,26 +187,30 @@ export async function GET(
 
     if (y > 0) {
       if (m > 0) {
-        const startDate = new Date(y, m - 1, 1)
-        const endDate = new Date(y, m, 0, 23, 59, 59, 999)
+        const startDate = new Date(Date.UTC(y, m - 1, 1, 0, 0, 0))
+        const endDate = new Date(Date.UTC(y, m, 0, 23, 59, 59, 999))
         whereClause.expiryDate = { gte: startDate, lte: endDate }
       } else {
-        const startDate = new Date(y, 0, 1)
-        const endDate = new Date(y, 11, 31, 23, 59, 59, 999)
+        const startDate = new Date(Date.UTC(y, 0, 1, 0, 0, 0))
+        const endDate = new Date(Date.UTC(y, 11, 31, 23, 59, 59, 999))
         whereClause.expiryDate = { gte: startDate, lte: endDate }
       }
     } else if (m > 0) {
-      // Default to current year if only month is specified
       const curYear = new Date().getFullYear()
-      const startDate = new Date(curYear, m - 1, 1)
-      const endDate = new Date(curYear, m, 0, 23, 59, 59, 999)
+      const startDate = new Date(Date.UTC(curYear, m - 1, 1, 0, 0, 0))
+      const endDate = new Date(Date.UTC(curYear, m, 0, 23, 59, 59, 999))
       whereClause.expiryDate = { gte: startDate, lte: endDate }
     }
 
     const cityParam = url.searchParams.get('city')?.trim()
     if (cityParam && cityParam !== 'all') {
       const isMorbiTarget = cityParam.toLowerCase().includes('morbi')
-      const isMorbiBatch = (batchParam || '').toLowerCase().includes('morbi') || (batchName || '').toLowerCase().includes('morbi')
+      const isMorbiBatch = (batchParam || '').toLowerCase().includes('morbi') || 
+                           (batchName || '').toLowerCase().includes('morbi') ||
+                           safeFileName.toLowerCase().includes('morbi') ||
+                           safeFileName === 'import_leads.xlsx' ||
+                           (batchParam || '') === 'Imported Leads (Master)' ||
+                           (batchName || '') === 'Imported Leads (Master)'
       // If the file/batch is already Morbi, all leads in it belong to Morbi branch
       if (!(isMorbiTarget && isMorbiBatch)) {
         whereClause.AND = [
@@ -214,7 +218,6 @@ export async function GET(
           {
             OR: [
               { city: { contains: cityParam, mode: 'insensitive' } },
-              { address: { contains: cityParam, mode: 'insensitive' } },
               { importName: { contains: cityParam, mode: 'insensitive' } }
             ]
           }
@@ -234,8 +237,9 @@ export async function GET(
 
     const isAll = limitParam === 'all' || allParam === 'true' || limitParam === '0'
     const parsedLimit = parseInt(limitParam || '100')
-    const previewLimit = isAll ? undefined : (isNaN(parsedLimit) ? 100 : Math.min(Math.max(10, parsedLimit), 50000))
-    const [count, leads, agentRowsCount] = await Promise.all([
+    // Safe preview limit: max 1000 records so serverless API never hangs or exceeds payload limits
+    const previewLimit = isAll ? 1000 : (isNaN(parsedLimit) ? 100 : Math.min(Math.max(10, parsedLimit), 1000))
+    const [count, leads] = await Promise.all([
       prisma.lead.count({ where: whereClause }),
       prisma.lead.findMany({
         where: whereClause,
@@ -262,16 +266,7 @@ export async function GET(
         ],
         skip: shouldPaginate ? (page - 1) * limit : 0,
         take: previewLimit
-      }),
-      prisma.lead.count({
-        where: {
-          ...whereClause,
-          OR: [
-            { existingAgent: 'Agent' },
-            { existingAgent: { contains: 'Agent', mode: 'insensitive' } }
-          ]
-        }
-      }).catch(() => 0)
+      })
     ])
 
     const totalRows = count
@@ -354,7 +349,7 @@ export async function GET(
       leadIds: leadsList.map(l => l.id),
       isAgentRows,
       agentColIdx,
-      agentRowsCount: isAll ? actualLoadedAgentCount : (agentRowsCount || actualLoadedAgentCount),
+      agentRowsCount: actualLoadedAgentCount,
       totalRows,
       totalPages: shouldPaginate ? Math.ceil(totalRows / limit) : 1,
       page: shouldPaginate ? page : 1,
