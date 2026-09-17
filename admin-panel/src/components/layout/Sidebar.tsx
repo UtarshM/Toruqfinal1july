@@ -17,15 +17,15 @@ const MENU_GROUPS = [
   {
     label: 'SALES',
     items: [
-      { name: 'Leads', href: '/leads' },
-      { name: 'Import Leads', href: '/data/import' },
+      { name: 'List', href: '/leads' },
+      { name: 'Import List', href: '/data/import' },
       { name: 'Imported Spreadsheets', href: '/data/sheets' },
       { name: 'CRM', href: '/crm' },
       { name: 'Quotations', href: '/quotations' },
       { name: 'Rate Calculator', href: '/rate-calculator' },
       { name: 'Policies', href: '/policies' },
       { name: 'Follow-ups', href: '/follow-ups' },
-      { name: 'Trashed Leads', href: '/leads/trash' },
+      { name: 'Trashed List', href: '/leads/trash' },
     ]
   },
   {
@@ -95,12 +95,12 @@ export default function Sidebar() {
       if (group.label === 'OPERATIONS') {
         items = items.filter(i => ['Claims', 'Loans'].includes(i.name))
       }
-      items = items.filter(i => !['CRM', 'Reports', 'Import Leads', 'Policy Approvals'].includes(i.name))
+      items = items.filter(i => !['CRM', 'Reports', 'Import List', 'Import Leads', 'Policy Approvals'].includes(i.name))
     } else if (isManager && !isAdmin) {
       // Role-based filtering for Managers
       if (group.label === 'OPERATIONS') return null
       if (group.label === 'SALES') {
-        items = items.filter(i => ['Leads', 'CRM', 'Quotations', 'Policies', 'Renewals', 'Follow-ups'].includes(i.name))
+        items = items.filter(i => ['List', 'Leads', 'CRM', 'Quotations', 'Policies', 'Renewals', 'Follow-ups'].includes(i.name))
       }
       if (group.label === 'MANAGEMENT') {
         items = items.filter(i => ['Policy Approvals', 'Onboarding Approvals', 'Users', 'Settings'].includes(i.name))
