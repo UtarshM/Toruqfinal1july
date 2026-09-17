@@ -54,9 +54,6 @@ model User {
   permissions          Permission[]        @relation("UserPermissions")
   renewalAssignments   RenewalRecord[]     @relation("RenewalAssignee")
   renewalCreations     RenewalRecord[]     @relation("RenewalCreator")
-  batchesCreated       AssignmentBatch[]   @relation("BatchCreator")
-  batchesReverted      AssignmentBatch[]   @relation("BatchReverter")
-  importJobs           ImportJob[]         @relation("ImportJobCreator")
 
   @@map("users")
 }
@@ -91,9 +88,8 @@ model Lead {
   status           String              @default("New")
   createdAt        DateTime            @default(now())
   updatedAt        DateTime            @updatedAt
-  vehicleNo           String?
-  vehicleNoNormalized String?             @db.VarChar(32)
-  expiryDate          DateTime?
+  vehicleNo        String?
+  expiryDate       DateTime?
   registrationDate DateTime?
   gvw              String?
   address          String?
@@ -120,18 +116,12 @@ model Lead {
   visits           Visit[]
   renewalRecords   RenewalRecord[]
 
-  @@index([vehicleNoNormalized])
-  @@index([expiryDate])
-  @@index([assignedTo])
   @@index([status])
+  @@index([assignedTo])
   @@index([clientPhone])
   @@index([clientEmail])
   @@index([importName])
   @@index([deletedAt])
-  @@index([assignedTo, status])
-  @@index([assignedTo, expiryDate])
-  @@index([status, expiryDate])
-  @@index([importName, deletedAt])
   @@map("leads")
 }
 
@@ -452,17 +442,13 @@ model DataChangeRequest {
 }
 
 model LeadAssignment {
-  id         String           @id @default(uuid()) @db.Uuid
-  leadId     String           @db.Uuid
-  userId     String           @db.Uuid
-  batchId    String?          @db.Uuid
-  assignedAt DateTime         @default(now())
-  lead       Lead             @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  batch      AssignmentBatch? @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  id         String   @id @default(uuid()) @db.Uuid
+  leadId     String   @db.Uuid
+  userId     String   @db.Uuid
+  assignedAt DateTime @default(now())
+  lead       Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([batchId])
-  @@index([userId, assignedAt])
   @@map("lead_assignments")
 }
 
@@ -494,11 +480,9 @@ model LeadStatusHistory {
 model PredefinedResponse {
   id               String   @id @default(uuid()) @db.Uuid
   text             String   @unique
-  category         String   @default("General")
-  requiresFollowUp Boolean  @default(false)
-  followupDays     Int      @default(0)
   isActive         Boolean  @default(true)
   orderIndex       Int      @default(0)
+  requiresFollowUp Boolean  @default(false)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
@@ -696,108 +680,5 @@ model RenewalRecord {
   @@index([policyEndDate])
   @@index([assignedTo])
   @@map("renewal_records")
-}
-
-model AssignmentBatch {
-  id             String           @id @default(uuid()) @db.Uuid
-  sheetName      String?
-  month          Int
-  year           Int
-  totalLeads     Int              @default(0)
-  totalEmployees Int              @default(0)
-  filters        Json?            @default("{}")
-  status         String           @default("active") // active | reverted
-  createdById    String           @db.Uuid
-  createdAt      DateTime         @default(now())
-  revertedAt     DateTime?
-  revertedById   String?          @db.Uuid
-  creator        User             @relation("BatchCreator", fields: [createdById], references: [id])
-  reverter       User?            @relation("BatchReverter", fields: [revertedById], references: [id])
-  assignments    LeadAssignment[]
-
-  @@index([status])
-  @@index([month, year])
-  @@map("assignment_batches")
-}
-
-model ImportJob {
-  id             String            @id @default(uuid()) @db.Uuid
-  fileName       String
-  importName     String
-  fileUrl        String?
-  totalRows      Int               @default(0)
-  processedRows  Int               @default(0)
-  insertedCount  Int               @default(0)
-  updatedCount   Int               @default(0)
-  rejectedCount  Int               @default(0)
-  duplicateCount Int               @default(0)
-  status         String            @default("pending") // pending | processing | completed | failed | cancelled
-  errorMessage   String?
-  createdById    String?           @db.Uuid
-  createdAt      DateTime          @default(now())
-  updatedAt      DateTime          @updatedAt
-  completedAt    DateTime?
-  creator        User?             @relation("ImportJobCreator", fields: [createdById], references: [id])
-  errors         ImportRowError[]
-
-  @@index([status])
-  @@index([importName])
-  @@map("import_jobs")
-}
-
-model ImportRowError {
-  id         String    @id @default(uuid()) @db.Uuid
-  jobId      String    @db.Uuid
-  rowNumber  Int
-  vehicleNo  String?
-  rawData    Json?
-  reason     String
-  createdAt  DateTime  @default(now())
-  job        ImportJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
-
-  @@index([jobId])
-  @@map("import_row_errors")
-}
-
-model SyncEvent {
-  id         String   @id @default(uuid()) @db.Uuid
-  sequence   BigInt   @default(autoincrement())
-  entityType String   // 'lead' | 'call' | 'followup' | 'document' | 'response'
-  entityId   String
-  action     String   // 'create' | 'update' | 'delete'
-  payload    Json
-  userId     String?  @db.Uuid
-  createdAt  DateTime @default(now())
-
-  @@index([sequence])
-  @@index([entityType, entityId])
-  @@index([createdAt])
-  @@map("sync_events")
-}
-
-model OutboxEvent {
-  id          String    @id @default(uuid()) @db.Uuid
-  eventType   String    // 'lead.assigned' | 'call.recorded' | 'approval.requested'
-  payload     Json
-  status      String    @default("pending") // pending | sent | failed
-  retryCount  Int       @default(0)
-  lastError   String?
-  createdAt   DateTime  @default(now())
-  processedAt DateTime?
-
-  @@index([status, createdAt])
-  @@map("outbox_events")
-}
-
-model IdempotencyKey {
-  key            String   @id
-  handler        String
-  responseStatus Int
-  responseBody   Json
-  createdAt      DateTime @default(now())
-  expiresAt      DateTime
-
-  @@index([expiresAt])
-  @@map("idempotency_keys")
 }
 
