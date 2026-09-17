@@ -1133,13 +1133,19 @@ function inferHeaderFromColumnData(values: any[], colIndex: number): string {
                         <tr key={idx} className="hover:bg-slate-50/30">
                           {mappings.map(m => {
                             const val = m.mappedHeader ? row[m.mappedHeader] : null
-                            const isEmptyAndRequired = m.required && (!val || val.toString().trim() === '')
+                            const strVal = val ? val.toString().trim() : ''
+                            const isNaVal = ['NA', 'N/A', 'NULL', '—', '-'].includes(strVal.toUpperCase())
+                            const isEmptyAndRequired = m.required && (!val || strVal === '' || isNaVal)
                             
                             return (
                               <td key={m.dbField} className="px-6 py-4.5 whitespace-nowrap">
                                 {isEmptyAndRequired ? (
                                   <span className="text-rose-500 font-bold flex items-center gap-1">
                                     <AlertCircle size={12} /> Required Field
+                                  </span>
+                                ) : isNaVal ? (
+                                  <span className="text-slate-400 bg-slate-100 px-2 py-0.5 rounded text-[10px] font-semibold border border-slate-200" title="Cell literally contains 'NA' in the uploaded spreadsheet file (treated as blank in database)">
+                                    NA (Blank in File)
                                   </span>
                                 ) : val ? (
                                   val.toString()
