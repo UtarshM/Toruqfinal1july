@@ -106,7 +106,7 @@ export default function LeadImportPage() {
 
   // Import Name State (sheet/batch name for #search)
   const [importName, setImportName] = useState('')
-  const [previewMode, setPreviewMode] = useState<'all' | 'validPhones'>('all')
+  const [previewMode, setPreviewMode] = useState<'all' | 'validPhones'>('validPhones')
 
   // Fetch mappings from DB settings on mount (runs once, never overwrites active detected mappings)
   useEffect(() => {
@@ -1069,6 +1069,47 @@ function inferHeaderFromColumnData(values: any[], colIndex: number): string {
                         <option key={h} value={h}>{h}</option>
                       ))}
                     </select>
+
+                    {/* Live validation indicator for phone number mapping */}
+                    {field.dbField === 'clientPhone' && field.mappedHeader && (() => {
+                      let validCount = 0
+                      let sampleNumber = ''
+                      let firstRowWithPhone = 0
+                      for (let i = 0; i < parsedRows.length; i++) {
+                        const v = String(parsedRows[i]?.[field.mappedHeader] || '').trim()
+                        if (v && !['NA', 'N/A', 'NULL', '—', '-'].includes(v.toUpperCase()) && /\d{7,12}/.test(v)) {
+                          validCount++
+                          if (!sampleNumber) {
+                            sampleNumber = v
+                            firstRowWithPhone = i + 1
+                          }
+                        }
+                      }
+                      if (validCount > 0) {
+                        return (
+                          <div className="mt-2 p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-900 space-y-1">
+                            <div className="flex items-center gap-1.5 font-black text-emerald-700">
+                              <CheckCircle2 size={14} className="text-emerald-600 shrink-0" />
+                              <span>{validCount.toLocaleString()} Valid Phone Numbers Found!</span>
+                            </div>
+                            <p className="text-[11px] text-emerald-800">
+                              First phone: <span className="font-mono font-bold bg-white px-1.5 py-0.5 rounded border border-emerald-200 text-emerald-950">{sampleNumber}</span> (at Excel Row {firstRowWithPhone})
+                            </p>
+                            {firstRowWithPhone > 1 && (
+                              <p className="text-[10px] text-slate-500 leading-tight">
+                                Note: Rows 1–{firstRowWithPhone - 1} have &quot;NA&quot; in the file and will be imported safely as blank.
+                              </p>
+                            )}
+                          </div>
+                        )
+                      }
+                      return (
+                        <div className="mt-1.5 p-2 bg-amber-50 border border-amber-200 rounded-lg text-[11px] text-amber-800 flex items-center gap-1.5">
+                          <AlertCircle size={13} className="text-amber-600 shrink-0" />
+                          <span>No phone digits found in column &quot;{field.mappedHeader}&quot;.</span>
+                        </div>
+                      )
+                    })()}
                   </div>
                 ))}
               </div>
@@ -1148,16 +1189,17 @@ function inferHeaderFromColumnData(values: any[], colIndex: number): string {
                   }
                 }
 
-                let displayRows = parsedRows.slice(0, 5)
+                let displayRows: { row: any; rowNum: number }[] = []
                 if (previewMode === 'validPhones' && phoneHeader) {
-                  const withPhone: any[] = []
-                  for (let i = 0; i < parsedRows.length && withPhone.length < 5; i++) {
+                  for (let i = 0; i < parsedRows.length && displayRows.length < 5; i++) {
                     const v = String(parsedRows[i]?.[phoneHeader] || '').trim()
                     if (v && !['NA', 'N/A', 'NULL', '—', '-'].includes(v.toUpperCase()) && /\d{7,12}/.test(v)) {
-                      withPhone.push(parsedRows[i])
+                      displayRows.push({ row: parsedRows[i], rowNum: i + 1 })
                     }
                   }
-                  if (withPhone.length > 0) displayRows = withPhone
+                }
+                if (displayRows.length === 0) {
+                  displayRows = parsedRows.slice(0, 5).map((r, i) => ({ row: r, rowNum: i + 1 }))
                 }
 
                 return (
@@ -1166,7 +1208,7 @@ function inferHeaderFromColumnData(values: any[], colIndex: number): string {
                       <div className="flex items-center gap-2">
                         <Eye size={14} className="text-slate-400" />
                         <h4 className="text-xs font-bold text-slate-600 uppercase tracking-widest">
-                          {previewMode === 'validPhones' ? 'Active Mapping Preview (Sample Rows with Phone Numbers)' : 'Active Mapping Preview (First 5 Rows)'}
+                          {previewMode === 'validPhones' ? 'Active Mapping Preview (Sample Rows with Live Phone Numbers)' : 'Active Mapping Preview (First 5 Rows)'}
                         </h4>
                       </div>
                       {phoneHeader && phoneCount > 0 && (
@@ -1176,7 +1218,7 @@ function inferHeaderFromColumnData(values: any[], colIndex: number): string {
                           className="text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-3 py-1 rounded-lg border border-indigo-200 transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs"
                         >
                           <CheckCircle2 size={12} className="text-emerald-600" />
-                          <span><strong>{phoneCount.toLocaleString()}</strong> Phone Numbers Found • {previewMode === 'validPhones' ? 'Show First 5 Rows' : 'View Phone Samples'}</span>
+                          <span><strong>{phoneCount.toLocaleString()}</strong> Phone Numbers Found • {previewMode === 'validPhones' ? 'Show First 5 Rows' : 'View Rows with Phone'}</span>
                         </button>
                       )}
                     </div>
@@ -1185,25 +1227,35 @@ function inferHeaderFromColumnData(values: any[], colIndex: number): string {
                       <table className="w-full text-left">
                         <thead className="bg-slate-50/50 border-b border-slate-100 text-xs text-slate-400 font-bold">
                           <tr>
+                            <th className="px-4 py-3 whitespace-nowrap text-slate-400 font-bold"># Sheet Row</th>
                             {mappings.map(m => (
                               <th key={m.dbField} className="px-6 py-3 whitespace-nowrap">{m.label}</th>
                             ))}
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-50 text-xs font-medium text-slate-600">
-                          {displayRows.map((row, idx) => (
+                          {displayRows.map((item, idx) => (
                         <tr key={idx} className="hover:bg-slate-50/30">
+                          <td className="px-4 py-4.5 whitespace-nowrap font-mono text-[11px] font-bold text-slate-400">
+                            Row {item.rowNum}
+                          </td>
                           {mappings.map(m => {
-                            const val = m.mappedHeader ? row[m.mappedHeader] : null
+                            const val = m.mappedHeader ? item.row[m.mappedHeader] : null
                             const strVal = val ? val.toString().trim() : ''
                             const isNaVal = ['NA', 'N/A', 'NULL', '—', '-'].includes(strVal.toUpperCase())
                             const isEmptyAndRequired = m.required && (!val || strVal === '' || isNaVal)
+                            const isPhoneField = m.dbField === 'clientPhone' && /\d{7,12}/.test(strVal)
                             
                             return (
                               <td key={m.dbField} className="px-6 py-4.5 whitespace-nowrap">
                                 {isEmptyAndRequired ? (
                                   <span className="text-rose-500 font-bold flex items-center gap-1">
                                     <AlertCircle size={12} /> Required Field
+                                  </span>
+                                ) : isPhoneField ? (
+                                  <span className="inline-flex items-center gap-1 font-mono font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                                    <CheckCircle2 size={11} className="text-emerald-600" />
+                                    {val.toString()}
                                   </span>
                                 ) : isNaVal ? (
                                   <span className="text-slate-400 bg-slate-100 px-2 py-0.5 rounded text-[10px] font-semibold border border-slate-200" title="Cell literally contains 'NA' in the uploaded spreadsheet file (treated as blank in database)">
