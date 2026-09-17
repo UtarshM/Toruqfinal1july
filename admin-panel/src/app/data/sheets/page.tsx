@@ -534,6 +534,11 @@ export default function ImportedSheetsPage() {
     return count
   }, [sheetSearch, leadSearch, datePreset, specificDate, selectedDayOfWeek, agentFilter])
 
+  // Only lead spreadsheets (excludes internal Master Renewals file)
+  const importedFiles = useMemo(() => {
+    return files.filter(f => f.fileName !== 'import_renewals.xlsx')
+  }, [files])
+
   // Main file filtering logic
   const filteredFiles = useMemo(() => {
     const todayStr = getISTDateString(0)
@@ -546,12 +551,7 @@ export default function ImportedSheetsPage() {
     const currentYear = today.getFullYear()
     const currentMonth = today.getMonth()
 
-    return files.filter(f => {
-      // Hide Master Sheets from the general cards list
-      if (f.fileName === 'import_renewals.xlsx') {
-        return false
-      }
-
+    return importedFiles.filter(f => {
       const fileDate = f.importedAt ? new Date(f.importedAt) : null
       const dateOnly = f.dateOnly || (fileDate && !isNaN(fileDate.getTime()) ? toISTDateInput(fileDate) : '')
       const fileDay = f.dayOfWeek || (fileDate && !isNaN(fileDate.getTime()) ? ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][fileDate.getDay()] : '')
@@ -855,7 +855,7 @@ export default function ImportedSheetsPage() {
                 : 'border-transparent text-slate-400 hover:text-slate-600'
             }`}
           >
-            📂 Imported Spreadsheets ({files.length - (files.some(f => f.fileName === 'import_renewals.xlsx') ? 1 : 0)})
+            📂 Imported Spreadsheets ({importedFiles.length})
           </button>
           <button
             onClick={() => setActivePageTab('renewals')}
@@ -888,9 +888,9 @@ export default function ImportedSheetsPage() {
                   Total Spreadsheets
                 </p>
               </div>
-              <h2 className="text-xl font-black text-slate-900 mt-1">{files.length}</h2>
+              <h2 className="text-xl font-black text-slate-900 mt-1">{importedFiles.length}</h2>
               <p className="text-[10px] font-semibold text-slate-400 mt-0.5">
-                {filteredFiles.length !== files.length ? `${filteredFiles.length} matching` : 'All files stored'}
+                {activeFiltersCount > 0 ? `${filteredFiles.length} matching` : `${importedFiles.length} files stored`}
               </p>
             </div>
             <div className="h-10 w-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center group-hover:bg-blue-600 group-hover:text-white transition-all shadow-sm shrink-0">
@@ -941,7 +941,7 @@ export default function ImportedSheetsPage() {
                 </p>
               </div>
               <h2 className="text-xl font-black text-slate-900 mt-1">
-                {files.reduce((acc, f) => acc + f.agentCount, 0)}
+                {importedFiles.reduce((acc, f) => acc + f.agentCount, 0)}
               </h2>
               <p className="text-[10px] font-semibold text-slate-400 mt-0.5">
                 {agentFilter === 'has_agent' ? 'Active filter (ON)' : 'Click to filter'}
@@ -1236,7 +1236,9 @@ export default function ImportedSheetsPage() {
 
               <div className="flex items-center gap-3">
                 <span className="text-xs font-black text-slate-500">
-                  Showing {filteredFiles.length} of {files.length} sheets
+                  {activeFiltersCount > 0 
+                    ? `Showing ${filteredFiles.length} of ${importedFiles.length} sheets` 
+                    : `${importedFiles.length} sheets total`}
                 </span>
                 <button
                   onClick={handleResetFilters}
@@ -1404,16 +1406,34 @@ export default function ImportedSheetsPage() {
         ) : filteredFiles.length === 0 ? (
           <div className="bg-white rounded-3xl p-12 text-center border border-slate-100 shadow-sm space-y-3">
             <FileSpreadsheet className="text-slate-300 mx-auto" size={48} />
-            <h3 className="text-base font-black text-slate-800">No Matching Spreadsheets</h3>
-            <p className="text-xs text-slate-400 max-w-sm mx-auto">
-              No spreadsheets matched your current search or date filters. Try changing your search query or resetting filters.
-            </p>
-            <button
-              onClick={handleResetFilters}
-              className="inline-flex items-center gap-2 px-5 py-2.5 bg-slate-900 text-white text-xs font-bold rounded-xl hover:bg-black transition-all mt-2 cursor-pointer"
-            >
-              Reset All Filters
-            </button>
+            {importedFiles.length === 0 ? (
+              <>
+                <h3 className="text-base font-black text-slate-800">No Spreadsheets Imported Yet</h3>
+                <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                  You have not imported any lead spreadsheets yet. Upload and map your spreadsheet to start managing batches.
+                </p>
+                <a
+                  href="/data/import"
+                  className="inline-flex items-center gap-2 px-5 py-2.5 bg-slate-900 text-white text-xs font-bold rounded-xl hover:bg-black transition-all mt-2 cursor-pointer"
+                >
+                  <FileSpreadsheet size={15} />
+                  <span>Import New Sheet</span>
+                </a>
+              </>
+            ) : (
+              <>
+                <h3 className="text-base font-black text-slate-800">No Matching Spreadsheets</h3>
+                <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                  No spreadsheets matched your current search or date filters. Try changing your search query or resetting filters.
+                </p>
+                <button
+                  onClick={handleResetFilters}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 bg-slate-900 text-white text-xs font-bold rounded-xl hover:bg-black transition-all mt-2 cursor-pointer"
+                >
+                  Reset All Filters
+                </button>
+              </>
+            )}
           </div>
         ) : (
           /* File Cards Grid */
