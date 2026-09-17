@@ -203,6 +203,11 @@ export async function GET(
       whereClause.expiryDate = { gte: startDate, lte: endDate }
     }
 
+    const cityParam = url.searchParams.get('city')?.trim()
+    if (cityParam && cityParam !== 'all') {
+      whereClause.city = { contains: cityParam, mode: 'insensitive' }
+    }
+
     if (searchParam) {
       whereClause.OR = [
         { clientName: { contains: searchParam, mode: 'insensitive' } },

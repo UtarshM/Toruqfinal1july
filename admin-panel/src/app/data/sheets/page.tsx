@@ -111,10 +111,10 @@ export default function ImportedSheetsPage() {
 
   // Monthly Assignment States
   const [expiryMonthFilter, setExpiryMonthFilter] = useState<number>(0) // 0 = All, 1-12 = month
-  const [expiryYearFilter, setExpiryYearFilter] = useState<number>(new Date().getFullYear())
+  const [expiryYearFilter, setExpiryYearFilter] = useState<number>(0) // 0 = All Years
   const [expiryDateTypeFilter, setExpiryDateTypeFilter] = useState<'all' | 'insurance' | 'fitness' | 'permit'>('all')
   const [maxLeadsPerExec, setMaxLeadsPerExec] = useState<number | 'all'>('all') // Master admin decides quota per assignment (default 'all')
-  const [previewCityFilter, setPreviewCityFilter] = useState<string>('morbi') // Morbi branch only
+  const [previewCityFilter, setPreviewCityFilter] = useState<string>('all') // Default to all leads
   const [showAssignPanel, setShowAssignPanel] = useState(false)
   const [availableExecs, setAvailableExecs] = useState<any[]>([])
   const [selectedExecIds, setSelectedExecIds] = useState<string[]>([])
@@ -265,12 +265,14 @@ export default function ImportedSheetsPage() {
     setSelectedFile(file)
     setPreviewSearch(initialRowSearch || '')
     setPreviewAgentFilter('all')
-    setPreviewCityFilter('morbi')
+    setPreviewCityFilter('all')
     setMaxLeadsPerExec('all')
     setPreviewSortCol(null)
     setCurrentPage(1)
     setSelectedPreviewIndices(new Set())
     setAssignResult(null)
+    setExpiryMonthFilter(0)
+    setExpiryYearFilter(0)
 
     // Fetch available executives immediately for assignment
     fetchAvailableExecs(expiryMonthFilter, expiryYearFilter)
@@ -311,6 +313,26 @@ export default function ImportedSheetsPage() {
     }
   }
 
+  const reloadPreview = async (month: number, year: number, city: string) => {
+    if (!selectedFile) return
+    setPreviewLoading(true)
+    setPreviewError('')
+    try {
+      const batchQuery = selectedFile.batchName ? `&batch=${encodeURIComponent(selectedFile.batchName)}` : ''
+      const monthQuery = month > 0 ? `&month=${month}` : ''
+      const yearQuery = year > 0 ? `&year=${year}` : ''
+      const cityQuery = city !== 'all' ? `&city=${encodeURIComponent(city)}` : ''
+      const res = await fetchApi(
+        `/api/v1/import/sheets/${encodeURIComponent(selectedFile.fileName)}?limit=100${batchQuery}${monthQuery}${yearQuery}${cityQuery}`
+      )
+      setPreviewData(res)
+    } catch (err: any) {
+      console.error('Failed to reload sheet preview:', err)
+    } finally {
+      setPreviewLoading(false)
+    }
+  }
+
   // Handle month filter change in preview
   const handleExpiryMonthChange = (month: number) => {
     setExpiryMonthFilter(month)
@@ -318,6 +340,7 @@ export default function ImportedSheetsPage() {
     setAssignResult(null)
     setSelectedPreviewIndices(new Set())
     fetchAvailableExecs(month, expiryYearFilter)
+    reloadPreview(month, expiryYearFilter, previewCityFilter)
   }
 
   // Handle year filter change in preview
@@ -327,6 +350,7 @@ export default function ImportedSheetsPage() {
     setAssignResult(null)
     setSelectedPreviewIndices(new Set())
     fetchAvailableExecs(expiryMonthFilter, year)
+    reloadPreview(expiryMonthFilter, year, previewCityFilter)
   }
 
   // Assign leads for the selected month or specifically selected rows
@@ -1988,14 +2012,16 @@ export default function ImportedSheetsPage() {
                           <select
                             value={previewCityFilter}
                             onChange={e => {
-                              setPreviewCityFilter(e.target.value)
+                              const val = e.target.value
+                              setPreviewCityFilter(val)
                               setCurrentPage(1)
                               setSelectedPreviewIndices(new Set())
+                              reloadPreview(expiryMonthFilter, expiryYearFilter, val)
                             }}
                             className="bg-white border border-blue-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
                           >
-                            <option value="morbi">Morbi Branch</option>
                             <option value="all">All Leads (No Branch Filter)</option>
+                            <option value="morbi">Morbi Branch</option>
                           </select>
                         </div>
 
