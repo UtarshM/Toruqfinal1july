@@ -46,6 +46,7 @@ interface SheetPreviewData {
   headers: string[]
   rows: any[][]
   leadIds?: string[]
+  isAgentRows?: boolean[]
   agentColIdx: number
   agentRowsCount: number
   totalRows?: number
@@ -279,8 +280,11 @@ export default function ImportedSheetsPage() {
 
     try {
       const batchQuery = file.batchName ? `&batch=${encodeURIComponent(file.batchName)}` : ''
+      // For specific batches load all, for huge master file load initial 500
+      const isMaster = file.fileName === 'import_leads.xlsx' || file.batchName === 'Imported Leads (Master)' || (file.totalRows && file.totalRows > 10000)
+      const limitParam = isMaster ? '&limit=500' : '&limit=all'
       const res = await fetchApi(
-        `/api/v1/import/sheets/${encodeURIComponent(file.fileName)}?limit=100${batchQuery}`,
+        `/api/v1/import/sheets/${encodeURIComponent(file.fileName)}?${limitParam.slice(1)}${batchQuery}`,
         { signal: controller.signal },
         1
       )
@@ -313,7 +317,7 @@ export default function ImportedSheetsPage() {
     }
   }
 
-  const reloadPreview = async (month: number, year: number, city: string) => {
+  const reloadPreview = async (month: number, year: number, city: string, forceAll: boolean = false) => {
     if (!selectedFile) return
     setPreviewLoading(true)
     setPreviewError('')
@@ -322,8 +326,11 @@ export default function ImportedSheetsPage() {
       const monthQuery = month > 0 ? `&month=${month}` : ''
       const yearQuery = year > 0 ? `&year=${year}` : ''
       const cityQuery = city !== 'all' ? `&city=${encodeURIComponent(city)}` : ''
+      // Whenever month is filtered, or forceAll is true, or rowsPerPage is 'all', fetch all leads!
+      const shouldLoadAll = forceAll || month > 0 || rowsPerPage === 'all'
+      const limitQuery = shouldLoadAll ? '&limit=all' : `&limit=${Math.max(100, Number(rowsPerPage) || 100)}`
       const res = await fetchApi(
-        `/api/v1/import/sheets/${encodeURIComponent(selectedFile.fileName)}?limit=100${batchQuery}${monthQuery}${yearQuery}${cityQuery}`
+        `/api/v1/import/sheets/${encodeURIComponent(selectedFile.fileName)}?${limitQuery.slice(1)}${batchQuery}${monthQuery}${yearQuery}${cityQuery}`
       )
       setPreviewData(res)
     } catch (err: any) {
@@ -360,9 +367,13 @@ export default function ImportedSheetsPage() {
     setAssignResult(null)
     try {
       let targetLeadIds: string[] | undefined = undefined
-      if (selectedPreviewIndices.size > 0 && previewData?.leadIds) {
-        targetLeadIds = Array.from(selectedPreviewIndices)
-          .map(idx => previewData.leadIds?.[idx])
+      if (selectedPreviewIndices.size > 0 && previewData?.leadIds && previewData?.rows) {
+        targetLeadIds = filteredPreviewRows
+          .filter((_, idx) => selectedPreviewIndices.has(idx))
+          .map(row => {
+            const origIdx = previewData.rows.indexOf(row)
+            return origIdx !== -1 ? previewData.leadIds?.[origIdx] : undefined
+          })
           .filter(Boolean) as string[]
       }
 
@@ -381,11 +392,9 @@ export default function ImportedSheetsPage() {
       })
       setAssignResult(res)
 
-      // Refresh preview to show updated assignees
+      // Refresh preview to show updated assignees across all leads
       if (selectedFile) {
-        const batchQuery = selectedFile.batchName ? `&batch=${encodeURIComponent(selectedFile.batchName)}` : ''
-        const refreshed = await fetchApi(`/api/v1/import/sheets/${encodeURIComponent(selectedFile.fileName)}?limit=100${batchQuery}`)
-        setPreviewData(refreshed)
+        await reloadPreview(expiryMonthFilter, expiryYearFilter, previewCityFilter, true)
         setSelectedPreviewIndices(new Set())
       }
     } catch (err: any) {
@@ -702,9 +711,14 @@ export default function ImportedSheetsPage() {
     }
 
     // Filter by agent tag
-    if (previewAgentFilter !== 'all' && previewData.agentColIdx !== -1) {
+    if (previewAgentFilter !== 'all') {
       rows = rows.filter(row => {
-        const isAgent = String(row[previewData.agentColIdx] || '').toLowerCase().trim() === 'agent'
+        const origIdx = previewData.rows.indexOf(row)
+        const isAgent = Boolean(
+          (previewData.isAgentRows && origIdx !== -1 && previewData.isAgentRows[origIdx]) ||
+          (previewData.agentColIdx !== -1 && String(row[previewData.agentColIdx] || '').toLowerCase().trim() === 'agent') ||
+          String(row[1] || '').includes('[Agent]')
+        )
         return previewAgentFilter === 'agent' ? isAgent : !isAgent
       })
     }
@@ -1920,40 +1934,56 @@ export default function ImportedSheetsPage() {
 
                       <div className="flex flex-wrap items-center gap-3 text-xs font-bold text-slate-600">
                         {/* Agent Toggle */}
-                        {previewData.agentRowsCount > 0 && (
-                          <div className="flex items-center bg-white border border-slate-200 rounded-xl p-0.5">
-                            <button
-                              onClick={() => setPreviewAgentFilter('all')}
-                              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all ${
-                                previewAgentFilter === 'all' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:text-slate-900'
-                              }`}
-                            >
-                              All ({previewData.rows.length})
-                            </button>
-                            <button
-                              onClick={() => setPreviewAgentFilter('agent')}
-                              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1 ${
-                                previewAgentFilter === 'agent' ? 'bg-amber-500 text-white' : 'text-amber-700 hover:bg-amber-50'
-                              }`}
-                            >
-                              <AlertCircle size={11} /> Agent ({previewData.agentRowsCount})
-                            </button>
-                            <button
-                              onClick={() => setPreviewAgentFilter('direct')}
-                              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all ${
-                                previewAgentFilter === 'direct' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:text-slate-900'
-                              }`}
-                            >
-                              Direct ({previewData.rows.length - previewData.agentRowsCount})
-                            </button>
-                          </div>
-                        )}
+                        {(() => {
+                          const actualAgentCount = previewData.isAgentRows 
+                            ? previewData.isAgentRows.filter(Boolean).length 
+                            : (previewData.agentRowsCount || 0)
+                          const actualDirectCount = Math.max(0, previewData.rows.length - actualAgentCount)
+                          
+                          if (actualAgentCount === 0 && (previewData.agentRowsCount || 0) === 0) return null
+
+                          return (
+                            <div className="flex items-center bg-white border border-slate-200 rounded-xl p-0.5 shadow-sm">
+                              <button
+                                onClick={() => setPreviewAgentFilter('all')}
+                                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all ${
+                                  previewAgentFilter === 'all' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:text-slate-900'
+                                }`}
+                              >
+                                All ({previewData.rows.length})
+                              </button>
+                              <button
+                                onClick={() => setPreviewAgentFilter('agent')}
+                                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1 ${
+                                  previewAgentFilter === 'agent' ? 'bg-amber-400 text-amber-950 font-black shadow-sm' : 'text-amber-800 hover:bg-amber-50'
+                                }`}
+                              >
+                                <AlertCircle size={11} className="text-amber-950" /> Agent ({actualAgentCount})
+                              </button>
+                              <button
+                                onClick={() => setPreviewAgentFilter('direct')}
+                                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all ${
+                                  previewAgentFilter === 'direct' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:text-slate-900'
+                                }`}
+                              >
+                                Direct ({actualDirectCount})
+                              </button>
+                            </div>
+                          )
+                        })()}
 
                         <span>Filtered: <strong className="text-slate-900">{filteredPreviewRows.length}</strong></span>
                         {Boolean(previewData.totalRows && previewData.totalRows > previewData.rows.length) && (
-                          <span className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-xl font-medium">
-                            Previewing first {previewData.rows.length} of {previewData.totalRows} leads
-                          </span>
+                          <div className="flex items-center gap-2 text-[11px] text-amber-800 bg-amber-50 border border-amber-200 px-3 py-1 rounded-xl font-semibold">
+                            <span>Previewing first {previewData.rows.length} of {previewData.totalRows} leads</span>
+                            <button
+                              type="button"
+                              onClick={() => reloadPreview(expiryMonthFilter, expiryYearFilter, previewCityFilter, true)}
+                              className="px-2 py-0.5 bg-amber-500 hover:bg-amber-600 text-amber-950 rounded font-black text-[10px] transition-all cursor-pointer shadow-sm"
+                            >
+                              ⚡ Load All {previewData.totalRows} Leads
+                            </button>
+                          </div>
                         )}
 
                         {/* Lead Selection Controls */}
@@ -1989,6 +2019,9 @@ export default function ImportedSheetsPage() {
                               const val = e.target.value === 'all' ? 'all' : Number(e.target.value)
                               setRowsPerPage(val)
                               setCurrentPage(1)
+                              if (val === 'all' && previewData && previewData.rows.length < (previewData.totalRows || 0)) {
+                                reloadPreview(expiryMonthFilter, expiryYearFilter, previewCityFilter, true)
+                              }
                             }}
                             className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-700 outline-none"
                           >
@@ -1996,6 +2029,8 @@ export default function ImportedSheetsPage() {
                             <option value={50}>50</option>
                             <option value={100}>100</option>
                             <option value={250}>250</option>
+                            <option value={500}>500</option>
+                            <option value={1000}>1000</option>
                             <option value="all">All ({previewData.rows.length})</option>
                           </select>
                         </div>
@@ -2311,20 +2346,23 @@ export default function ImportedSheetsPage() {
                               />
                             </th>
                             <th className="px-4 py-3 border-b border-slate-700 w-12 text-center">#</th>
-                            {previewData.headers.map((header, idx) => (
-                              <th 
-                                key={idx} 
-                                onClick={() => handleSortColumn(idx)}
-                                className={`px-4 py-3 border-b border-slate-700 whitespace-nowrap cursor-pointer hover:bg-slate-800 transition-colors ${
-                                  header.toLowerCase().trim() === 'agent' ? 'bg-amber-600 text-white font-extrabold' : ''
-                                }`}
-                              >
-                                <div className="flex items-center gap-1.5">
-                                  <span>{header || `Col ${idx + 1}`}</span>
-                                  <ArrowUpDown size={11} className="opacity-50" />
-                                </div>
-                              </th>
-                            ))}
+                            {previewData.headers.map((header, idx) => {
+                              const isAgentCol = header.toLowerCase().trim() === 'agent'
+                              return (
+                                <th 
+                                  key={idx} 
+                                  onClick={() => handleSortColumn(idx)}
+                                  className={`px-4 py-3 border-b border-slate-700 whitespace-nowrap cursor-pointer hover:bg-slate-800 transition-colors ${
+                                    isAgentCol ? 'bg-amber-400 text-amber-950 font-black' : ''
+                                  }`}
+                                >
+                                  <div className="flex items-center gap-1.5">
+                                    <span>{header || `Col ${idx + 1}`}</span>
+                                    <ArrowUpDown size={11} className={isAgentCol ? 'text-amber-950 opacity-80' : 'opacity-50'} />
+                                  </div>
+                                </th>
+                              )
+                            })}
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
@@ -2339,8 +2377,12 @@ export default function ImportedSheetsPage() {
                               const globalRowNumber = rowsPerPage === 'all' ? rIdx + 1 : (currentPage - 1) * (rowsPerPage as number) + rIdx + 1
                               const globalFilteredIndex = rowsPerPage === 'all' ? rIdx : (currentPage - 1) * (rowsPerPage as number) + rIdx
                               const isSelected = selectedPreviewIndices.has(globalFilteredIndex)
-                              const isAgentRow = previewData.agentColIdx !== -1 && 
-                                String(row[previewData.agentColIdx] || '').toLowerCase().trim() === 'agent'
+                              const origIdx = previewData.rows.indexOf(row)
+                              const isAgentRow = Boolean(
+                                (previewData.isAgentRows && origIdx !== -1 && previewData.isAgentRows[origIdx]) ||
+                                (previewData.agentColIdx !== -1 && String(row[previewData.agentColIdx] || '').toLowerCase().trim() === 'agent') ||
+                                String(row[1] || '').includes('[Agent]')
+                              )
 
                               return (
                                 <tr 
@@ -2359,9 +2401,9 @@ export default function ImportedSheetsPage() {
                                   }}
                                   className={`transition-colors cursor-pointer ${
                                     isSelected
-                                      ? 'bg-indigo-50 hover:bg-indigo-100/90 font-bold border-l-4 border-indigo-600'
+                                      ? 'bg-indigo-100/90 hover:bg-indigo-200/90 font-bold border-l-4 border-indigo-600'
                                       : isAgentRow 
-                                      ? 'bg-amber-50/80 hover:bg-amber-100/80 font-bold text-amber-900 border-l-4 border-amber-500' 
+                                      ? 'bg-amber-100/85 hover:bg-amber-200/85 font-bold text-amber-950 border-l-4 border-amber-500 shadow-sm' 
                                       : rIdx % 2 === 0 ? 'bg-white hover:bg-slate-50/80' : 'bg-slate-50/40 hover:bg-slate-100/60'
                                   }`}
                                 >
@@ -2386,8 +2428,10 @@ export default function ImportedSheetsPage() {
                                   <td className="px-4 py-3 text-slate-400 font-mono text-[10px] text-center">{globalRowNumber}</td>
                                   {previewData.headers.map((header, cIdx) => {
                                     const rawVal = row[cIdx] !== undefined && row[cIdx] !== null ? String(row[cIdx]) : ''
-                                    const isAgentCell = cIdx === previewData.agentColIdx && rawVal.toLowerCase().trim() === 'agent'
-                                    const isDateCol = !isAgentCell && (/date|expiry|exp|due|dob|reg_date|validity|permit|fitness|insurance|puc|pucc|passing|tax/i.test(header) ||
+                                    const isAgentCol = cIdx === previewData.agentColIdx || header.toLowerCase().trim() === 'agent'
+                                    const isAgentCell = isAgentCol && rawVal.toLowerCase().trim() === 'agent'
+                                    const isDirectCell = isAgentCol && rawVal.toLowerCase().trim() === 'direct'
+                                    const isDateCol = !isAgentCol && (/date|expiry|exp|due|dob|reg_date|validity|permit|fitness|insurance|puc|pucc|passing|tax/i.test(header) ||
                                       /^\d{4}[/-]\d{1,2}[/-]\d{1,2}/.test(rawVal) ||
                                       /^\d{1,2}[/-]\d{1,2}[/-]\d{2,4}/.test(rawVal) ||
                                       (/^\d{5}(\.\d+)?$/.test(rawVal) && parseFloat(rawVal) > 30000 && parseFloat(rawVal) < 70000))
@@ -2396,9 +2440,20 @@ export default function ImportedSheetsPage() {
                                     return (
                                       <td key={cIdx} className="px-4 py-3 whitespace-nowrap">
                                         {isAgentCell ? (
-                                          <span className="px-2.5 py-1 bg-amber-500 text-white rounded-lg text-[10px] font-black uppercase tracking-wide inline-flex items-center gap-1 shadow-sm">
-                                            <AlertCircle size={11} /> AGENT
+                                          <span className="px-2.5 py-1 bg-amber-400 text-amber-950 border border-amber-500 rounded-lg text-[10px] font-black uppercase tracking-wide inline-flex items-center gap-1 shadow-sm">
+                                            <AlertCircle size={11} className="text-amber-950" /> AGENT
                                           </span>
+                                        ) : isDirectCell ? (
+                                          <span className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded-md text-[10px] font-bold uppercase">
+                                            Direct
+                                          </span>
+                                        ) : cIdx === 1 && rawVal.includes('[Agent]') ? (
+                                          <div className="flex items-center gap-1.5">
+                                            <span>{rawVal.replace('[Agent]', '').trim()}</span>
+                                            <span className="px-1.5 py-0.5 bg-amber-300 text-amber-950 border border-amber-400 rounded text-[9px] font-black uppercase tracking-wide shadow-sm">
+                                              AGENT
+                                            </span>
+                                          </div>
                                         ) : val ? (
                                           val
                                         ) : (

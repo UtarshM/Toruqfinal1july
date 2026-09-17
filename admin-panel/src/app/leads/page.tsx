@@ -1198,13 +1198,21 @@ export default function LeadsPage() {
                 const subStatus = (lead.customFields && typeof lead.customFields === 'object') ? (lead.customFields as any)?.policySubmission?.status : null
                 const isInReviewOrWon = subStatus === 'Pending_Review' || subStatus === 'Approved' || subStatus === 'Reverted' || lead.status === 'Won'
 
+                const isAgentLeadRow = (lead.existingAgent === 'Agent' || (lead.existingAgent && String(lead.existingAgent).toLowerCase().includes('agent'))) && !isInReviewOrWon
+
                 return (
                   <tr 
                     key={lead.id} 
                     onClick={() => handleOpenDrawer(lead.id)}
-                    className={`hover:bg-slate-50/50 transition-colors cursor-pointer ${
-                      selectedLeadId === lead.id ? 'bg-slate-50' : ''
-                    } ${selectedIds.has(lead.id) ? 'bg-blue-50/30' : ''}`}
+                    className={`transition-colors cursor-pointer ${
+                      selectedLeadId === lead.id 
+                        ? 'bg-slate-100' 
+                        : selectedIds.has(lead.id) 
+                        ? 'bg-blue-50/50' 
+                        : isAgentLeadRow 
+                        ? 'bg-amber-100/80 hover:bg-amber-200/80 text-amber-950 font-medium border-l-4 border-amber-500 shadow-sm' 
+                        : 'hover:bg-slate-50/50'
+                    }`}
                   >
                     <td className="px-3 py-3" onClick={e => e.stopPropagation()}>
                       <input 
@@ -1220,8 +1228,8 @@ export default function LeadsPage() {
                     <td className="px-3 py-3 text-xs text-slate-700 whitespace-nowrap">
                       <div className="flex items-center gap-1.5">
                         <span>{phone1}</span>
-                        {lead.existingAgent === 'Agent' && !isInReviewOrWon && (
-                          <span className="px-1.5 py-0.5 bg-amber-100 text-amber-800 text-[9px] font-black rounded-md border border-amber-200 uppercase tracking-wide shrink-0" title="Contact number belongs to an agent">
+                        {isAgentLeadRow && (
+                          <span className="px-2 py-0.5 bg-amber-400 text-amber-950 text-[10px] font-black rounded-md border border-amber-500 uppercase tracking-wide shrink-0 shadow-sm" title="Contact number belongs to an agent">
                             AGENT
                           </span>
                         )}

@@ -104,7 +104,7 @@ export async function GET(
             }
           },
           orderBy: { policyEndDate: 'asc' },
-          take: shouldPaginate ? limit : Math.min(parseInt(limitParam || '3000'), 5000),
+          take: shouldPaginate ? limit : (limitParam === 'all' || allParam === 'true' ? undefined : Math.min(parseInt(limitParam || '3000'), 50000)),
           skip: shouldPaginate ? (page - 1) * limit : 0
         })
       ])
@@ -218,7 +218,9 @@ export async function GET(
       ]
     }
 
-    const previewLimit = Math.min(parseInt(limitParam || '100'), 200)
+    const isAll = limitParam === 'all' || allParam === 'true' || limitParam === '0'
+    const parsedLimit = parseInt(limitParam || '100')
+    const previewLimit = isAll ? undefined : (isNaN(parsedLimit) ? 100 : Math.min(Math.max(10, parsedLimit), 50000))
     const [count, leads, agentRowsCount] = await Promise.all([
       prisma.lead.count({ where: whereClause }),
       prisma.lead.findMany({
@@ -250,7 +252,10 @@ export async function GET(
       prisma.lead.count({
         where: {
           ...whereClause,
-          existingAgent: 'Agent'
+          OR: [
+            { existingAgent: 'Agent' },
+            { existingAgent: { contains: 'Agent', mode: 'insensitive' } }
+          ]
         }
       }).catch(() => 0)
     ])
@@ -260,7 +265,7 @@ export async function GET(
 
     const standardHeaders = [
       'Client Name', 'Phone Number', 'REG NO / Vehicle No', 'Policy Expiry Date',
-      'Lead Status', 'Assigned To', 'Import Batch', 'Mo No. 2', 'Registration Date', 'GVW', 'City', 'Address'
+      'Lead Status', 'Assigned To', 'Agent', 'Import Batch', 'Mo No. 2', 'Registration Date', 'GVW', 'City', 'Address'
     ]
 
     const customKeys = new Set<string>()
@@ -286,12 +291,17 @@ export async function GET(
     const customKeyList = Array.from(customKeys)
     const headers = [...standardHeaders, ...customKeyList]
 
-    const rows = leadsList.map((l) => {
+    const isAgentRows = leadsList.map((l) => {
       const cf = (l.customFields && typeof l.customFields === 'object') ? (l.customFields as any) : {}
-      const phone2 = cf.phone2 || cf.mobile2 || cf['mo no 2'] || cf['Mo No 2'] || (l.clientEmail && /^[0-9\s+-]{7,15}$/.test(l.clientEmail.trim()) ? l.clientEmail : '')
       const subStatus = cf.policySubmission?.status
       const isInReviewOrWon = subStatus === 'Pending_Review' || subStatus === 'Approved' || subStatus === 'Reverted' || l.status === 'Won'
-      const isAgentLead = !isInReviewOrWon && (l.existingAgent === 'Agent' || (l.existingAgent && String(l.existingAgent).toLowerCase().includes('agent')))
+      return !isInReviewOrWon && (l.existingAgent === 'Agent' || (l.existingAgent && String(l.existingAgent).toLowerCase().includes('agent')))
+    })
+
+    const rows = leadsList.map((l, lIdx) => {
+      const cf = (l.customFields && typeof l.customFields === 'object') ? (l.customFields as any) : {}
+      const phone2 = cf.phone2 || cf.mobile2 || cf['mo no 2'] || cf['Mo No 2'] || (l.clientEmail && /^[0-9\s+-]{7,15}$/.test(l.clientEmail.trim()) ? l.clientEmail : '')
+      const isAgentLead = isAgentRows[lIdx]
 
       const cleanPhone = l.clientPhone || ''
       const phoneVal = cleanPhone ? (isAgentLead ? `${cleanPhone} [Agent]` : cleanPhone) : ''
@@ -303,6 +313,7 @@ export async function GET(
         formatDate(l.expiryDate),
         l.status || 'New',
         l.assignee?.fullName || (isAgentLead ? 'Pending Admin Approval' : 'Unassigned'),
+        isAgentLead ? 'Agent' : 'Direct',
         l.importName || 'Direct Entry',
         phone2 || '',
         formatDate(l.registrationDate),
@@ -319,6 +330,7 @@ export async function GET(
     })
 
     const agentColIdx = headers.findIndex(h => h.toLowerCase().trim() === 'agent')
+    const actualLoadedAgentCount = isAgentRows.filter(Boolean).length
 
     return NextResponse.json({
       fileName: safeFileName,
@@ -326,12 +338,13 @@ export async function GET(
       headers,
       rows,
       leadIds: leadsList.map(l => l.id),
+      isAgentRows,
       agentColIdx,
-      agentRowsCount,
+      agentRowsCount: isAll ? actualLoadedAgentCount : (agentRowsCount || actualLoadedAgentCount),
       totalRows,
       totalPages: shouldPaginate ? Math.ceil(totalRows / limit) : 1,
       page: shouldPaginate ? page : 1,
-      limit: shouldPaginate ? limit : totalRows
+      limit: isAll ? totalRows : (previewLimit || totalRows)
     })
   } catch (err: any) {
     console.error('[sheets-preview] Error:', err)
