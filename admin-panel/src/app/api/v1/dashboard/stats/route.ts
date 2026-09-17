@@ -264,9 +264,51 @@ export async function GET(req: NextRequest) {
       }
     })
 
+    // Operational KPIs: Unassigned vs Assigned leads
+    const [unassignedLeads, assignedLeads, completedLeads, activeRenewals, failedImports, recentImports] = await Promise.all([
+      prisma.lead.count({ where: { assignedTo: null, deletedAt: null, status: { not: 'Trashed' } } }),
+      prisma.lead.count({ where: { assignedTo: { not: null }, deletedAt: null, status: { not: 'Trashed' } } }),
+      prisma.lead.count({ where: { status: { in: ['Won', 'Issued', 'Policy Issued'] }, deletedAt: null } }),
+      prisma.renewalRecord.count({ where: { renewalStatus: 'Active' } }),
+      prisma.importJob.count({ where: { status: 'failed' } }).catch(() => 0),
+      prisma.importJob.findMany({ take: 5, orderBy: { createdAt: 'desc' } }).catch(() => [])
+    ])
+
+    // Current month date boundaries for capacity and leave checking
+    const curYear = now.getFullYear()
+    const curMonth = now.getMonth()
+    const monthStart = new Date(curYear, curMonth, 1)
+    const monthEnd = new Date(curYear, curMonth + 1, 0, 23, 59, 59, 999)
+
+    // Employees on qualifying leave (>= 5 days) in current month
+    const qualifyingLeaves = await prisma.leaveRequest.findMany({
+      where: {
+        status: { in: ['approved', 'Approved'] },
+        days: { gte: 5 },
+        startDate: { lte: monthEnd },
+        endDate: { gte: monthStart }
+      },
+      select: { userId: true, days: true, user: { select: { fullName: true } } }
+    })
+
+    // Employees near capacity (>= 350 out of 400)
+    const monthlyAssignments = await prisma.lead.groupBy({
+      by: ['assignedTo'],
+      _count: { _all: true },
+      where: {
+        assignedTo: { not: null },
+        deletedAt: null,
+        expiryDate: { gte: monthStart, lte: monthEnd }
+      }
+    })
+    const nearCapacityCount = monthlyAssignments.filter(a => a._count._all >= 350).length
+
     return NextResponse.json({
       view: 'admin',
       total_leads: totalLeads,
+      unassigned_leads: unassignedLeads,
+      assigned_leads: assignedLeads,
+      completed_leads: completedLeads,
       new_leads_today: newLeadsToday,
       pending_followups: pendingFollowups,
       overdue_followups: overdueFollowups,
@@ -275,6 +317,7 @@ export async function GET(req: NextRequest) {
       total_quotations: totalQuotations,
       total_calls: totalCalls,
       active_claims: activeClaims,
+      active_renewals: activeRenewals,
       pending_rto: pendingRto,
       pending_fitness: pendingFitness,
       active_loans: activeLoans,
@@ -284,7 +327,14 @@ export async function GET(req: NextRequest) {
       pending_policy_approvals: pendingPolicyApprovals,
       pending_agent_approvals: pendingAgentApprovals,
       revenue_trend: revenueData,
-      top_agents: topAgents
+      top_agents: topAgents,
+      operational_health: {
+        employees_on_qualifying_leave: qualifyingLeaves.length,
+        qualifying_leave_names: qualifyingLeaves.map(q => q.user?.fullName).filter(Boolean),
+        employees_near_capacity: nearCapacityCount,
+        failed_imports: failedImports,
+        recent_imports: recentImports
+      }
     })
   } catch (error) {
     console.error('Dashboard Stats Error:', error)

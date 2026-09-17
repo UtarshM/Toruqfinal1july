@@ -174,11 +174,7 @@ export async function GET(
         whereClause.importName = batchParam
       }
     } else if (batchName !== 'leads' && batchName !== 'all_leads' && batchName !== 'direct_entry') {
-      whereClause.OR = [
-        { importName: batchName },
-        { importName: batchName.replace(/_/g, ' ') },
-        { importName: { contains: batchName, mode: 'insensitive' } }
-      ]
+      whereClause.importName = batchName
     } else if (batchName === 'direct_entry') {
       whereClause.importName = null
     }
@@ -217,7 +213,7 @@ export async function GET(
       ]
     }
 
-    const previewLimit = shouldPaginate ? limit : Math.min(parseInt(limitParam || '3000'), 5000)
+    const previewLimit = Math.min(parseInt(limitParam || '100'), 200)
     const [count, leads, agentRowsCount] = await Promise.all([
       prisma.lead.count({ where: whereClause }),
       prisma.lead.findMany({
@@ -251,7 +247,7 @@ export async function GET(
           ...whereClause,
           existingAgent: 'Agent'
         }
-      })
+      }).catch(() => 0)
     ])
 
     const totalRows = count

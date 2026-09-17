@@ -187,9 +187,10 @@ export default function LeadsPage() {
   const [customResponseText, setCustomResponseText] = useState('')
   const [isSavingResponse, setIsSavingResponse] = useState(false)
 
-  // Pagination State (Default 100 leads per page)
+  // Pagination State (Default 50 leads per page, max 100)
   const [currentPage, setCurrentPage] = useState(1)
-  const [pageSize, setPageSize] = useState(100)
+  const [pageSize, setPageSize] = useState(50)
+  const [totalServerCount, setTotalServerCount] = useState<number | null>(null)
 
   // Reset pagination on filter or search changes
   useEffect(() => {
@@ -205,14 +206,26 @@ export default function LeadsPage() {
       if (endDate) params.append('endDate', endDate)
       if (statusFilter && statusFilter !== 'all') params.append('status', statusFilter)
       if (debouncedSearch && debouncedSearch.trim()) params.append('search', debouncedSearch.trim())
-      params.append('limit', '5000')
+      params.append('limit', String(Math.min(pageSize, 100)))
+      params.append('page', String(currentPage))
+      params.append('includeTotal', 'true')
+      if (sortConfig.key) {
+        params.append('sortBy', sortConfig.key)
+        params.append('sortOrder', sortConfig.direction)
+      }
 
-      const [leadsData, statsData] = await Promise.all([
+      const [leadsRes, statsData] = await Promise.all([
         fetchApi(`/api/v1/leads?${params.toString()}`),
         fetchApi(`/api/v1/leads/stats${startDate || endDate ? `?startDate=${startDate}&endDate=${endDate}` : ''}`)
       ])
       
-      setLeads(leadsData?.leads || [])
+      const returnedLeads = leadsRes?.leads || leadsRes?.data || []
+      setLeads(returnedLeads)
+      if (leadsRes?.pagination?.totalCount !== undefined) {
+        setTotalServerCount(leadsRes.pagination.totalCount)
+      } else if (leadsRes?.pagination?.total !== undefined) {
+        setTotalServerCount(leadsRes.pagination.total)
+      }
       setColumnSelectedValues({})
       setStats(statsData?.summary || null)
     } catch (error: any) {
@@ -225,7 +238,7 @@ export default function LeadsPage() {
 
   useEffect(() => {
     fetchData()
-  }, [statusFilter, debouncedSearch, startDate, endDate])
+  }, [statusFilter, debouncedSearch, startDate, endDate, currentPage, pageSize, sortConfig])
 
   const fetchEmployees = async () => {
     try {
@@ -755,9 +768,10 @@ export default function LeadsPage() {
     return sortConfig.direction === 'asc' ? aVal - bVal : bVal - aVal
   })
 
-  // Paginated leads slice (e.g. 100 leads per page)
-  const totalPages = Math.max(1, Math.ceil(sortedLeads.length / pageSize))
-  const paginatedLeads = sortedLeads.slice((currentPage - 1) * pageSize, currentPage * pageSize)
+  // Paginated leads slice (server-side paginated)
+  const displayTotal = totalServerCount !== null ? totalServerCount : leads.length
+  const totalPages = Math.max(1, Math.ceil(displayTotal / pageSize))
+  const paginatedLeads = leads
 
   // Get selected WhatsApp template text
   const getWhatsAppText = () => {
@@ -1324,12 +1338,12 @@ export default function LeadsPage() {
         </div>
 
         {/* Pagination Toolbar */}
-        {!isLoading && sortedLeads.length > 0 && (
+        {!isLoading && leads.length > 0 && (
           <div className="p-4 bg-slate-50/70 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-xs font-bold text-slate-600">
             {/* Left: Summary */}
             <div className="flex items-center gap-3">
               <span>
-                Showing <strong className="text-slate-900">{((currentPage - 1) * pageSize) + 1}</strong> to <strong className="text-slate-900">{Math.min(currentPage * pageSize, sortedLeads.length)}</strong> of <strong className="text-slate-900">{sortedLeads.length.toLocaleString()}</strong> leads
+                Showing <strong className="text-slate-900">{((currentPage - 1) * pageSize) + 1}</strong> to <strong className="text-slate-900">{Math.min(currentPage * pageSize, displayTotal)}</strong> of <strong className="text-slate-900">{displayTotal.toLocaleString()}</strong> leads
               </span>
               <div className="flex items-center gap-1.5 pl-2 border-l border-slate-200">
                 <span className="text-[11px] text-slate-400">Rows per page:</span>
@@ -1341,10 +1355,9 @@ export default function LeadsPage() {
                   }}
                   className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-800 outline-none cursor-pointer"
                 >
-                  <option value={50}>50</option>
-                  <option value={100}>100 (Default)</option>
-                  <option value={200}>200</option>
-                  <option value={500}>500</option>
+                  <option value={25}>25</option>
+                  <option value={50}>50 (Default)</option>
+                  <option value={100}>100 (Max)</option>
                 </select>
               </div>
             </div>

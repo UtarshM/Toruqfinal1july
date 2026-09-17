@@ -1,8 +1,11 @@
 import { validateAuth } from '@/lib/auth-guard'
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 import prisma from '@/lib/prisma'
 import { deleteLeadsWithCascade } from '@/lib/lead-delete-helper'
 import { formatDateDMY } from '@/lib/date-format'
+import { apiSuccess, apiError } from '@/lib/api-response'
+import { normalizeVehicleNo } from '@/lib/vehicle-helper'
+import { recordSyncEvent } from '@/lib/sync-helper'
 
 export async function GET(
   req: NextRequest,
@@ -17,7 +20,7 @@ export async function GET(
     // Validate UUID format to prevent Prisma/DB crash
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
     if (!uuidRegex.test(id)) {
-      return NextResponse.json({ error: 'Invalid Lead ID format' }, { status: 400 })
+      return apiError('Invalid Lead ID format', 'VALIDATION_ERROR', 400, null, req)
     }
 
     const lead = await prisma.lead.findUnique({
@@ -34,13 +37,13 @@ export async function GET(
     })
 
     if (!lead) {
-      return NextResponse.json({ error: 'Lead not found' }, { status: 404 })
+      return apiError('Lead not found', 'NOT_FOUND', 404, null, req)
     }
 
-    return NextResponse.json(lead)
+    return apiSuccess(lead)
   } catch (error: any) {
     console.error('Lead Detail GET Error:', error)
-    return NextResponse.json({ error: 'Internal Server Error', message: error.message }, { status: 500 })
+    return apiError(error.message || 'Internal Server Error', 'INTERNAL_ERROR', 500, null, req)
   }
 }
 
@@ -49,7 +52,9 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { context, error: authError } = await validateAuth(req, 'lead.edit')
-  if (authError || !context) return authError || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (authError || !context) {
+    return apiError('Unauthorized', 'UNAUTHORIZED', 401, null, req)
+  }
 
   try {
     const { id } = await params
@@ -58,10 +63,35 @@ export async function PUT(
     const userRole = context.role?.toUpperCase()
     const isAdmin = userRole === 'SUPER ADMIN' || userRole === 'ADMIN'
 
-    // Fetch the current lead state
+    // Fetch current lead state
     const currentLead = await prisma.lead.findUnique({ where: { id } })
     if (!currentLead) {
-      return NextResponse.json({ error: 'Lead not found' }, { status: 404 })
+      return apiError('Lead not found', 'NOT_FOUND', 404, null, req)
+    }
+
+    // Phase 12: Optimistic Concurrency / Conflict Resolution Check
+    const clientUpdatedAt = body.updatedAt || body.clientUpdatedAt
+    if (clientUpdatedAt) {
+      const clientTime = new Date(clientUpdatedAt).getTime()
+      const serverTime = new Date(currentLead.updatedAt).getTime()
+      // If server version has changed since client read (> 1 second skew tolerance)
+      if (serverTime - clientTime > 1000) {
+        return apiError(
+          'Conflict detected: The lead has been updated on the server. Please review latest changes.',
+          'CONFLICT',
+          409,
+          {
+            currentLead: {
+              id: currentLead.id,
+              clientName: currentLead.clientName,
+              status: currentLead.status,
+              assignedTo: currentLead.assignedTo,
+              updatedAt: currentLead.updatedAt
+            }
+          },
+          req
+        )
+      }
     }
 
     const data: any = {}
@@ -96,7 +126,12 @@ export async function PUT(
     checkAndAdd('clientPhone', clientPhoneVal)
 
     const vehicleNoVal = body.vehicleNo !== undefined ? body.vehicleNo : body.vehicle_no
-    checkAndAdd('vehicleNo', vehicleNoVal)
+    if (vehicleNoVal !== undefined) {
+      checkAndAdd('vehicleNo', vehicleNoVal)
+      if (isAdmin && data.vehicleNo) {
+        data.vehicleNoNormalized = normalizeVehicleNo(data.vehicleNo)
+      }
+    }
 
     const registrationDateVal = body.registrationDate !== undefined ? body.registrationDate : body.registration_date
     if (registrationDateVal !== undefined) {
@@ -176,7 +211,7 @@ export async function PUT(
       checkAndAdd('address', body.address)
     }
 
-    // assignedTo and status can always be updated directly if they have permission
+    // assignedTo and status can always be updated directly
     if (body.assignedTo !== undefined || body.assigned_to !== undefined) {
       const newAssignee = body.assignedTo !== undefined ? body.assignedTo : body.assigned_to
       data.assignedTo = newAssignee === 'unassigned' ? null : (newAssignee || null)
@@ -187,12 +222,14 @@ export async function PUT(
 
     let lead = currentLead
     if (Object.keys(data).length > 0) {
+      data.updatedAt = new Date()
+
       lead = await prisma.lead.update({
         where: { id },
         data
       })
 
-      // Sync status change history in Supabase DB
+      // Sync status change history
       if (data.status && data.status !== currentLead.status) {
         try {
           await prisma.leadStatusHistory.create({
@@ -205,11 +242,11 @@ export async function PUT(
             }
           })
         } catch (histErr) {
-          console.warn('Failed to record status history in Supabase:', histErr)
+          console.warn('Failed to record status history:', histErr)
         }
       }
 
-      // Sync assignment history in Supabase DB
+      // Sync assignment history
       if (data.assignedTo !== undefined && data.assignedTo !== currentLead.assignedTo && data.assignedTo !== null) {
         try {
           await prisma.leadAssignment.create({
@@ -219,9 +256,18 @@ export async function PUT(
             }
           })
         } catch (asgnErr) {
-          console.warn('Failed to record lead assignment in Supabase:', asgnErr)
+          console.warn('Failed to record lead assignment:', asgnErr)
         }
       }
+
+      // Phase 10 & 12: Emit SyncEvent for mobile SQLite synchronization
+      await recordSyncEvent({
+        entityType: 'lead',
+        entityId: id,
+        action: 'update',
+        payload: data,
+        userId: lead.assignedTo
+      })
     }
 
     if (pendingChanges.length > 0) {
@@ -239,17 +285,17 @@ export async function PUT(
           }
         })
       }
-      return NextResponse.json({
+      return apiSuccess({
         ...lead,
         pendingApproval: true,
         message: `${pendingChanges.length} field change requests submitted for Admin approval.`
       })
     }
 
-    return NextResponse.json(lead)
-  } catch (error) {
+    return apiSuccess(lead)
+  } catch (error: any) {
     console.error('Lead Detail PUT Error:', error)
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })
+    return apiError(error.message || 'Internal Server Error', 'INTERNAL_ERROR', 500, null, req)
   }
 }
 
@@ -258,7 +304,9 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { error: authError, context } = await validateAuth(req, 'lead.delete')
-  if (authError) return authError
+  if (authError || !context) {
+    return apiError('Unauthorized', 'UNAUTHORIZED', 401, null, req)
+  }
 
   try {
     const { id } = await params
@@ -266,31 +314,38 @@ export async function DELETE(
 
     if (isPermanent) {
       await deleteLeadsWithCascade([id])
-      return NextResponse.json({ success: true, permanent: true })
+      // Emit tombstone sync event
+      await recordSyncEvent({
+        entityType: 'lead',
+        entityId: id,
+        action: 'delete',
+        payload: { id, permanent: true },
+        userId: null
+      })
+      return apiSuccess({ permanent: true })
     }
 
-    try {
-      await prisma.lead.update({
-        where: { id },
-        data: {
-          deletedAt: new Date(),
-          deletedBy: context!.userId,
-          status: 'Trashed'
-        }
-      })
-    } catch {
-      await prisma.lead.update({
-        where: { id },
-        data: {
-          deletedAt: new Date(),
-          status: 'Trashed'
-        }
-      })
-    }
+    // Soft delete via deletedAt
+    await prisma.lead.update({
+      where: { id },
+      data: {
+        deletedAt: new Date(),
+        status: 'Trashed'
+      }
+    })
 
-    return NextResponse.json({ success: true })
+    // Phase 13 Tombstones: Emit delete sync event so mobile SQLite removes local record
+    await recordSyncEvent({
+      entityType: 'lead',
+      entityId: id,
+      action: 'delete',
+      payload: { id, deletedAt: new Date() },
+      userId: null
+    })
+
+    return apiSuccess({ deleted: true })
   } catch (error: any) {
     console.error('Lead Detail DELETE Error:', error)
-    return NextResponse.json({ error: 'Internal Server Error', message: error.message }, { status: 500 })
+    return apiError(error.message || 'Internal Server Error', 'INTERNAL_ERROR', 500, null, req)
   }
 }

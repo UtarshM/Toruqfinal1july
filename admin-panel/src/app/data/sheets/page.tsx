@@ -278,7 +278,7 @@ export default function ImportedSheetsPage() {
     try {
       const batchQuery = file.batchName ? `&batch=${encodeURIComponent(file.batchName)}` : ''
       const res = await fetchApi(
-        `/api/v1/import/sheets/${encodeURIComponent(file.fileName)}?all=true${batchQuery}`,
+        `/api/v1/import/sheets/${encodeURIComponent(file.fileName)}?limit=100${batchQuery}`,
         { signal: controller.signal },
         1
       )
@@ -360,7 +360,7 @@ export default function ImportedSheetsPage() {
       // Refresh preview to show updated assignees
       if (selectedFile) {
         const batchQuery = selectedFile.batchName ? `&batch=${encodeURIComponent(selectedFile.batchName)}` : ''
-        const refreshed = await fetchApi(`/api/v1/import/sheets/${encodeURIComponent(selectedFile.fileName)}?all=true${batchQuery}`)
+        const refreshed = await fetchApi(`/api/v1/import/sheets/${encodeURIComponent(selectedFile.fileName)}?limit=100${batchQuery}`)
         setPreviewData(refreshed)
         setSelectedPreviewIndices(new Set())
       }

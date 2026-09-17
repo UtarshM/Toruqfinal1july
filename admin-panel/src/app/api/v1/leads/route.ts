@@ -2,6 +2,8 @@ import { validateAuth } from '@/lib/auth-guard'
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { deleteLeadsWithCascade } from '@/lib/lead-delete-helper'
+import { normalizeVehicleNo } from '@/lib/vehicle-helper'
+import { apiSuccess, apiError } from '@/lib/api-response'
 
 export const maxDuration = 60
 export const dynamic = 'force-dynamic'
@@ -17,8 +19,12 @@ export async function GET(req: NextRequest) {
     const assignedToParam = searchParams.get('assignedTo')
     const search = searchParams.get('search')
     const importName = searchParams.get('importName')
-    const limit = parseInt(searchParams.get('limit') || '5000')
-    const offset = parseInt(searchParams.get('offset') || '0')
+    const pageParam = searchParams.get('page')
+    const page = pageParam ? Math.max(1, parseInt(pageParam) || 1) : null
+    const cursor = searchParams.get('cursor')
+    const rawLimit = parseInt(searchParams.get('limit') || '50')
+    const limit = Math.min(Math.max(rawLimit, 1), 100) // Default 50, strictly max 100
+    const offset = page ? (page - 1) * limit : parseInt(searchParams.get('offset') || '0')
 
     const fromParam = searchParams.get('startDate') || searchParams.get('from')
     const toParam = searchParams.get('endDate') || searchParams.get('to')
@@ -82,16 +88,32 @@ export async function GET(req: NextRequest) {
     }
 
     if (search) {
-      const cleanSearch = search.startsWith('#') ? search.slice(1).trim() : search
+      const cleanSearch = search.startsWith('#') ? search.slice(1).trim() : search.trim()
       if (cleanSearch) {
-        const searchFilter = [
+        const normVeh = normalizeVehicleNo(cleanSearch)
+        const digitsOnly = cleanSearch.replace(/\D/g, '')
+
+        const searchFilter: any[] = [
           { clientName: { contains: cleanSearch, mode: 'insensitive' } },
-          { clientPhone: { contains: cleanSearch, mode: 'insensitive' } },
-          { vehicleNo: { contains: cleanSearch, mode: 'insensitive' } },
           { city: { contains: cleanSearch, mode: 'insensitive' } },
           { importName: { contains: cleanSearch, mode: 'insensitive' } },
           { existingAgent: { contains: cleanSearch, mode: 'insensitive' } }
         ]
+
+        if (normVeh && normVeh.length >= 4) {
+          searchFilter.push({ vehicleNoNormalized: { startsWith: normVeh } })
+          searchFilter.push({ vehicleNo: { contains: cleanSearch, mode: 'insensitive' } })
+        } else {
+          searchFilter.push({ vehicleNo: { contains: cleanSearch, mode: 'insensitive' } })
+        }
+
+        if (digitsOnly && digitsOnly.length >= 7) {
+          const norm10 = digitsOnly.slice(-10)
+          searchFilter.push({ clientPhone: { contains: norm10 } })
+        } else {
+          searchFilter.push({ clientPhone: { contains: cleanSearch, mode: 'insensitive' } })
+        }
+
         if (where.OR) {
           where.AND = [{ OR: where.OR }, { OR: searchFilter }]
           delete where.OR
@@ -111,35 +133,58 @@ export async function GET(req: NextRequest) {
       orderBy = [{ expiryDate: sortOrder }, { createdAt: 'desc' }]
     }
 
-    let [leads, total] = await Promise.all([
-      prisma.lead.findMany({
-        where,
-        take: limit,
-        skip: offset,
-        orderBy,
-        include: {
-          assignee: {
-            select: { fullName: true }
-          }
+    const queryArgs: any = {
+      where,
+      take: limit + 1,
+      orderBy,
+      include: {
+        assignee: {
+          select: { fullName: true }
         }
-      }),
-      prisma.lead.count({ where })
+      }
+    }
+
+    if (cursor) {
+      queryArgs.cursor = { id: cursor }
+      queryArgs.skip = 1
+    } else {
+      queryArgs.skip = offset
+    }
+
+    const needTotal = searchParams.get('includeTotal') === 'true' || Boolean(page && !cursor)
+    let totalPromise: Promise<number> | null = null
+    if (needTotal) {
+      totalPromise = prisma.lead.count({ where })
+    }
+
+    const [rowsPlusOne, totalCount] = await Promise.all([
+      prisma.lead.findMany(queryArgs),
+      totalPromise ? totalPromise : Promise.resolve(null)
     ])
 
-    // Filter out trashed leads in memory to be 100% fail-safe
-    leads = leads.filter((l: any) => l.status !== 'Trashed' && !l.deletedAt)
+    const hasNextPage = rowsPlusOne.length > limit
+    const leads = hasNextPage ? rowsPlusOne.slice(0, limit) : rowsPlusOne
+    const nextCursor = hasNextPage && leads.length > 0 ? leads[leads.length - 1]?.id : null
 
     return NextResponse.json({
+      success: true,
       leads,
+      data: leads,
       pagination: {
-        total,
+        total: totalCount !== null ? totalCount : undefined,
+        totalCount: totalCount !== null ? totalCount : undefined,
         limit,
-        offset
+        offset,
+        page: page || (Math.floor(offset / limit) + 1),
+        totalPages: totalCount !== null ? Math.ceil(totalCount / limit) : undefined,
+        hasNextPage,
+        hasPrevPage: Boolean(cursor || offset > 0),
+        nextCursor
       }
     })
   } catch (error: any) {
     console.error('Leads GET Error:', error)
-    return NextResponse.json({ error: 'Internal Server Error', details: error?.message || String(error) }, { status: 500 })
+    return apiError(error?.message || 'Failed to fetch leads', 'INTERNAL_ERROR', 500, null, req)
   }
 }
 
@@ -224,22 +269,26 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    const rawVehicle = body.vehicleNo || body.vehicle_no || null
+    const vehicleNoNormalized = normalizeVehicleNo(rawVehicle)
+
     const lead = await prisma.lead.create({
       data: {
         clientName: body.clientName || body.client_name,
         clientEmail: body.clientEmail || body.client_email,
         clientPhone: clientPhone || undefined,
-        vehicleNo: body.vehicleNo || body.vehicle_no,
+        vehicleNo: rawVehicle,
+        vehicleNoNormalized,
         gvw: body.gvw !== undefined ? String(body.gvw) : undefined,
         status,
         existingAgent,
         assignedTo
       }
     })
-    return NextResponse.json(lead)
+    return apiSuccess(lead, 201)
   } catch (error: any) {
     console.error('Lead POST Error:', error)
-    return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 })
+    return apiError(error?.message || 'Internal Server Error', 'INTERNAL_ERROR', 500, null, req)
   }
 }
 
