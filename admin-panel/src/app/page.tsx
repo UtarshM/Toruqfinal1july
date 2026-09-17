@@ -226,7 +226,7 @@ export default function DashboardPage() {
               {/* Agent View */}
               {stats.view === 'agent' && (
                 <div className="grid grid-cols-2 lg:grid-cols-5 gap-6">
-                  <StatCard label="Leads Assigned" value={stats.my_leads} icon={Target} color="text-blue-600" bg="bg-blue-50" onClick={() => router.push('/leads')} />
+                  <StatCard label="Leads Allotted" value={stats.my_leads} icon={Target} color="text-blue-600" bg="bg-blue-50" onClick={() => router.push('/leads')} />
                   <StatCard label="Fresh Today" value={stats.new_leads_today} icon={Plus} color="text-green-600" bg="bg-green-50" onClick={() => router.push('/leads')} />
                   <StatCard label="Pending Tasks" value={stats.pending_followups} icon={Clock} color="text-amber-600" bg="bg-amber-50" onClick={() => router.push('/follow-ups')} />
                   <StatCard label="Call Activity" value={stats.calls_today} icon={Phone} color="text-purple-600" bg="bg-purple-50" onClick={() => router.push('/crm')} />

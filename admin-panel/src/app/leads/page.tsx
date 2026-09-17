@@ -551,12 +551,12 @@ export default function LeadsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ leadIds: selectedAssignedIds })
       })
-      alert(res.message || `Successfully de-assigned ${selectedAssignedIds.length} leads.`)
+      alert(res.message || `Successfully de-allotted ${selectedAssignedIds.length} leads.`)
       setSelectedIds(new Set())
       setShowDeassignConfirm(false)
       fetchData()
     } catch (err: any) {
-      alert(err.message || 'Failed to de-assign leads')
+      alert(err.message || 'Failed to de-allot leads')
     } finally {
       setIsDeassigning(false)
     }
@@ -575,12 +575,12 @@ export default function LeadsPage() {
           endDate: endDate || undefined
         })
       })
-      alert(res.message || 'Successfully de-assigned all assigned leads.')
+      alert(res.message || 'Successfully de-allotted all allotted leads.')
       setShowDeassignAllConfirm(false)
       setSelectedIds(new Set())
       fetchData()
     } catch (err: any) {
-      alert(err.message || 'Failed to de-assign all assigned leads')
+      alert(err.message || 'Failed to de-allot all allotted leads')
     } finally {
       setIsDeassigning(false)
     }
@@ -588,7 +588,7 @@ export default function LeadsPage() {
 
   // Quick single-lead de-assign from table row
   const handleQuickDeassign = async (leadId: string, leadName: string) => {
-    if (!confirm(`Are you sure you want to de-assign "${leadName}"? This will return the lead to the unassigned pool.`)) return
+    if (!confirm(`Are you sure you want to de-allot "${leadName}"? This will return the lead to the unallotted pool.`)) return
     try {
       await fetchApi('/api/v1/leads/unassign', {
         method: 'POST',
@@ -600,7 +600,7 @@ export default function LeadsPage() {
         fetchLeadDetails(leadId)
       }
     } catch (err: any) {
-      alert(err.message || 'Failed to de-assign lead')
+      alert(err.message || 'Failed to de-allot lead')
     }
   }
 
@@ -2102,10 +2102,10 @@ export default function LeadsPage() {
                 <UserX size={24} className="text-amber-600" />
               </div>
               <h2 className="text-lg font-black text-slate-900">
-                De-assign Selected Leads?
+                De-allot Selected Leads?
               </h2>
               <p className="text-xs text-slate-500 leading-relaxed">
-                {selectedAssignedIds.length} assigned lead{selectedAssignedIds.length > 1 ? 's' : ''} will be de-assigned from their auto advisor and returned to the unassigned lead pool.
+                {selectedAssignedIds.length} allotted lead{selectedAssignedIds.length > 1 ? 's' : ''} will be de-allotted from their auto advisor and returned to the unallotted lead pool.
               </p>
               <div className="flex gap-3 pt-4">
                 <button 
@@ -2119,7 +2119,7 @@ export default function LeadsPage() {
                   disabled={isDeassigning}
                   className="flex-1 px-4 py-3 bg-amber-600 text-white rounded-xl text-xs font-bold shadow-lg hover:bg-amber-700 transition-all disabled:opacity-50 cursor-pointer"
                 >
-                  {isDeassigning ? 'De-assigning...' : 'Confirm De-assign'}
+                  {isDeassigning ? 'De-allotting...' : 'Confirm De-allot'}
                 </button>
               </div>
             </div>
@@ -2127,7 +2127,7 @@ export default function LeadsPage() {
         </div>
       )}
 
-      {/* De-assign ALL Assigned Leads Confirmation Modal */}
+      {/* De-allot ALL Allotted Leads Confirmation Modal */}
       {showDeassignAllConfirm && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
           <div className="bg-white rounded-3xl w-full max-w-sm p-8 shadow-2xl border border-slate-100">
@@ -2136,13 +2136,13 @@ export default function LeadsPage() {
                 <UserX size={24} className="text-amber-700" />
               </div>
               <h2 className="text-lg font-black text-slate-900">
-                De-assign All Assigned Leads?
+                De-allot All Allotted Leads?
               </h2>
               <p className="text-xs text-slate-500 leading-relaxed">
-                This will de-assign all <strong className="text-slate-800">{stats?.assigned || 'assigned'} leads</strong> currently assigned to advisors and return them to the unassigned pool.
+                This will de-allot all <strong className="text-slate-800">{stats?.assigned || 'allotted'} leads</strong> currently allotted to advisors and return them to the unallotted pool.
               </p>
               <div className="bg-amber-50 border border-amber-200 text-amber-900 p-3 rounded-xl text-[11px] font-medium text-left">
-                ⚠️ Advisors will lose access to these leads until they are re-assigned.
+                ⚠️ Advisors will lose access to these leads until they are re-allotted.
               </div>
               <div className="flex gap-3 pt-4">
                 <button 
@@ -2156,7 +2156,7 @@ export default function LeadsPage() {
                   disabled={isDeassigning}
                   className="flex-1 px-4 py-3 bg-amber-600 text-white rounded-xl text-xs font-bold shadow-lg hover:bg-amber-700 transition-all disabled:opacity-50 cursor-pointer"
                 >
-                  {isDeassigning ? 'De-assigning...' : 'De-assign All'}
+                  {isDeassigning ? 'De-allotting...' : 'De-allot All'}
                 </button>
               </div>
             </div>

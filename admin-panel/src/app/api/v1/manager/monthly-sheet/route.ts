@@ -325,9 +325,9 @@ export async function generateMasterSheet(options: SheetFilterOptions) {
       'Renewal Status',
       'Sales Person',
       'Policy PDF',
-      'Assigned To',
-      'Assigned Month',
-      'Assigned Year',
+      'Allotted To',
+      'Allotted Month',
+      'Allotted Year',
       'Renewed Date',
       'Refused Date',
       'Created At'
@@ -339,7 +339,7 @@ export async function generateMasterSheet(options: SheetFilterOptions) {
       const pdfUrl = (Array.isArray(r.documents) && r.documents[0]) || 
                      leadCf?.policySubmission?.issuedPolicyPdfUrl || 
                      '';
-      const salesPerson = r.createdBy?.fullName || r.lead?.assignee?.fullName || 'Unassigned'
+      const salesPerson = r.createdBy?.fullName || r.lead?.assignee?.fullName || 'Unallotted'
 
       renewalRows.push([
         r.clientName || '',

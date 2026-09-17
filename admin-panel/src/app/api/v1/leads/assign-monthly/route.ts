@@ -248,11 +248,11 @@ export async function POST(req: NextRequest) {
       leadsAssigned: assignmentCounts[e.id] || 0
     }))
 
-    // Notify admins about the assignment
+    // Notify admins about the allotment
     const distSummary = distribution.map(d => `${d.name}: ${d.leadsAssigned} leads`).join(', ')
     await notifyRole('Admin', {
-      title: `📋 ${monthName} ${year || ''} Leads Assigned`,
-      body: `${totalAssigned} leads assigned via balanced round-robin. ${distSummary}`,
+      title: `📋 ${monthName} ${year || ''} Leads Allotted`,
+      body: `${totalAssigned} leads allotted via balanced round-robin. ${distSummary}`,
       type: 'info',
       entityType: 'lead_assignment',
       data: {
@@ -264,8 +264,8 @@ export async function POST(req: NextRequest) {
     }).catch(() => {})
 
     await notifyRole('Super Admin', {
-      title: `📋 ${monthName} ${year || ''} Leads Assigned`,
-      body: `${totalAssigned} leads assigned via balanced round-robin. ${distSummary}`,
+      title: `📋 ${monthName} ${year || ''} Leads Allotted`,
+      body: `${totalAssigned} leads allotted via balanced round-robin. ${distSummary}`,
       type: 'info',
       entityType: 'lead_assignment',
       data: {
@@ -283,8 +283,8 @@ export async function POST(req: NextRequest) {
         await prisma.notification.create({
           data: {
             userId: exec.id,
-            title: `📋 ${count} New Leads Assigned — ${monthName} ${year || ''}`,
-            body: `You have been assigned ${count} leads for ${monthName} ${year || ''} with balanced expiry date distribution.`,
+            title: `📋 ${count} New Leads Allotted — ${monthName} ${year || ''}`,
+            body: `You have been allotted ${count} leads for ${monthName} ${year || ''} with balanced expiry date distribution.`,
             type: 'info',
             entityType: 'lead_assignment',
             data: { month, year, count }
@@ -301,7 +301,7 @@ export async function POST(req: NextRequest) {
       distribution,
       skippedOnLeave: skippedExecutivesOnLeave,
       importName: importName || null,
-      message: `${totalAssigned} leads for ${monthName} ${year || ''} assigned successfully with balanced expiry date groups.${skippedExecutivesOnLeave.length > 0 ? ` (Skipped ${skippedExecutivesOnLeave.join(', ')} due to approved leave)` : ''}`
+      message: `${totalAssigned} leads for ${monthName} ${year || ''} allotted successfully with balanced expiry date groups.${skippedExecutivesOnLeave.length > 0 ? ` (Skipped ${skippedExecutivesOnLeave.join(', ')} due to approved leave)` : ''}`
     })
   } catch (err: any) {
     console.error('[assign-monthly] Error:', err)

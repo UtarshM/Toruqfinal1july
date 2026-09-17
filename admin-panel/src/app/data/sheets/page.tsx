@@ -398,7 +398,7 @@ export default function ImportedSheetsPage() {
         setSelectedPreviewIndices(new Set())
       }
     } catch (err: any) {
-      setAssignResult({ error: err.message || 'Assignment failed' })
+      setAssignResult({ error: err.message || 'Allotment failed' })
     } finally {
       setAssigning(false)
     }
@@ -2233,7 +2233,7 @@ export default function ImportedSheetsPage() {
                                           />
                                           <div className="flex flex-col">
                                             <span className="text-xs font-bold text-slate-800">{exec.fullName}</span>
-                                            <span className="text-[10px] font-semibold text-slate-400">{exec.roleName} • {exec.currentlyAssignedCount} assigned</span>
+                                            <span className="text-[10px] font-semibold text-slate-400">{exec.roleName} • {exec.currentlyAssignedCount} allotted</span>
                                           </div>
                                         </div>
                                         <div className="text-[10px] font-semibold">
@@ -2253,7 +2253,7 @@ export default function ImportedSheetsPage() {
                             </div>
                           )}
 
-                          {/* Assign Button + Dynamic Lead Distribution Calculation */}
+                          {/* Allot Button + Dynamic Lead Distribution Calculation */}
                           {(() => {
                             const hasManualSelection = selectedPreviewIndices.size > 0
                             const totalAvailable = hasManualSelection ? selectedPreviewIndices.size : filteredPreviewRows.length
@@ -2289,16 +2289,16 @@ export default function ImportedSheetsPage() {
                                   className="px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white text-sm font-black rounded-xl transition-all flex items-center gap-2 cursor-pointer shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
                                   {assigning ? (
-                                    <><RefreshCw size={16} className="animate-spin" /> Assigning...</>
+                                    <><RefreshCw size={16} className="animate-spin" /> Allotting...</>
                                   ) : (
-                                    <><Users size={16} /> Assign {targetTotal} Leads {maxLeadsPerExec !== 'all' ? `(Max ${maxLeadsPerExec} each)` : `(~${perPerson} each)`}</>
+                                    <><Users size={16} /> Allot {targetTotal} Leads {maxLeadsPerExec !== 'all' ? `(Max ${maxLeadsPerExec} each)` : `(~${perPerson} each)`}</>
                                   )}
                                 </button>
                               </div>
                             )
                           })()}
 
-                          {/* Assignment Result */}
+                          {/* Allotment Result */}
                           {assignResult && (
                             <div className={`p-4 rounded-xl border ${
                               assignResult.error
@@ -2315,7 +2315,7 @@ export default function ImportedSheetsPage() {
                                       {assignResult.distribution.map((d: any) => (
                                         <div key={d.id} className="bg-white p-2 rounded-lg text-xs">
                                           <span className="font-black text-slate-800">{d.name}</span>
-                                          <span className="text-emerald-600 font-bold ml-1">→ {d.leadsAssigned} leads</span>
+                                          <span className="text-emerald-600 font-bold ml-1">→ {d.leadsAssigned} leads allotted</span>
                                         </div>
                                       ))}
                                     </div>
@@ -2565,7 +2565,7 @@ export default function ImportedSheetsPage() {
                     Also delete associated leads from database
                   </span>
                   <span className="text-amber-700 text-[11px] block mt-0.5 leading-snug">
-                    Removes all lead records, call logs, and assignments imported in this batch.
+                    Removes all lead records, call logs, and allotments imported in this batch.
                   </span>
                 </div>
               </label>
@@ -2665,7 +2665,7 @@ export default function ImportedSheetsPage() {
                       <span>Complete Database Leads Wipe</span>
                     </div>
                     <p className="text-[11px] leading-relaxed text-rose-700/90 font-medium">
-                      This will permanently purge <strong>ALL leads</strong> currently stored in the database. All linked records (notes, submissions, quotes, assignments, and audit logs) will be safely deleted with cascading cleanup.
+                      This will permanently purge <strong>ALL leads</strong> currently stored in the database. All linked records (notes, submissions, quotes, allotments, and audit logs) will be safely deleted with cascading cleanup.
                     </p>
                   </div>
                 ) : (

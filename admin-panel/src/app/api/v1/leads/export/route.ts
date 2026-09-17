@@ -31,7 +31,7 @@ export async function GET(req: NextRequest) {
       'Insurance Expiry Date': formatDateDMY(lead.expiryDate, 'N/A'),
       'Email': lead.clientEmail || 'N/A',
       'Status': lead.status,
-      'Assigned To': lead.assignee?.fullName || 'Unassigned',
+      'Allotted To': lead.assignee?.fullName || 'Unallotted',
       'Created At': formatDateDMY(lead.createdAt),
     }))
 

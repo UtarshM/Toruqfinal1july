@@ -906,7 +906,7 @@ export default function UsersPage() {
                     </div>
 
                     <div className="p-3 bg-gray-50 rounded-2xl border border-gray-100">
-                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Assigned Leads</span>
+                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Allotted Leads</span>
                       <span className="text-base font-extrabold text-gray-900">
                         {selectedUserProfile._count?.assignedLeads ?? 0}
                       </span>

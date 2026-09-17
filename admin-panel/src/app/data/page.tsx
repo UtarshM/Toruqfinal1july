@@ -336,19 +336,19 @@ export default function DataApprovalPage() {
                 {reviewAction === 'approve' && (selectedReq.field === 'existingAgent' || selectedReq.newValue === 'Agent') && (
                   <div>
                     <label className="block text-xs font-bold text-gray-700 uppercase tracking-wide mb-1.5">
-                      Assign to Sales Executive (Optional)
+                      Allot to Sales Executive (Optional)
                     </label>
                     <select
                       value={assigneeId}
                       onChange={(e) => setAssigneeId(e.target.value)}
                       className="w-full text-sm border border-gray-200 rounded-xl p-2.5 bg-white text-gray-900 focus:outline-blue-500 cursor-pointer"
                     >
-                      <option value="">Keep Unassigned (Direct Managed Agent)</option>
+                      <option value="">Keep Unallotted (Direct Managed Agent)</option>
                       {executives.map(ex => (
                         <option key={ex.id} value={ex.id}>{ex.fullName || ex.email}</option>
                       ))}
                     </select>
-                    <p className="text-[11px] text-gray-400 mt-1">If unassigned, the agent account is handled directly by Admin.</p>
+                    <p className="text-[11px] text-gray-400 mt-1">If unallotted, the agent account is handled directly by Admin.</p>
                   </div>
                 )}
 

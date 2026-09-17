@@ -112,8 +112,8 @@ export async function GET(
       const headers = [
         'Client Name', 'Phone Number', 'Vehicle No', 'Policy Number', 'Provider / Insurer',
         'Policy Type', 'Premium Amount', 'Policy Expiry Date', 'Policy Start Date',
-        'Renewal Status', 'Sales Person', 'Policy PDF', 'Assigned To', 'Assigned Month',
-        'Assigned Year', 'Renewed Date', 'Refused Date', 'Created At'
+        'Renewal Status', 'Sales Person', 'Policy PDF', 'Allotted To', 'Allotted Month',
+        'Allotted Year', 'Renewed Date', 'Refused Date', 'Created At'
       ]
 
       let dataRows = renewals.map(r => {
@@ -121,7 +121,7 @@ export async function GET(
         const pdfUrl = (Array.isArray(r.documents) && r.documents[0]) || 
                        leadCf?.policySubmission?.issuedPolicyPdfUrl || 
                        '';
-        const salesPerson = r.createdBy?.fullName || r.lead?.assignee?.fullName || 'Unassigned'
+        const salesPerson = r.createdBy?.fullName || r.lead?.assignee?.fullName || 'Unallotted'
         return [
           r.clientName || '',
           r.clientPhone || '',
@@ -135,7 +135,7 @@ export async function GET(
           r.renewalStatus || 'Active',
           salesPerson,
           pdfUrl,
-          r.assignee?.fullName || 'Unassigned',
+          r.assignee?.fullName || 'Unallotted',
           r.assignedMonth ? Number(r.assignedMonth) : '',
           r.assignedYear ? Number(r.assignedYear) : '',
           formatDate(r.renewedAt),
@@ -279,7 +279,7 @@ export async function GET(
 
     const standardHeaders = [
       'Client Name', 'Phone Number', 'REG NO / Vehicle No', 'Policy Expiry Date',
-      'Lead Status', 'Assigned To', 'Agent', 'Import Batch', 'Mo No. 2', 'Registration Date', 'GVW', 'City', 'Address'
+      'Lead Status', 'Allotted To', 'Agent', 'Import Batch', 'Mo No. 2', 'Registration Date', 'GVW', 'City', 'Address'
     ]
 
     const customKeys = new Set<string>()
@@ -289,7 +289,7 @@ export async function GET(
       'email', 'vehicle no', 'vehicle_no', 'vehicleno', 'reg no', 'reg_no', 'regno', 'vehicle number', 'vehiclenumber',
       'policy expiry date', 'expirydate', 'expiry date', 'insurance validity', 'insurance_validity', 'insurancevalidity', 'expiry_date',
       'registration date', 'registrationdate', 'registration_date', 'gvw', 'gvw (in kg)', 'gvw(in kg)', 'gvw_in_kg',
-      'city', 'address', 'status', 'lead status', 'lead_status', 'assigned to', 'assigned_to', 'assignedto',
+      'city', 'address', 'status', 'lead status', 'lead_status', 'assigned to', 'assigned_to', 'assignedto', 'allotted to', 'allotted_to', 'allottedto',
       'import batch', 'import_batch', 'importbatch', 'import name', 'import_name', 'importname',
       'agent', 'existingagent', 'isagent', 'agent number', 'agent no', 'agentname', 'agent name', 'agent_name', 'agent_no'
     ]
@@ -326,7 +326,7 @@ export async function GET(
         l.vehicleNo || '',
         formatDate(l.expiryDate),
         l.status || 'New',
-        l.assignee?.fullName || (isAgentLead ? 'Pending Admin Approval' : 'Unassigned'),
+        l.assignee?.fullName || (isAgentLead ? 'Pending Admin Approval' : 'Unallotted'),
         isAgentLead ? 'Agent' : 'Direct',
         l.importName || 'Direct Entry',
         phone2 || '',

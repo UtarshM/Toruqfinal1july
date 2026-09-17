@@ -87,7 +87,7 @@ export async function syncSpreadsheetForBatch(batchName: string | null, customUp
     'REG NO / Vehicle No',
     'Policy Expiry Date',
     'Lead Status',
-    'Assigned To',
+    'Allotted To',
     'Import Batch',
     'Mo No. 2',
     'Registration Date',
@@ -102,7 +102,7 @@ export async function syncSpreadsheetForBatch(batchName: string | null, customUp
     'email', 'vehicle no', 'vehicle_no', 'vehicleno', 'reg no', 'reg_no', 'regno', 'vehicle number', 'vehiclenumber',
     'policy expiry date', 'expirydate', 'expiry date', 'insurance validity', 'insurance_validity', 'insurancevalidity', 'expiry_date',
     'registration date', 'registrationdate', 'registration_date', 'gvw', 'gvw (in kg)', 'gvw(in kg)', 'gvw_in_kg',
-    'city', 'address', 'status', 'lead status', 'lead_status', 'assigned to', 'assigned_to', 'assignedto',
+    'city', 'address', 'status', 'lead status', 'lead_status', 'assigned to', 'assigned_to', 'assignedto', 'allotted to', 'allotted_to', 'allottedto',
     'import batch', 'import_batch', 'importbatch', 'import name', 'import_name', 'importname',
     'agent', 'existingagent', 'isagent', 'agent number', 'agent no', 'agentname', 'agent name', 'agent_name', 'agent_no'
   ]
@@ -126,7 +126,7 @@ export async function syncSpreadsheetForBatch(batchName: string | null, customUp
       l.vehicleNo || '',
       formatDate(l.expiryDate),
       l.status || 'New',
-      l.assignee?.fullName || (isAgentLead ? 'Pending Admin Approval' : 'Unassigned'),
+      l.assignee?.fullName || (isAgentLead ? 'Pending Admin Approval' : 'Unallotted'),
       l.importName || 'Direct Entry',
       phone2 || '',
       formatDate(l.registrationDate),
@@ -203,9 +203,9 @@ export async function syncRenewalsSpreadsheet(customUploadDir?: string) {
     'Renewal Status',
     'Sales Person',
     'Policy PDF',
-    'Assigned To',
-    'Assigned Month',
-    'Assigned Year',
+    'Allotted To',
+    'Allotted Month',
+    'Allotted Year',
     'Renewed Date',
     'Refused Date',
     'Created At'
@@ -221,7 +221,7 @@ export async function syncRenewalsSpreadsheet(customUploadDir?: string) {
                    '';
 
     // Robustly extract original salesperson (creator or lead assignee)
-    const salesPerson = r.createdBy?.fullName || r.lead?.assignee?.fullName || 'Unassigned'
+    const salesPerson = r.createdBy?.fullName || r.lead?.assignee?.fullName || 'Unallotted'
 
     rows.push([
       r.clientName || '',
