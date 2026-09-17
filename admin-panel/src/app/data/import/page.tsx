@@ -9,7 +9,7 @@ import * as XLSX from 'xlsx'
 import {
   UploadCloud, FileSpreadsheet, Map, CheckCircle2, AlertCircle,
   ArrowRight, RefreshCw, Database, Eye, Info,
-  Edit, Trash2, Plus, Save, X, Check, Lock
+  Edit, Trash2, Plus, Save, X, Check, Lock, Sparkles
 } from 'lucide-react'
 
 interface ColumnMapping {
@@ -107,15 +107,23 @@ export default function LeadImportPage() {
   // Import Name State (sheet/batch name for #search)
   const [importName, setImportName] = useState('')
 
-  // Fetch mappings from DB settings on mount
+  // Fetch mappings from DB settings on mount (runs once, never overwrites active detected mappings)
   useEffect(() => {
+    let isMounted = true
     const loadMappings = async () => {
       try {
         const res = await apiFetch('/api/v1/settings/import-mappings')
         if (res.ok) {
           const data = await res.json()
-          if (data.success && data.mappings) {
-            setMappings(data.mappings.map((m: any) => ({ ...m, mappedHeader: '' })))
+          if (data.success && data.mappings && isMounted) {
+            setMappings(prev => {
+              const hasActiveMappings = prev.some(m => m.mappedHeader)
+              if (hasActiveMappings) return prev
+              if (headers.length > 0) {
+                return autoDetectMappings(headers, data.mappings)
+              }
+              return data.mappings.map((m: any) => ({ ...m, mappedHeader: '' }))
+            })
           }
         }
       } catch (err) {
@@ -123,7 +131,9 @@ export default function LeadImportPage() {
       }
     }
     loadMappings()
-  }, [apiFetch])
+    return () => { isMounted = false }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Try to auto-detect mappings based on header name
   const autoDetectMappings = (sheetHeaders: string[], currentMappings: ColumnMapping[]): ColumnMapping[] => {
@@ -139,57 +149,57 @@ export default function LeadImportPage() {
         // Fallbacks for default fields
         if (field.dbField === 'clientName') {
           return ['name', 'client name', 'customer name', 'owner name', 'insured name', 'party name', 'insured', 'customer', 'client', 'party', 'owner_name', 'owner'].includes(header) ||
-            header.includes('owner name') || header.includes('client name') || header.includes('customer name')
+            header.includes('owner name') || header.includes('client name') || header.includes('customer name') || normHeader.includes('ownername') || normHeader === 'owner'
         }
         if (field.dbField === 'clientPhone') {
-          return ['phone', 'mobile', 'contact', 'client phone', 'mobile no', 'contact no', 'phone no', 'mobile number', 'cust mobile', 'phone_no', 'contact_no', 'contact number'].includes(header) ||
-            header === 'contact' || header === 'contact no' || normHeader === 'contact' || normHeader === 'contactno'
+          return ['phone', 'mobile', 'contact', 'client phone', 'mobile no', 'contact no', 'phone no', 'mobile number', 'cust mobile', 'phone_no', 'contact_no', 'contact number', 'mob no', 'mo no 2', 'cell'].includes(header) ||
+            header === 'contact' || header === 'contact no' || normHeader === 'contact' || normHeader === 'contactno' || normHeader.includes('mobile') || normHeader.includes('phone')
         }
         if (field.dbField === 'clientEmail') {
-          return ['email', 'client email', 'mail', 'email id', 'email_id', 'email address'].includes(header)
+          return ['email', 'client email', 'mail', 'email id', 'email_id', 'email address'].includes(header) || normHeader.includes('email')
         }
         if (field.dbField === 'vehicleNo') {
-          return ['vehicle', 'vehicle no', 'vehicle number', 'reg no', 'registration no', 'vahan no', 'vehicle_no', 'reg_no', 'rc no', 'registration number', 'reg no / vehicle no'].includes(header) ||
-            normHeader === 'vehicleno' || normHeader === 'regno'
+          return ['vehicle', 'vehicle no', 'vehicle number', 'reg no', 'registration no', 'vahan no', 'vehicle_no', 'reg_no', 'rc no', 'registration number', 'reg no / vehicle no', 'regn no', 'regn_no', 'regn'].includes(header) ||
+            normHeader === 'vehicleno' || normHeader === 'regno' || normHeader === 'regnno' || normHeader === 'regn' || header.includes('vehicle no') || header.includes('reg no')
         }
         if (field.dbField === 'expiryDate') {
-          return ['expiry', 'expiry date', 'policy expiry', 'policy expiry date', 'exp date', 'due date', 'policy end date', 'exp_date', 'policy expiry_date', 'insurance validity', 'insurance valid', 'insurance_validity', 'insurance date', 'insurance', 'ins validity', 'ins date', 'policy validity'].includes(header) ||
-            header.includes('insurance validity') || header.includes('policy expiry') || normHeader === 'insurancevalidity' || normHeader === 'policyexpirydate'
+          return ['expiry', 'expiry date', 'policy expiry', 'policy expiry date', 'exp date', 'due date', 'policy end date', 'exp_date', 'policy expiry_date', 'insurance validity', 'insurance valid', 'insurance_validity', 'insurance date', 'insurance', 'ins validity', 'ins date', 'policy validity', 'ins_upto', 'ins upto', 'insurance_upto'].includes(header) ||
+            header.includes('insurance validity') || header.includes('policy expiry') || normHeader.includes('insurancevalidity') || normHeader.includes('policyexpiry') || normHeader.includes('insupto')
         }
         if (field.dbField === 'registrationDate') {
-          return ['registration', 'registration date', 'reg date', 'reg_date', 'registration_date', 'reg dt', 'rc date'].includes(header) ||
-            header.includes('registration date') || normHeader === 'registrationdate'
+          return ['registration', 'registration date', 'reg date', 'reg_date', 'registration_date', 'reg dt', 'rc date', 'regn_dt', 'regn dt', 'regn date'].includes(header) ||
+            header.includes('registration date') || normHeader.includes('registrationdate') || normHeader.includes('regndt')
         }
         if (field.dbField === 'gvw') {
           return ['gvw', 'gross weight', 'weight', 'gross vehicle weight', 'gvw (in kg.)', 'gvw (in kg)', 'gvw in kg', 'gvw(in kg.)', 'gvw(in kg)', 'gross vehicle weight (gvw)', 'gross weight (in kg)'].includes(header) ||
-            header.startsWith('gvw') || normHeader.startsWith('gvwin') || normHeader === 'gvw' || normHeader === 'grossvehicleweight'
+            header.startsWith('gvw') || normHeader.startsWith('gvwin') || normHeader === 'gvw' || normHeader.includes('grossweight') || normHeader.includes('gvwin')
         }
         if (field.dbField === 'address') {
-          return ['address', 'location', 'full address', 'client address', 'owner address'].includes(header) || header.includes('address')
+          return ['address', 'location', 'full address', 'client address', 'owner address', 'addr'].includes(header) || header.includes('address')
         }
         if (field.dbField === 'city') {
-          return ['city', 'state', 'district', 'taluka'].includes(header)
+          return ['city', 'state', 'district', 'taluka', 'rto'].includes(header) || normHeader === 'city'
         }
         if (field.dbField === 'existingAgent') {
           return ['agent', 'broker', 'is agent', 'existing agent', 'is_agent', 'agent status', 'agent?', 'agent number', 'agent name', 'agent contact', 'agent no', 'agent_number', 'agent_no'].includes(header) ||
-            header.includes('agent number') || header.includes('agent no') || normHeader === 'agentnumber'
+            header.includes('agent number') || header.includes('agent no') || normHeader === 'agentnumber' || normHeader.includes('agent')
         }
         if (field.dbField === 'fitnessValidity') {
-          return ['fitness validity', 'fitness valid', 'fitness date', 'fitness', 'fitness_validity', 'fitness expiry'].includes(header) ||
-            header.includes('fitness validity') || normHeader === 'fitnessvalidity'
+          return ['fitness validity', 'fitness valid', 'fitness date', 'fitness', 'fitness_validity', 'fitness expiry', 'fit_upto', 'fit upto'].includes(header) ||
+            header.includes('fitness') || normHeader.includes('fitness') || normHeader.includes('fitupto')
         }
         if (field.dbField === 'puccValidity') {
-          return ['pucc validity', 'pucc valid', 'pucc date', 'pucc', 'pucc_validity', 'puc validity', 'puc date', 'puc'].includes(header) ||
-            header.includes('pucc validity') || normHeader === 'puccvalidity'
+          return ['pucc validity', 'pucc valid', 'pucc date', 'pucc', 'pucc_validity', 'puc validity', 'puc date', 'puc', 'puc_upto', 'puc upto'].includes(header) ||
+            header.includes('pucc') || header.includes('puc') || normHeader.includes('pucc') || normHeader.includes('puc')
         }
         if (field.dbField === 'permitDate') {
-          return ['permit date', 'permit validity', 'permit valid', 'permit_date', 'permit'].includes(header) ||
-            header.includes('permit date') || normHeader === 'permitdate'
+          return ['permit date', 'permit validity', 'permit valid', 'permit_date', 'permit', 'permit authorization validity', 'permit_authorization_validity', 'prmt_upto', 'permit upto'].includes(header) ||
+            header.includes('permit') || normHeader.includes('permit')
         }
         
         return header === dbFieldName || normHeader === dbFieldName.replace(/[^a-z0-9]/g, '')
       })
-      return { ...field, mappedHeader: match || '' }
+      return { ...field, mappedHeader: match || field.mappedHeader || '' }
     })
   }
 
@@ -718,7 +728,18 @@ function inferHeaderFromColumnData(values: any[], colIndex: number): string {
 
           {/* Admin Schema Action Button */}
           {isAdmin && step === 2 && (
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => {
+                  setMappings(prev => autoDetectMappings(headers, prev))
+                  setError(null)
+                }}
+                className="flex items-center gap-1.5 px-3 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold rounded-xl transition-all cursor-pointer border border-indigo-200 shadow-sm"
+                title="Automatically match standard columns with spreadsheet headers"
+              >
+                <Sparkles size={14} className="text-indigo-600" />
+                Auto-Map Columns
+              </button>
               <button
                 onClick={addAllUnmappedSheetColumns}
                 className="flex items-center gap-1.5 px-3 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-bold rounded-xl transition-all cursor-pointer border border-blue-200 shadow-sm"
