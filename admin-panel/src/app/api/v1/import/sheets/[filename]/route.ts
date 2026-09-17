@@ -7,6 +7,9 @@ import * as XLSX from 'xlsx'
 import { getUploadDir } from '@/lib/upload-helper'
 import { deleteLeadsWithCascade } from '@/lib/lead-delete-helper'
 
+export const dynamic = 'force-dynamic'
+export const maxDuration = 60
+
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ filename: string }> }
@@ -33,9 +36,10 @@ export async function GET(
     const pageParam = url.searchParams.get('page')
     const limitParam = url.searchParams.get('limit')
     const allParam = url.searchParams.get('all')
+    const batchParam = url.searchParams.get('batch')?.trim() || ''
     const searchParam = url.searchParams.get('search')?.toLowerCase().trim() || ''
 
-    const shouldPaginate = pageParam || allParam !== 'true'
+    const shouldPaginate = Boolean(pageParam)
     const page = Math.max(1, parseInt(pageParam || '1') || 1)
     const limit = Math.min(200, Math.max(10, parseInt(limitParam || '100') || 100))
 
@@ -62,19 +66,48 @@ export async function GET(
     }
 
     if (batchName === 'renewals') {
-      const renewals = await prisma.renewalRecord.findMany({
-        include: {
-          assignee: true,
-          createdBy: true,
-          lead: {
-            include: {
-              assignee: true
+      const [totalCount, renewals] = await Promise.all([
+        prisma.renewalRecord.count(),
+        prisma.renewalRecord.findMany({
+          select: {
+            id: true,
+            clientName: true,
+            clientPhone: true,
+            vehicleNo: true,
+            policyNumber: true,
+            provider: true,
+            policyType: true,
+            premiumAmount: true,
+            policyEndDate: true,
+            policyStartDate: true,
+            renewalStatus: true,
+            documents: true,
+            assignedMonth: true,
+            assignedYear: true,
+            renewedAt: true,
+            refusedAt: true,
+            createdAt: true,
+            assignee: { select: { fullName: true } },
+            createdBy: { select: { fullName: true } },
+            lead: {
+              select: {
+                assignee: { select: { fullName: true } },
+                customFields: true
+              }
+            },
+            policy: {
+              select: {
+                policyNumber: true,
+                provider: true,
+                type: true
+              }
             }
           },
-          policy: true
-        },
-        orderBy: { policyEndDate: 'asc' }
-      })
+          orderBy: { policyEndDate: 'asc' },
+          take: shouldPaginate ? limit : Math.min(parseInt(limitParam || '3000'), 5000),
+          skip: shouldPaginate ? (page - 1) * limit : 0
+        })
+      ])
 
       const headers = [
         'Client Name', 'Phone Number', 'Vehicle No', 'Policy Number', 'Provider / Insurer',
@@ -117,26 +150,6 @@ export async function GET(
         )
       }
 
-      if (shouldPaginate) {
-        const totalRows = dataRows.length
-        const totalPages = Math.ceil(totalRows / limit)
-        const start = (page - 1) * limit
-        const paginatedRows = dataRows.slice(start, start + limit)
-
-        return NextResponse.json({
-          fileName: safeFileName,
-          downloadUrl: `/api/v1/import/sheets/download?file=${safeFileName}`,
-          headers,
-          rows: paginatedRows,
-          agentColIdx: -1,
-          agentRowsCount: 0,
-          totalRows,
-          totalPages,
-          page,
-          limit
-        })
-      }
-
       return NextResponse.json({
         fileName: safeFileName,
         downloadUrl: `/api/v1/import/sheets/download?file=${safeFileName}`,
@@ -144,28 +157,28 @@ export async function GET(
         rows: dataRows,
         agentColIdx: -1,
         agentRowsCount: 0,
-        totalRows: dataRows.length
+        totalRows: totalCount,
+        totalPages: shouldPaginate ? Math.ceil(totalCount / limit) : 1,
+        page: shouldPaginate ? page : 1,
+        limit: shouldPaginate ? limit : totalCount
       })
     }
 
     // Default leads mode
     const whereClause: any = { status: { not: 'Trashed' }, deletedAt: null }
     
-    if (batchName !== 'leads' && batchName !== 'all_leads' && batchName !== 'direct_entry') {
-      const dbBatches = await prisma.lead.groupBy({
-        by: ['importName'],
-        where: { status: { not: 'Trashed' }, deletedAt: null }
-      })
-      let actualImportName = batchName
-      for (const b of dbBatches) {
-        if (!b.importName) continue
-        const clean = String(b.importName).trim().replace(/[^a-zA-Z0-9_-]/g, '_')
-        if (clean === batchName) {
-          actualImportName = b.importName
-          whereClause.importName = actualImportName
-          break
-        }
+    if (batchParam) {
+      if (batchParam === 'direct_entry' || batchParam === 'Direct Entry') {
+        whereClause.importName = null
+      } else if (batchParam !== 'leads' && batchParam !== 'all_leads' && batchParam !== 'Imported Leads (Master)') {
+        whereClause.importName = batchParam
       }
+    } else if (batchName !== 'leads' && batchName !== 'all_leads' && batchName !== 'direct_entry') {
+      whereClause.OR = [
+        { importName: batchName },
+        { importName: batchName.replace(/_/g, ' ') },
+        { importName: { contains: batchName, mode: 'insensitive' } }
+      ]
     } else if (batchName === 'direct_entry') {
       whereClause.importName = null
     }
@@ -204,37 +217,45 @@ export async function GET(
       ]
     }
 
-    let totalRows = 0
-    let leadsList = []
-
-    if (shouldPaginate) {
-      const [count, leads] = await Promise.all([
-        prisma.lead.count({ where: whereClause }),
-        prisma.lead.findMany({
-          where: whereClause,
-          include: { assignee: true },
-          orderBy: [
-            { expiryDate: 'desc' },
-            { createdAt: 'desc' }
-          ],
-          skip: (page - 1) * limit,
-          take: limit
-        })
-      ])
-      totalRows = count
-      leadsList = leads
-    } else {
-      const leads = await prisma.lead.findMany({
+    const previewLimit = shouldPaginate ? limit : Math.min(parseInt(limitParam || '3000'), 5000)
+    const [count, leads, agentRowsCount] = await Promise.all([
+      prisma.lead.count({ where: whereClause }),
+      prisma.lead.findMany({
         where: whereClause,
-        include: { assignee: true },
+        select: {
+          id: true,
+          clientName: true,
+          clientPhone: true,
+          clientEmail: true,
+          vehicleNo: true,
+          expiryDate: true,
+          status: true,
+          importName: true,
+          registrationDate: true,
+          gvw: true,
+          city: true,
+          address: true,
+          customFields: true,
+          existingAgent: true,
+          assignee: { select: { fullName: true } }
+        },
         orderBy: [
           { expiryDate: 'desc' },
           { createdAt: 'desc' }
-        ]
+        ],
+        skip: shouldPaginate ? (page - 1) * limit : 0,
+        take: previewLimit
+      }),
+      prisma.lead.count({
+        where: {
+          ...whereClause,
+          existingAgent: 'Agent'
+        }
       })
-      totalRows = leads.length
-      leadsList = leads
-    }
+    ])
+
+    const totalRows = count
+    const leadsList = leads
 
     const standardHeaders = [
       'Client Name', 'Phone Number', 'REG NO / Vehicle No', 'Policy Expiry Date',
@@ -297,12 +318,6 @@ export async function GET(
     })
 
     const agentColIdx = headers.findIndex(h => h.toLowerCase().trim() === 'agent')
-    const agentRowsCount = await prisma.lead.count({
-      where: {
-        ...whereClause,
-        existingAgent: 'Agent'
-      }
-    })
 
     return NextResponse.json({
       fileName: safeFileName,

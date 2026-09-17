@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react'
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import AdminLayout from '@/components/layout/AdminLayout'
 import {
   FileSpreadsheet, Download, Eye, Search, AlertCircle, RefreshCw, X,
@@ -49,6 +49,9 @@ interface SheetPreviewData {
   agentColIdx: number
   agentRowsCount: number
   totalRows?: number
+  totalPages?: number
+  page?: number
+  limit?: number
 }
 
 const DAYS_OF_WEEK = ['All Days', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
@@ -96,6 +99,8 @@ export default function ImportedSheetsPage() {
   const [selectedFile, setSelectedFile] = useState<SpreadsheetFile | null>(null)
   const [previewData, setPreviewData] = useState<SheetPreviewData | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
+  const [previewError, setPreviewError] = useState('')
+  const previewAbortRef = useRef<AbortController | null>(null)
   const [previewSearch, setPreviewSearch] = useState('')
   const [previewAgentFilter, setPreviewAgentFilter] = useState<'all' | 'agent' | 'direct'>('all')
   const [previewSortCol, setPreviewSortCol] = useState<number | null>(null)
@@ -214,26 +219,49 @@ export default function ImportedSheetsPage() {
     }
   }, [])
 
+  const handleClosePreview = useCallback(() => {
+    if (previewAbortRef.current) {
+      try { previewAbortRef.current.abort() } catch {}
+      previewAbortRef.current = null
+    }
+    setSelectedFile(null)
+    setPreviewData(null)
+    setPreviewLoading(false)
+    setPreviewError('')
+  }, [])
+
   // Load renewals master file automatically when switching to renewals tab
   useEffect(() => {
     if (activePageTab === 'renewals') {
       const renewalsFile = files.find(f => f.fileName === 'import_renewals.xlsx')
-      if (renewalsFile) {
+      if (renewalsFile && !previewData && !previewLoading) {
         handleOpenPreview(renewalsFile)
+      }
+    } else if (activePageTab === 'files') {
+      if (selectedFile?.fileName === 'import_renewals.xlsx') {
+        handleClosePreview()
       }
     }
   }, [activePageTab, files])
 
-  // Reset preview state when switching tabs
-  useEffect(() => {
-    if (activePageTab === 'files') {
-      setSelectedFile(null)
-      setPreviewData(null)
-    }
-  }, [activePageTab])
-
   const handleOpenPreview = async (file: SpreadsheetFile, initialRowSearch?: string) => {
+    if (!file) return
+
+    if (previewAbortRef.current) {
+      try { previewAbortRef.current.abort() } catch {}
+      previewAbortRef.current = null
+    }
+
+    const controller = new AbortController()
+    previewAbortRef.current = controller
+
+    // Auto-abort timeout after 15 seconds so UI never hangs indefinitely
+    const timeoutId = setTimeout(() => {
+      try { controller.abort() } catch {}
+    }, 15000)
+
     setPreviewLoading(true)
+    setPreviewError('')
     setSelectedFile(file)
     setPreviewSearch(initialRowSearch || '')
     setPreviewAgentFilter('all')
@@ -243,14 +271,26 @@ export default function ImportedSheetsPage() {
     setCurrentPage(1)
     setSelectedPreviewIndices(new Set())
     setAssignResult(null)
+
     // Fetch available executives immediately for assignment
     fetchAvailableExecs(expiryMonthFilter, expiryYearFilter)
+
     try {
-      const res = await fetchApi(`/api/v1/import/sheets/${encodeURIComponent(file.fileName)}?all=true`)
+      const batchQuery = file.batchName ? `&batch=${encodeURIComponent(file.batchName)}` : ''
+      const res = await fetchApi(
+        `/api/v1/import/sheets/${encodeURIComponent(file.fileName)}?all=true${batchQuery}`,
+        { signal: controller.signal },
+        1
+      )
       setPreviewData(res)
     } catch (err: any) {
-      alert(err.message || 'Failed to load spreadsheet preview.')
+      if (err.name === 'AbortError' || controller.signal.aborted) {
+        setPreviewError('Preview request timed out or was cancelled. Please click Retry.')
+      } else {
+        setPreviewError(err.message || 'Failed to load spreadsheet preview.')
+      }
     } finally {
+      clearTimeout(timeoutId)
       setPreviewLoading(false)
     }
   }
@@ -319,7 +359,8 @@ export default function ImportedSheetsPage() {
 
       // Refresh preview to show updated assignees
       if (selectedFile) {
-        const refreshed = await fetchApi(`/api/v1/import/sheets/${encodeURIComponent(selectedFile.fileName)}?all=true`)
+        const batchQuery = selectedFile.batchName ? `&batch=${encodeURIComponent(selectedFile.batchName)}` : ''
+        const refreshed = await fetchApi(`/api/v1/import/sheets/${encodeURIComponent(selectedFile.fileName)}?all=true${batchQuery}`)
         setPreviewData(refreshed)
         setSelectedPreviewIndices(new Set())
       }
@@ -1718,7 +1759,7 @@ export default function ImportedSheetsPage() {
       )}
 
         {/* LIVE SPREADSHEET PREVIEW MODAL */}
-        {(selectedFile || previewLoading) && selectedFile?.fileName !== 'import_renewals.xlsx' && (
+        {selectedFile && selectedFile.fileName !== 'import_renewals.xlsx' && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4">
             <div className="bg-white rounded-3xl w-full max-w-7xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden border border-slate-100 animate-in zoom-in duration-150">
               
@@ -1729,23 +1770,23 @@ export default function ImportedSheetsPage() {
                     <FileSpreadsheet size={22} />
                   </div>
                   <div className="min-w-0">
-                    <h3 className="text-base font-black tracking-tight truncate">{selectedFile?.fileName}</h3>
+                    <h3 className="text-base font-black tracking-tight truncate">{selectedFile.fileName}</h3>
                     <p className="text-xs text-slate-400 truncate">
-                      Batch: <span className="text-slate-200 font-bold">{selectedFile?.batchName}</span> • Imported on <span className="text-emerald-400 font-bold">{selectedFile?.dayOfWeek ? `${selectedFile.dayOfWeek}, ` : ''}{formatDateTime(selectedFile?.importedAt)}</span>
+                      Batch: <span className="text-slate-200 font-bold">{selectedFile.batchName}</span> • Imported on <span className="text-emerald-400 font-bold">{selectedFile.dayOfWeek ? `${selectedFile.dayOfWeek}, ` : ''}{formatDateTime(selectedFile.importedAt)}</span>
                     </p>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-3 shrink-0">
                   <select
-                    value={selectedFile?.fileName || ''}
+                    value={selectedFile.fileName || ''}
                     onChange={(e) => {
                       const found = files.find(f => f.fileName === e.target.value)
                       if (found) handleOpenPreview(found)
                     }}
                     className="bg-white border border-slate-200 text-slate-900 rounded-xl px-3 py-2 text-xs font-black outline-none focus:ring-2 focus:ring-emerald-500 shadow-sm transition-all cursor-pointer hidden md:block"
                   >
-                    {files.map(f => (
+                    {files.filter(f => f.fileName !== 'import_renewals.xlsx').map(f => (
                       <option key={f.fileName} value={f.fileName} className="bg-white text-slate-900 font-bold py-1">
                         {f.batchName} ({f.totalRows} leads{f.agentCount > 0 ? ` • ${f.agentCount} Agent` : ''})
                       </option>
@@ -1755,14 +1796,14 @@ export default function ImportedSheetsPage() {
                   {previewData?.downloadUrl && (
                     <a
                       href={previewData.downloadUrl}
-                      download={selectedFile?.fileName}
+                      download={selectedFile.fileName}
                       className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold rounded-xl transition-all flex items-center gap-2 shadow-md cursor-pointer whitespace-nowrap"
                     >
                       <Download size={14} /> Download XLSX
                     </a>
                   )}
                   <button
-                    onClick={() => { setSelectedFile(null); setPreviewData(null); }}
+                    onClick={handleClosePreview}
                     className="p-2 text-slate-400 hover:text-white rounded-xl transition-colors cursor-pointer"
                   >
                     <X size={20} />
@@ -1773,9 +1814,39 @@ export default function ImportedSheetsPage() {
               {/* Modal Body / Table Preview */}
               <div className="p-4 sm:p-6 flex-1 overflow-y-auto space-y-4">
                 {previewLoading ? (
-                  <div className="p-16 text-center space-y-3">
+                  <div className="p-16 text-center space-y-4">
                     <RefreshCw className="animate-spin text-blue-600 mx-auto" size={36} />
-                    <p className="text-xs font-bold text-slate-600">Reading spreadsheet cells from server disk...</p>
+                    <p className="text-xs font-bold text-slate-600">Loading spreadsheet records from database...</p>
+                    <button
+                      onClick={handleClosePreview}
+                      className="px-4 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded-xl transition-all cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : previewError ? (
+                  <div className="p-12 text-center space-y-4">
+                    <div className="w-12 h-12 bg-rose-50 border border-rose-100 rounded-2xl flex items-center justify-center text-rose-600 mx-auto">
+                      <AlertCircle size={24} />
+                    </div>
+                    <div className="space-y-1">
+                      <h4 className="text-sm font-bold text-slate-800">Unable to load spreadsheet</h4>
+                      <p className="text-xs text-rose-600 font-medium max-w-md mx-auto">{previewError}</p>
+                    </div>
+                    <div className="flex items-center justify-center gap-3">
+                      <button
+                        onClick={() => selectedFile && handleOpenPreview(selectedFile, previewSearch)}
+                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
+                      >
+                        <RefreshCw size={14} /> Retry
+                      </button>
+                      <button
+                        onClick={handleClosePreview}
+                        className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                      >
+                        Close
+                      </button>
+                    </div>
                   </div>
                 ) : previewData ? (
                   <div className="space-y-4">
@@ -1835,6 +1906,11 @@ export default function ImportedSheetsPage() {
                         )}
 
                         <span>Filtered: <strong className="text-slate-900">{filteredPreviewRows.length}</strong></span>
+                        {Boolean(previewData.totalRows && previewData.totalRows > previewData.rows.length) && (
+                          <span className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-xl font-medium">
+                            Previewing first {previewData.rows.length} of {previewData.totalRows} leads
+                          </span>
+                        )}
 
                         {/* Lead Selection Controls */}
                         {selectedPreviewIndices.size > 0 ? (
@@ -2328,10 +2404,10 @@ export default function ImportedSheetsPage() {
               {/* Modal Footer */}
               <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500 font-semibold">
                 <span className="flex items-center gap-1.5">
-                  <CheckCircle size={14} className="text-emerald-500" /> Loaded directly from server storage (`public/uploads/imports`)
+                  <CheckCircle size={14} className="text-emerald-500" /> Synced with database records
                 </span>
                 <button
-                  onClick={() => { setSelectedFile(null); setPreviewData(null); }}
+                  onClick={handleClosePreview}
                   className="px-5 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-xl text-xs font-bold transition-all cursor-pointer"
                 >
                   Close Preview
