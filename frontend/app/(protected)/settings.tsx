@@ -29,9 +29,9 @@ export default function SettingsScreen() {
     ]},
     { title: 'App Settings', items: [
       {
-        label: 'App Updates',
+        label: 'Check for Updates',
         icon: 'cloud-download-outline',
-        desc: 'Check and download On-Air (OTA) updates',
+        desc: 'Check and download latest version (OTA)',
         onPress: () => checkAndApplyUpdate(true)
       },
       { label: 'Notifications', icon: 'notifications-outline', desc: 'Manage push notifications', onPress: () => router.push('/(protected)/notifications') },
