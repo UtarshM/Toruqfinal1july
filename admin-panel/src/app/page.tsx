@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { getISTDateString } from '@/lib/date-format'
+import PerformanceLeaderboard from '@/components/dashboard/PerformanceLeaderboard'
 
 // Global memory caches
 const statsCache: Record<string, any> = {}
@@ -306,6 +307,9 @@ export default function DashboardPage() {
               )}
             </div>
           )}
+
+          {/* Performance Status & KPI Leaderboard Section on Scroll */}
+          <PerformanceLeaderboard />
         </>
       )}
     </AdminLayout>

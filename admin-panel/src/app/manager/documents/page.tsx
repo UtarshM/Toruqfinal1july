@@ -78,6 +78,7 @@ export default function ManagerDocumentsPage() {
     policyNumber: '',
     provider: 'Torque Insurance',
     policyType: 'Nil Dep',
+    policyCount: 1.0,
     totalPremium: '',
     paidAmount: '',
     pendingAmount: '',
@@ -168,6 +169,7 @@ export default function ManagerDocumentsPage() {
       policyNumber: formData.policyNumber || `POL-${(formData.regNo || item.vehicleNo || 'NA').replace(/[^a-zA-Z0-9]/g, '')}-${Date.now().toString().slice(-4)}`,
       provider: formData.provider || formData.policyType || 'ICICI Lombard',
       policyType: formData.policyType || 'Nil Dep',
+      policyCount: formData.policyCount !== undefined ? Number(formData.policyCount) : 1.0,
       totalPremium: rawPrem ? String(rawPrem) : '',
       paidAmount: rawPaid ? String(rawPaid) : '',
       pendingAmount: rawPrem && rawPaid ? String(Math.max(0, parseFloat(rawPrem) - parseFloat(rawPaid))) : '0',
@@ -213,6 +215,7 @@ export default function ManagerDocumentsPage() {
           policyNumber: policyForm.policyNumber,
           provider: policyForm.provider,
           policyType: policyForm.policyType,
+          policyCount: parseFloat(String(policyForm.policyCount)) || 1.0,
           issuedPolicyPdfUrl: uploadedPdfUrl,
           totalPremium: parseFloat(policyForm.totalPremium) || 0,
           paidAmount: parseFloat(policyForm.paidAmount) || 0,
@@ -1031,6 +1034,48 @@ export default function ManagerDocumentsPage() {
                     onChange={e => setPolicyForm({ ...policyForm, provider: e.target.value })}
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold"
                   />
+                </div>
+              </div>
+
+              {/* Policy Type & Policy Count */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Policy Type</label>
+                  <input
+                    type="text"
+                    required
+                    value={policyForm.policyType}
+                    onChange={e => setPolicyForm({ ...policyForm, policyType: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">Policy Count (KPI Metric) *</label>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setPolicyForm({ ...policyForm, policyCount: 0.5 })}
+                      className={`py-2 px-2 rounded-xl font-black text-xs border transition-all cursor-pointer ${
+                        Number(policyForm.policyCount) === 0.5
+                          ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                          : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      0.5 Count
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPolicyForm({ ...policyForm, policyCount: 1.0 })}
+                      className={`py-2 px-2 rounded-xl font-black text-xs border transition-all cursor-pointer ${
+                        Number(policyForm.policyCount ?? 1.0) === 1.0
+                          ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                          : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      1.0 Count
+                    </button>
+                  </div>
                 </div>
               </div>
 

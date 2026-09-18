@@ -364,6 +364,13 @@ export async function POST(req: NextRequest) {
         if (!isNaN(parsed.getTime())) policyEndDate = parsed
       }
 
+      const rawPolicyCount = body.policyCount !== undefined 
+        ? parseFloat(body.policyCount) 
+        : (body.policy_count !== undefined 
+            ? parseFloat(body.policy_count) 
+            : (submission.formData?.policyCount !== undefined ? parseFloat(submission.formData.policyCount) : 1.0))
+      const finalPolicyCount = isNaN(rawPolicyCount) ? 1.0 : rawPolicyCount
+
       // 1. Create or Update Official Policy Record
       const existingPolicy = await prisma.policy.findFirst({
         where: { leadId }
@@ -378,6 +385,7 @@ export async function POST(req: NextRequest) {
             provider: finalProvider,
             type: finalType,
             premiumAmount: rawTotalPrem,
+            policyCount: finalPolicyCount,
             status: 'Active',
             startDate: policyStartDate,
             endDate: policyEndDate
@@ -391,6 +399,7 @@ export async function POST(req: NextRequest) {
             provider: finalProvider,
             type: finalType,
             premiumAmount: rawTotalPrem,
+            policyCount: finalPolicyCount,
             status: 'Active',
             startDate: policyStartDate,
             endDate: policyEndDate
@@ -453,6 +462,7 @@ export async function POST(req: NextRequest) {
               provider: finalProvider,
               policyType: finalType,
               premiumAmount: rawTotalPrem,
+              policyCount: finalPolicyCount,
               policyStartDate: policyStartDate,
               policyEndDate: policyEndDate,
               renewalStatus: 'Active',

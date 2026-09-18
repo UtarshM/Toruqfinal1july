@@ -136,6 +136,7 @@ export default function LeadPolicySubmissionModal({ leadId, lead, onClose, onUpd
     vehicleType: 'LMV - Private Car (CC)',
     customerType: 'Existing',
     customerCategory: 'OPC-Our Premium Customer',
+    policyCount: 1.0,
     regNo: lead?.vehicleNo || '',
     rate: '',
     rateConfirmationSS: 'YES',
@@ -183,6 +184,7 @@ export default function LeadPolicySubmissionModal({ leadId, lead, onClose, onUpd
             ...res.submission.formData,
             policyType: res.submission.formData.policyType || 'zero IMT 23 100%',
             vehicleType: res.submission.formData.vehicleType || 'LMV - Private Car (CC)',
+            policyCount: res.submission.formData.policyCount !== undefined ? Number(res.submission.formData.policyCount) : 1.0,
             hpDetails: loadedHp || 'As per RC',
             dueDate: formatToDateMonthYear(res.submission.formData.dueDate) || '',
             inspectionStatus: res.submission.formData.inspectionStatus === 'Not Required' ? 'Not Applicable' : (res.submission.formData.inspectionStatus || 'Not Applicable'),
@@ -373,6 +375,7 @@ export default function LeadPolicySubmissionModal({ leadId, lead, onClose, onUpd
 *Vehicle Type:* ${formData.vehicleType || 'LMV - Private Car (CC)'}
 *Customer Type:* ${formData.customerType || 'Existing'}
 *Customer Category:* ${formData.customerCategory || 'OPC-Our Premium Customer'}
+*Policy Count:* ${formData.policyCount ?? 1.0}
 *Reg No:* ${formData.regNo || lead?.vehicleNo || ''}
 *Rate:* ${formData.rate || ''}
 *Rate Confirmation SS:* ${formData.rateConfirmationSS || 'YES'}
@@ -392,6 +395,7 @@ export default function LeadPolicySubmissionModal({ leadId, lead, onClose, onUpd
 *Vehicle Type:* ${formData.vehicleType || 'LMV - Private Car (CC)'}
 *Customer Type:* ${formData.customerType || 'Existing'}
 *Customer Category:* ${formData.customerCategory || 'OPC-Our Premium Customer'}
+*Policy Count:* ${formData.policyCount ?? 1.0}
 *Reg No:* ${formData.regNo || lead?.vehicleNo || ''}
 *Rate:* ${formData.rate || ''}
 *Rate Confirmation SS:* ${formData.rateConfirmationSS || 'YES'}
@@ -633,6 +637,34 @@ ${formData.paymentMode?.toLowerCase() === 'credit' && formData.dueDate ? `*Due D
                       <option value="Sub- Sub Agent">Sub- Sub Agent</option>
                       <option value="BDG- Broker/Dealer/Garage">BDG- Broker/Dealer/Garage</option>
                     </select>
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-600 block mb-1">Policy Count (KPI Metric) *</label>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setFormData({ ...formData, policyCount: 0.5 })}
+                        className={`py-2 px-2.5 rounded-xl font-black text-xs border transition-all cursor-pointer ${
+                          Number(formData.policyCount) === 0.5
+                            ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                            : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                        }`}
+                      >
+                        0.5 Count
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setFormData({ ...formData, policyCount: 1.0 })}
+                        className={`py-2 px-2.5 rounded-xl font-black text-xs border transition-all cursor-pointer ${
+                          Number(formData.policyCount ?? 1.0) === 1.0
+                            ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                            : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                        }`}
+                      >
+                        1.0 Count
+                      </button>
+                    </div>
                   </div>
 
                   <div>

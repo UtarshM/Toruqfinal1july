@@ -119,6 +119,9 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json()
+    const rawPolicyCount = body.policy_count !== undefined ? parseFloat(body.policy_count) : (body.policyCount !== undefined ? parseFloat(body.policyCount) : 1.0)
+    const policyCount = isNaN(rawPolicyCount) ? 1.0 : rawPolicyCount
+
     const policy = await prisma.policy.create({
       data: {
         leadId: body.lead_id,
@@ -126,6 +129,7 @@ export async function POST(req: NextRequest) {
         provider: body.provider,
         type: body.type,
         premiumAmount: body.premium_amount,
+        policyCount: policyCount,
         status: body.status || 'Active',
         startDate: new Date(body.start_date),
         endDate: new Date(body.end_date)
@@ -151,6 +155,7 @@ export async function POST(req: NextRequest) {
           provider: body.provider || null,
           policyType: body.type || null,
           premiumAmount: body.premium_amount || null,
+          policyCount: policyCount,
           policyStartDate: new Date(body.start_date),
           policyEndDate: new Date(body.end_date),
           renewalStatus: 'Active',

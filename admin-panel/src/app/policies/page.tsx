@@ -38,6 +38,7 @@ export default function PoliciesPage() {
     type: 'zero IMT 23 100%',
     vehicle_type: 'LMV - Private Car (CC)',
     premium_amount: '',
+    policy_count: 1.0,
     start_date: getISTDateString(0),
     end_date: getISTDateString(365)
   })
@@ -85,7 +86,8 @@ export default function PoliciesPage() {
         method: 'POST',
         body: JSON.stringify({
           ...newPolicy,
-          premium_amount: parseFloat(newPolicy.premium_amount)
+          premium_amount: parseFloat(newPolicy.premium_amount),
+          policy_count: parseFloat(String(newPolicy.policy_count)) || 1.0
         })
       })
       setIsModalOpen(false)
@@ -399,7 +401,14 @@ export default function PoliciesPage() {
                         </div>
                       </td>
                     )}
-                    <td className="px-6 py-4 font-bold text-gray-900">₹{Number(p.premiumAmount)?.toLocaleString()}</td>
+                    <td className="px-6 py-4">
+                      <div className="flex flex-col gap-1">
+                        <span className="font-bold text-gray-900">₹{Number(p.premiumAmount)?.toLocaleString()}</span>
+                        <span className="inline-flex items-center w-fit text-[10px] font-black px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
+                          {p.policyCount !== undefined ? p.policyCount : 1} Count
+                        </span>
+                      </div>
+                    </td>
                     <td className="px-6 py-4 text-xs font-semibold text-gray-600">
                       {formatDateDMY(p.endDate, 'N/A')}
                     </td>
@@ -565,7 +574,34 @@ export default function PoliciesPage() {
               <div className="col-span-2 sm:col-span-1">
                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Premium Amount</label>
                 <input required type="number" value={newPolicy.premium_amount} onChange={e => setNewPolicy({...newPolicy, premium_amount: e.target.value})}
-                  className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl outline-none" />
+                  className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl outline-none font-medium" />
+              </div>
+              <div className="col-span-2 sm:col-span-1">
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Policy Count (KPI)</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setNewPolicy({ ...newPolicy, policy_count: 0.5 })}
+                    className={`py-2.5 px-3 rounded-xl font-bold text-xs border transition-all cursor-pointer ${
+                      Number(newPolicy.policy_count) === 0.5
+                        ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                        : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'
+                    }`}
+                  >
+                    0.5 Count
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setNewPolicy({ ...newPolicy, policy_count: 1.0 })}
+                    className={`py-2.5 px-3 rounded-xl font-bold text-xs border transition-all cursor-pointer ${
+                      Number(newPolicy.policy_count) === 1.0
+                        ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                        : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'
+                    }`}
+                  >
+                    1.0 Count
+                  </button>
+                </div>
               </div>
               <div className="col-span-2 grid grid-cols-2 gap-4">
                 <div>
