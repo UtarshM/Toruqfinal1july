@@ -177,13 +177,13 @@ export default function RateCalculatorPage() {
       const catParam = matchedCategoryId ? `&categoryId=${matchedCategoryId}` : ''
       const res = await fetchApi(`/api/v1/rates/relationships/lookup?companyId=${newCompanyId}${catParam}`)
       if (res && (res.qtr_percentage > 0 || res.qtr_profit > 0 || res.qtr_remarks)) {
-        // If common record percentage is not set, set it from preset
-        if (!recordPercentage && res.qtr_percentage) {
+        // Automatically set preset percentage from vehicle-bk conditions
+        if (res.qtr_percentage !== undefined && res.qtr_percentage !== null && (tab === 1 || !recordPercentage)) {
           setRecordPercentage(String(res.qtr_percentage))
         }
         updateSubCalc(tab, {
-          profit: res.qtr_profit ? String(res.qtr_profit) : subCalcs[tab].profit,
-          remarks: res.qtr_remarks || subCalcs[tab].remarks,
+          profit: res.qtr_profit ? String(res.qtr_profit) : '',
+          remarks: res.qtr_remarks || '',
           hasRuleFound: true
         })
       } else {
@@ -341,6 +341,9 @@ export default function RateCalculatorPage() {
     const q = listSearch.toLowerCase()
     const matchDate = (r.date || '').toLowerCase().includes(q)
     const matchC1 = (r.calculator1?.companyName || '').toLowerCase().includes(q) || (r.calculator1?.remarks || '').toLowerCase().includes(q)
+    if (!isAdmin) {
+      return matchDate || matchC1
+    }
     const matchC2 = (r.calculator2?.companyName || '').toLowerCase().includes(q) || (r.calculator2?.remarks || '').toLowerCase().includes(q)
     const matchC3 = (r.calculator3?.companyName || '').toLowerCase().includes(q) || (r.calculator3?.remarks || '').toLowerCase().includes(q)
     return matchDate || matchC1 || matchC2 || matchC3
@@ -355,7 +358,9 @@ export default function RateCalculatorPage() {
             Rate Calculator
           </h2>
           <p className="text-xs font-semibold text-slate-500 mt-1">
-            Calculate customer rates, benefit margins, and manage saved multi-calculator comparison records.
+            {isAdmin 
+              ? 'Calculate customer rates, benefit margins, and manage saved multi-calculator comparison records.'
+              : 'Calculate customer rates and view saved Rate Calculator 1 records.'}
           </p>
         </div>
 
@@ -366,7 +371,7 @@ export default function RateCalculatorPage() {
               onClick={handleResetForm}
               className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-1.5"
             >
-              <X size={14} /> Cancel Edit
+              <X size={14} /> {isAdmin ? 'Cancel Edit' : 'Clear Form'}
             </button>
           )}
 
@@ -389,14 +394,18 @@ export default function RateCalculatorPage() {
           <div className="flex items-center gap-2">
             <Edit2 size={16} className="text-amber-600 shrink-0" />
             <span>
-              Currently editing saved record from <strong>{recordDate}</strong> (ID: <span className="font-mono text-[11px]">{editingId.slice(0, 8)}...</span>). Make changes across Calculator 1, 2, or 3 and click <strong>Update Record</strong>.
+              {isAdmin ? (
+                <>Currently editing saved record from <strong>{recordDate}</strong> (ID: <span className="font-mono text-[11px]">{editingId.slice(0, 8)}...</span>). Make changes across Calculator 1, 2, or 3 and click <strong>Update Record</strong>.</>
+              ) : (
+                <>Loaded saved calculation for Rate Calculator 1 from <strong>{recordDate}</strong>.</>
+              )}
             </span>
           </div>
           <button
             onClick={handleResetForm}
             className="text-amber-700 hover:text-amber-900 underline text-xs cursor-pointer whitespace-nowrap"
           >
-            Clear / Create New
+            Clear / Reset
           </button>
         </div>
       )}
@@ -418,30 +427,39 @@ export default function RateCalculatorPage() {
         <div className="bg-slate-50/80 border-b border-slate-200/80 px-6 py-4 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           
           {/* Sub-Calculator Tabs */}
-          <div className="flex items-center gap-2">
-            {[1, 2, 3].map(tabNum => {
-              const isActive = activeTab === tabNum
-              const sub = subCalcs[tabNum as 1 | 2 | 3]
-              const hasVal = sub.companyId || sub.netPremium || sub.totalPremium
+          {isAdmin ? (
+            <div className="flex items-center gap-2">
+              {[1, 2, 3].map(tabNum => {
+                const isActive = activeTab === tabNum
+                const sub = subCalcs[tabNum as 1 | 2 | 3]
+                const hasVal = sub.companyId || sub.netPremium || sub.totalPremium
 
-              return (
-                <button
-                  key={tabNum}
-                  onClick={() => setCalcTab(tabNum as 1 | 2 | 3)}
-                  className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
-                    isActive
-                      ? 'bg-slate-900 text-white shadow-md'
-                      : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100/80'
-                  }`}
-                >
-                  <span>Rate Calculator {tabNum}</span>
-                  {hasVal && (
-                    <span className={`w-2 h-2 rounded-full ${isActive ? 'bg-emerald-400' : 'bg-emerald-500'}`} />
-                  )}
-                </button>
-              )
-            })}
-          </div>
+                return (
+                  <button
+                    key={tabNum}
+                    onClick={() => setCalcTab(tabNum as 1 | 2 | 3)}
+                    className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                      isActive
+                        ? 'bg-slate-900 text-white shadow-md'
+                        : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100/80'
+                    }`}
+                  >
+                    <span>Rate Calculator {tabNum}</span>
+                    {hasVal && (
+                      <span className={`w-2 h-2 rounded-full ${isActive ? 'bg-emerald-400' : 'bg-emerald-500'}`} />
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <div className="px-4 py-2 rounded-xl text-xs font-black bg-slate-900 text-white shadow-md flex items-center gap-2">
+                <Calculator size={14} className="text-blue-400" />
+                <span>Rate Calculator 1</span>
+              </div>
+            </div>
+          )}
 
           {/* Common Record-Level Inputs (Date & Shared Percentage) */}
           <div className="flex flex-wrap items-center gap-4">
@@ -458,10 +476,10 @@ export default function RateCalculatorPage() {
               />
             </div>
 
-            {/* Common Percentage (%) across all 3 calculators */}
+            {/* Percentage (%) */}
             <div className="flex items-center gap-2 bg-blue-50/60 border border-blue-200/70 px-3 py-1.5 rounded-xl">
               <label className="text-xs font-black text-blue-900 flex items-center gap-1">
-                <TrendingUp size={13} className="text-blue-600" /> Shared Percentage (%):
+                <TrendingUp size={13} className="text-blue-600" /> {isAdmin ? 'Shared Percentage (%):' : 'Percentage (%):'}
               </label>
               <input
                 type="number"
@@ -487,7 +505,9 @@ export default function RateCalculatorPage() {
           {currentSubCalc.companyId && (
             currentSubCalc.hasRuleFound ? (
               <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-emerald-50 text-emerald-700 rounded-full text-[11px] font-bold border border-emerald-200">
-                <CheckCircle2 size={12} /> Preset Rule Applied ({recordPercentage}% + ₹{currentSubCalc.profit || 0})
+                <CheckCircle2 size={12} /> {isAdmin 
+                  ? `Preset Rule Applied (${recordPercentage}% + ₹${currentSubCalc.profit || 0})`
+                  : `Preset Rule Applied (${recordPercentage}%)`}
               </span>
             ) : (
               <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-slate-100 text-slate-600 rounded-full text-[11px] font-semibold">
@@ -641,17 +661,17 @@ export default function RateCalculatorPage() {
         {/* Sub-Calculator Footer Summary */}
         <div className="bg-slate-50 border-t border-slate-200/80 px-6 py-4 flex flex-wrap items-center justify-between gap-4 text-xs">
           <div className="flex items-center gap-3">
-            <span className="text-slate-500 font-medium">Form status:</span>
+            <span className="text-slate-500 font-medium">Summary:</span>
             <span className="font-bold text-slate-700">
-              Shared %: <strong>{recordPercentage || '0'}%</strong>
+              {isAdmin ? 'Shared %:' : 'Percentage:'} <strong>{recordPercentage || '0'}%</strong>
             </span>
             <span className="text-slate-300">•</span>
             <span className="font-bold text-slate-700">
-              Calc {activeTab} Net: <strong>₹{currentCalc.numNet.toLocaleString()}</strong>
+              {isAdmin ? `Calc ${activeTab} Net:` : 'Net Premium:'} <strong>₹{currentCalc.numNet.toLocaleString()}</strong>
             </span>
             <span className="text-slate-300">•</span>
             <span className="font-bold text-slate-700">
-              Calc {activeTab} Total: <strong>₹{currentCalc.numTotal.toLocaleString()}</strong>
+              {isAdmin ? `Calc ${activeTab} Total:` : 'Total Premium:'} <strong>₹{currentCalc.numTotal.toLocaleString()}</strong>
             </span>
             {isAdmin && (
               <>
@@ -670,7 +690,7 @@ export default function RateCalculatorPage() {
               }}
               className="px-3 py-1.5 text-xs font-semibold text-slate-500 hover:text-rose-600 cursor-pointer transition-colors"
             >
-              Clear Tab {activeTab}
+              {isAdmin ? `Clear Tab ${activeTab}` : 'Clear Calculator'}
             </button>
 
             {isAdmin && (
@@ -700,7 +720,9 @@ export default function RateCalculatorPage() {
               </span>
             </h3>
             <p className="text-xs text-slate-500">
-              All saved calculations containing Calculator 1, Calculator 2, and Calculator 3 comparisons.
+              {isAdmin 
+                ? 'All saved calculations containing Calculator 1, Calculator 2, and Calculator 3 comparisons.'
+                : 'All saved calculations for Rate Calculator 1.'}
             </p>
           </div>
 
@@ -750,8 +772,8 @@ export default function RateCalculatorPage() {
                   <tr>
                     <th className="py-3.5 px-4">Date / %</th>
                     <th className="py-3.5 px-4">Rate Calculator 1</th>
-                    <th className="py-3.5 px-4">Rate Calculator 2</th>
-                    <th className="py-3.5 px-4">Rate Calculator 3</th>
+                    {isAdmin && <th className="py-3.5 px-4">Rate Calculator 2</th>}
+                    {isAdmin && <th className="py-3.5 px-4">Rate Calculator 3</th>}
                     <th className="py-3.5 px-4 text-right">Actions</th>
                   </tr>
                 </thead>
@@ -767,7 +789,7 @@ export default function RateCalculatorPage() {
                         key={rec.id} 
                         className={`transition-colors ${isCurrentlyEditing ? 'bg-amber-50/40' : 'hover:bg-slate-50/60'}`}
                       >
-                        {/* Date & Shared Percentage */}
+                        {/* Date & Percentage */}
                         <td className="py-4 px-4 whitespace-nowrap align-top">
                           <div className="space-y-1">
                             <span className="font-bold text-slate-900 block flex items-center gap-1">
@@ -775,11 +797,11 @@ export default function RateCalculatorPage() {
                               {rec.date ? formatDateDMY(rec.date) : '—'}
                             </span>
                             <span className="inline-flex items-center px-2 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-md font-mono font-black text-[10px]">
-                              {rec.percentage || 0}% Shared
+                              {rec.percentage || 0}% {isAdmin ? 'Shared' : ''}
                             </span>
                             {isCurrentlyEditing && (
                               <span className="block text-[10px] font-black text-amber-700 uppercase tracking-wider mt-1">
-                                ● Editing now
+                                ● {isAdmin ? 'Editing now' : 'Loaded'}
                               </span>
                             )}
                           </div>
@@ -788,7 +810,7 @@ export default function RateCalculatorPage() {
                         {/* Calculator 1 Summary */}
                         <td className="py-4 px-4 align-top">
                           {c1.companyId || c1.netPremium ? (
-                            <div className="space-y-1 max-w-[200px]">
+                            <div className="space-y-1 max-w-[240px]">
                               <span className="font-bold text-slate-900 block truncate">
                                 {c1.companyName || 'Company 1'}
                               </span>
@@ -813,61 +835,65 @@ export default function RateCalculatorPage() {
                           )}
                         </td>
 
-                        {/* Calculator 2 Summary */}
-                        <td className="py-4 px-4 align-top">
-                          {c2.companyId || c2.netPremium ? (
-                            <div className="space-y-1 max-w-[200px]">
-                              <span className="font-bold text-slate-900 block truncate">
-                                {c2.companyName || 'Company 2'}
-                              </span>
-                              <div className="text-[11px] text-slate-600 font-mono space-y-0.5">
-                                <div>Net: ₹{Number(c2.netPremium || 0).toLocaleString()}</div>
-                                <div>Total: ₹{Number(c2.totalPremium || 0).toLocaleString()}</div>
-                                <div className="font-bold text-emerald-700">Rate: ₹{Number(c2.rate || 0).toLocaleString()}</div>
-                                {isAdmin && c2.profit !== undefined && (
-                                  <div className="font-bold text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 text-[10px] inline-block">
-                                    Profit 2: ₹{Number(c2.profit || 0).toLocaleString()}
-                                  </div>
+                        {/* Calculator 2 Summary (Admin Only) */}
+                        {isAdmin && (
+                          <td className="py-4 px-4 align-top">
+                            {c2.companyId || c2.netPremium ? (
+                              <div className="space-y-1 max-w-[200px]">
+                                <span className="font-bold text-slate-900 block truncate">
+                                  {c2.companyName || 'Company 2'}
+                                </span>
+                                <div className="text-[11px] text-slate-600 font-mono space-y-0.5">
+                                  <div>Net: ₹{Number(c2.netPremium || 0).toLocaleString()}</div>
+                                  <div>Total: ₹{Number(c2.totalPremium || 0).toLocaleString()}</div>
+                                  <div className="font-bold text-emerald-700">Rate: ₹{Number(c2.rate || 0).toLocaleString()}</div>
+                                  {c2.profit !== undefined && (
+                                    <div className="font-bold text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 text-[10px] inline-block">
+                                      Profit 2: ₹{Number(c2.profit || 0).toLocaleString()}
+                                    </div>
+                                  )}
+                                </div>
+                                {c2.remarks && (
+                                  <p className="text-[10px] text-slate-400 italic truncate" title={c2.remarks}>
+                                    &quot;{c2.remarks}&quot;
+                                  </p>
                                 )}
                               </div>
-                              {c2.remarks && (
-                                <p className="text-[10px] text-slate-400 italic truncate" title={c2.remarks}>
-                                  &quot;{c2.remarks}&quot;
-                                </p>
-                              )}
-                            </div>
-                          ) : (
-                            <span className="text-slate-300 italic">—</span>
-                          )}
-                        </td>
+                            ) : (
+                              <span className="text-slate-300 italic">—</span>
+                            )}
+                          </td>
+                        )}
 
-                        {/* Calculator 3 Summary */}
-                        <td className="py-4 px-4 align-top">
-                          {c3.companyId || c3.netPremium ? (
-                            <div className="space-y-1 max-w-[200px]">
-                              <span className="font-bold text-slate-900 block truncate">
-                                {c3.companyName || 'Company 3'}
-                              </span>
-                              <div className="text-[11px] text-slate-600 font-mono space-y-0.5">
-                                <div>Net: ₹{Number(c3.netPremium || 0).toLocaleString()}</div>
-                                <div>Total: ₹{Number(c3.totalPremium || 0).toLocaleString()}</div>
-                                <div className="font-bold text-emerald-700">Rate: ₹{Number(c3.rate || 0).toLocaleString()}</div>
-                                {isAdmin && c3.profit !== undefined && (
-                                  <div className="font-bold text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 text-[10px] inline-block">
-                                    Profit 3: ₹{Number(c3.profit || 0).toLocaleString()}
-                                  </div>
+                        {/* Calculator 3 Summary (Admin Only) */}
+                        {isAdmin && (
+                          <td className="py-4 px-4 align-top">
+                            {c3.companyId || c3.netPremium ? (
+                              <div className="space-y-1 max-w-[200px]">
+                                <span className="font-bold text-slate-900 block truncate">
+                                  {c3.companyName || 'Company 3'}
+                                </span>
+                                <div className="text-[11px] text-slate-600 font-mono space-y-0.5">
+                                  <div>Net: ₹{Number(c3.netPremium || 0).toLocaleString()}</div>
+                                  <div>Total: ₹{Number(c3.totalPremium || 0).toLocaleString()}</div>
+                                  <div className="font-bold text-emerald-700">Rate: ₹{Number(c3.rate || 0).toLocaleString()}</div>
+                                  {c3.profit !== undefined && (
+                                    <div className="font-bold text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 text-[10px] inline-block">
+                                      Profit 3: ₹{Number(c3.profit || 0).toLocaleString()}
+                                    </div>
+                                  )}
+                                </div>
+                                {c3.remarks && (
+                                  <p className="text-[10px] text-slate-400 italic truncate" title={c3.remarks}>
+                                    &quot;{c3.remarks}&quot;
+                                  </p>
                                 )}
                               </div>
-                              {c3.remarks && (
-                                <p className="text-[10px] text-slate-400 italic truncate" title={c3.remarks}>
-                                  &quot;{c3.remarks}&quot;
-                                </p>
-                              )}
-                            </div>
-                          ) : (
-                            <span className="text-slate-300 italic">—</span>
-                          )}
-                        </td>
+                            ) : (
+                              <span className="text-slate-300 italic">—</span>
+                            )}
+                          </td>
+                        )}
 
                         {/* Actions (Edit Option for Every Entry) */}
                         <td className="py-4 px-4 text-right align-top whitespace-nowrap">
@@ -880,10 +906,10 @@ export default function RateCalculatorPage() {
                                   ? 'bg-amber-600 text-white hover:bg-amber-700' 
                                   : 'bg-white border border-slate-200 hover:bg-blue-50 text-blue-700 hover:border-blue-300'
                               }`}
-                              title="Edit complete record with all 3 calculators and profits"
+                              title={isAdmin ? "Edit complete record with all 3 calculators and profits" : "Load Rate Calculator 1"}
                             >
                               <Edit2 size={13} />
-                              <span>{isCurrentlyEditing ? 'Editing' : 'Edit'}</span>
+                              <span>{isCurrentlyEditing ? (isAdmin ? 'Editing' : 'Loaded') : (isAdmin ? 'Edit' : 'Load')}</span>
                             </button>
 
                             {/* Delete Action Button (Admin Only) */}

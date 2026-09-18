@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
 
     const rawRecords: any[] = Array.isArray(setting?.value) ? (setting.value as any[]) : []
 
-    // Sanitize records: If caller is not Admin, redact profit fields
+    // Sanitize records: If caller is not Admin, redact profit fields and restrict to calculator1 only
     const sanitized = rawRecords.map(rec => {
       if (isAdmin) return rec
 
@@ -37,10 +37,15 @@ export async function GET(req: NextRequest) {
       }
 
       return {
-        ...rec,
+        id: rec.id,
+        date: rec.date,
+        percentage: rec.percentage,
         calculator1: cleanCalc(rec.calculator1),
-        calculator2: cleanCalc(rec.calculator2),
-        calculator3: cleanCalc(rec.calculator3)
+        calculator2: undefined,
+        calculator3: undefined,
+        createdBy: rec.createdBy,
+        createdAt: rec.createdAt,
+        updatedAt: rec.updatedAt
       }
     })
 
