@@ -14,7 +14,9 @@
     "prisma:generate": "cd admin-panel && npx prisma generate",
     "prisma:push": "cd admin-panel && npx prisma db push",
     "build": "cd admin-panel && npx prisma generate && npm run build",
-    "vercel-build": "cd admin-panel && npx prisma generate && npm run build"
+    "vercel-build": "cd admin-panel && npx prisma generate && npm run build",
+    "ota:publish": "cd frontend && npx eas update --channel preview --message \"OTA Update\" --non-interactive",
+    "ota:status": "cd frontend && npx eas update:list --branch preview --limit 3 --non-interactive"
   },
   "devDependencies": {
     "babel-preset-expo": "~54.0.11",

@@ -63,6 +63,14 @@ export function UpdateBanner() {
             useNativeDriver: true,
             friction: 8
           }).start();
+          Alert.alert(
+            'New Version Downloaded 🎉',
+            'An on-air update was successfully downloaded. Restart now to apply the latest changes?',
+            [
+              { text: 'Later', style: 'cancel' },
+              { text: 'Restart Now', onPress: async () => await Updates.reloadAsync() }
+            ]
+          );
         }
       } catch (err) {
         // Silently continue
