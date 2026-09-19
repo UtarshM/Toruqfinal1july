@@ -7,19 +7,7 @@ import { apiSuccess, apiError } from '@/lib/api-response'
 import { normalizeVehicleNo } from '@/lib/vehicle-helper'
 import { recordSyncEvent } from '@/lib/sync-helper'
 
-let leadsSchemaHealed = false
-async function healLeadsSchema() {
-  if (leadsSchemaHealed) return
-  try {
-    await prisma.$executeRawUnsafe(`
-      ALTER TABLE "leads" ADD COLUMN IF NOT EXISTS "vehicleNoNormalized" VARCHAR(32);
-      CREATE INDEX IF NOT EXISTS "leads_vehicleNoNormalized_idx" ON "leads"("vehicleNoNormalized");
-    `)
-    leadsSchemaHealed = true
-  } catch (e) {
-    console.warn('[LeadDetailRoute] Schema auto-heal note:', e)
-  }
-}
+import { healLeadsSchema } from '@/lib/leads-schema-helper'
 
 export async function GET(
   req: NextRequest,

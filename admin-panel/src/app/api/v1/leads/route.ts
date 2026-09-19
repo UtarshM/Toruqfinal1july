@@ -8,19 +8,7 @@ import { apiSuccess, apiError } from '@/lib/api-response'
 export const maxDuration = 60
 export const dynamic = 'force-dynamic'
 
-let leadsSchemaHealed = false
-async function healLeadsSchema() {
-  if (leadsSchemaHealed) return
-  try {
-    await prisma.$executeRawUnsafe(`
-      ALTER TABLE "leads" ADD COLUMN IF NOT EXISTS "vehicleNoNormalized" VARCHAR(32);
-      CREATE INDEX IF NOT EXISTS "leads_vehicleNoNormalized_idx" ON "leads"("vehicleNoNormalized");
-    `)
-    leadsSchemaHealed = true
-  } catch (e) {
-    console.warn('[LeadsRoute] Schema auto-heal note:', e)
-  }
-}
+import { healLeadsSchema } from '@/lib/leads-schema-helper'
 
 export async function GET(req: NextRequest) {
   const { error, context } = await validateAuth(req, 'leads.view')
@@ -225,6 +213,8 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const { error, context } = await validateAuth(req, 'leads.create')
   if (error) return error
+
+  await healLeadsSchema()
 
   try {
     const body = await req.json()
