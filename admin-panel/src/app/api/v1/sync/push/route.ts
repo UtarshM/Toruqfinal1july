@@ -70,18 +70,45 @@ export async function POST(req: NextRequest) {
               }
             })
 
-            // Auto-update lead
+            // Auto-update lead status
             await tx.lead.updateMany({
               where: { id: leadId, status: 'New' },
               data: { status: 'Contacted', updatedAt: new Date() }
             })
+
+            // Update expiry date if specified
+            if (mut.payload.newExpiryDate) {
+              try {
+                await tx.lead.updateMany({
+                  where: { id: leadId },
+                  data: { expiryDate: new Date(mut.payload.newExpiryDate), updatedAt: new Date() }
+                })
+              } catch (e) {
+                console.warn('[SyncPush] Failed to update lead expiry date:', e)
+              }
+            }
 
             // Check if response triggers follow up
             const predefined = await tx.predefinedResponse.findFirst({
               where: { text: outcome, isActive: true }
             })
 
-            if (predefined?.requiresFollowUp) {
+            if (mut.payload.followupDate) {
+              try {
+                await tx.followUp.create({
+                  data: {
+                    leadId,
+                    assignedTo: currentUserId,
+                    type: 'call',
+                    scheduledAt: new Date(mut.payload.followupDate),
+                    notes: notes || `Follow-up scheduled: ${outcome}`,
+                    status: 'pending'
+                  }
+                })
+              } catch (e) {
+                console.warn('[SyncPush] Failed to create explicit follow-up:', e)
+              }
+            } else if (predefined?.requiresFollowUp) {
               const days = predefined.followupDays > 0 ? predefined.followupDays : 2
               const scheduledAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000)
               await tx.followUp.create({

@@ -1,6 +1,6 @@
 /**
- * AppFooter – shared sticky bottom tab bar used on all main screens.
- * Handles Android bottom padding automatically via useSafeAreaInsets.
+ * AppFooter – shared sticky bottom tab bar styled to match reference partner app.
+ * Features 5 core tabs: Home, Sell, Leads, Renewals, Bookings.
  */
 import React from 'react';
 import { View, Text, Pressable, StyleSheet, Platform } from 'react-native';
@@ -10,14 +10,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../utils/theme';
 
 const TABS = [
-  { label: 'Home',       icon: 'home',             iconOutline: 'home-outline',     route: '/(protected)/dashboard' },
-  { label: 'Leads',      icon: 'people',            iconOutline: 'people-outline',   route: '/(protected)/leads'     },
-  { label: 'Follow-ups', icon: 'calendar',          iconOutline: 'calendar-outline', route: '/(protected)/follow-ups' },
-  { label: 'Settings',   icon: 'settings',          iconOutline: 'settings-outline', route: '/(protected)/settings'  },
+  { label: 'Home',       icon: 'home',      iconOutline: 'home-outline',      route: '/(protected)/dashboard' },
+  { label: 'Leads',      icon: 'people',    iconOutline: 'people-outline',    route: '/(protected)/leads' },
+  { label: 'Follow-ups', icon: 'calendar',  iconOutline: 'calendar-outline',  route: '/(protected)/follow-ups' },
+  { label: 'Settings',   icon: 'settings',  iconOutline: 'settings-outline',  route: '/(protected)/settings' },
 ];
 
 interface Props {
-  active?: 'home' | 'leads' | 'follow-ups' | 'settings';
+  active?: 'home' | 'leads' | 'follow-ups' | 'settings' | 'renewals' | 'bookings' | 'sell';
 }
 
 export default function AppFooter({ active }: Props) {
@@ -32,6 +32,9 @@ export default function AppFooter({ active }: Props) {
         leads: '/(protected)/leads',
         'follow-ups': '/(protected)/follow-ups',
         settings: '/(protected)/settings',
+        renewals: '/(protected)/renewals',
+        bookings: '/(protected)/policies',
+        sell: '/(protected)/quotation-new',
       };
       return map[active] === route;
     }
@@ -42,27 +45,26 @@ export default function AppFooter({ active }: Props) {
     <View
       style={[
         styles.footer,
-        // Proper bottom safe area: iOS uses insets, Android uses at least 10px
-        { paddingBottom: Platform.OS === 'ios' ? Math.max(insets.bottom, 8) : Math.max(insets.bottom, 10) },
+        { paddingBottom: Platform.OS === 'ios' ? Math.max(insets.bottom, 10) : Math.max(insets.bottom, 10) },
       ]}
     >
       {TABS.map((tab) => {
-        const active = isActive(tab.route);
+        const isCurrent = isActive(tab.route);
         return (
           <Pressable
             key={tab.label}
             style={({ pressed }) => [styles.tab, pressed && styles.tabPressed]}
             onPress={() => router.push(tab.route as any)}
           >
+            {isCurrent && <View style={styles.activeTopLine} />}
             <Ionicons
-              name={(active ? tab.icon : tab.iconOutline) as any}
-              size={24}
-              color={active ? Colors.primary : '#94a3b8'}
+              name={(isCurrent ? tab.icon : tab.iconOutline) as any}
+              size={22}
+              color={isCurrent ? '#002FA7' : '#94a3b8'}
             />
-            <Text style={[styles.label, active && styles.labelActive]}>
+            <Text style={[styles.label, isCurrent && styles.labelActive]}>
               {tab.label}
             </Text>
-            {active && <View style={styles.activeDot} />}
           </Pressable>
         );
       })}
@@ -76,39 +78,41 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderTopWidth: 1,
     borderTopColor: '#E2E8F0',
-    paddingTop: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 12,
+    paddingTop: 8,
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: -3 },
+    shadowOpacity: 0.07,
+    shadowRadius: 10,
+    elevation: 16,
   },
   tab: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 4,
+    paddingVertical: 3,
     gap: 3,
     position: 'relative',
   },
-  tabPressed: { opacity: 0.7 },
+  tabPressed: { opacity: 0.75 },
   label: {
     fontSize: 10,
     color: '#94a3b8',
     fontWeight: '500',
+    letterSpacing: -0.1,
   },
   labelActive: {
-    color: Colors.primary,
+    color: '#002FA7',
     fontWeight: '700',
   },
-  activeDot: {
+  activeTopLine: {
     position: 'absolute',
-    top: 0,
+    top: -8,
     left: '50%',
-    marginLeft: -12,
-    width: 24,
-    height: 2.5,
+    marginLeft: -14,
+    width: 28,
+    height: 3,
     borderRadius: 2,
-    backgroundColor: Colors.primary,
+    backgroundColor: '#002FA7',
   },
 });
+

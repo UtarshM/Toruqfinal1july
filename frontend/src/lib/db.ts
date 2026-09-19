@@ -1,4 +1,5 @@
 import * as SQLite from 'expo-sqlite';
+import { MASTER_CALL_OUTCOMES } from './call-outcomes';
 
 let dbInstance: SQLite.SQLiteDatabase | null = null;
 
@@ -193,6 +194,23 @@ export async function initDB(): Promise<void> {
       );
     `);
 
+    // 10. Seed 36 master responses if empty
+    try {
+      const countRow = await db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM local_responses');
+      if (!countRow || countRow.count === 0) {
+        for (const item of MASTER_CALL_OUTCOMES) {
+          await db.runAsync(
+            `INSERT OR REPLACE INTO local_responses (id, text, category, requires_followup, followup_days, is_active, order_index)
+             VALUES (?, ?, ?, ?, ?, 1, ?)`,
+            [item.id, item.text, item.category, item.requiresFollowUp ? 1 : 0, item.followupDays, item.orderIndex]
+          );
+        }
+        console.log('[SQLite] Seeded 36 master call outcomes into local_responses.');
+      }
+    } catch (seedErr) {
+      console.warn('[SQLite] Failed to seed local_responses:', seedErr);
+    }
+
     console.log('[SQLite] Offline-first & application tables initialized successfully.');
   } catch (error) {
     console.error('[SQLite] Failed to initialize database tables:', error);
@@ -293,32 +311,85 @@ export async function markMutationFailed(idempotencyKey: string, error: string):
   );
 }
 
+const safeIsoDate = (d: any): string | null => {
+  if (!d) return null;
+  try {
+    const parsed = new Date(d);
+    return isNaN(parsed.getTime()) ? null : parsed.toISOString();
+  } catch {
+    return null;
+  }
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // LOCAL LEADS OPERATIONS
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function upsertLocalLead(lead: any): Promise<void> {
+  if (!lead || !lead.id) return;
   const db = await getDB();
+  const vNo = lead.vehicleNo || lead.vehicle_no || null;
+  const vNorm = lead.vehicleNoNormalized || (vNo ? String(vNo).replace(/[^a-zA-Z0-9]/g, '').toUpperCase() : null);
+
   await db.runAsync(
     `INSERT OR REPLACE INTO local_leads (
        id, client_name, client_phone, client_email, vehicle_no,
        vehicle_no_normalized, status, city, assigned_to, expiry_date, remarks, updated_at
      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
-      lead.id,
+      String(lead.id),
       lead.clientName || lead.client_name || 'Unnamed',
       lead.clientPhone || lead.client_phone || null,
       lead.clientEmail || lead.client_email || null,
-      lead.vehicleNo || lead.vehicle_no || null,
-      lead.vehicleNoNormalized || (lead.vehicleNo || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase(),
+      vNo,
+      vNorm,
       lead.status || 'New',
       lead.city || null,
       lead.assignedTo || lead.assigned_to || null,
-      lead.expiryDate ? new Date(lead.expiryDate).toISOString() : null,
+      safeIsoDate(lead.expiryDate || lead.expiry_date),
       lead.remarks || null,
-      lead.updatedAt ? new Date(lead.updatedAt).toISOString() : new Date().toISOString()
+      safeIsoDate(lead.updatedAt || lead.updated_at) || new Date().toISOString()
     ]
   );
+}
+
+export async function upsertLocalLeadsBatch(leads: any[]): Promise<void> {
+  if (!Array.isArray(leads) || leads.length === 0) return;
+  const db = await getDB();
+  const insertQuery = `INSERT OR REPLACE INTO local_leads (
+    id, client_name, client_phone, client_email, vehicle_no,
+    vehicle_no_normalized, status, city, assigned_to, expiry_date, remarks, updated_at
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+
+  const runBatch = async () => {
+    for (const lead of leads) {
+      if (!lead || !lead.id) continue;
+      const vNo = lead.vehicleNo || lead.vehicle_no || null;
+      const vNorm = lead.vehicleNoNormalized || (vNo ? String(vNo).replace(/[^a-zA-Z0-9]/g, '').toUpperCase() : null);
+      await db.runAsync(insertQuery, [
+        String(lead.id),
+        lead.clientName || lead.client_name || 'Unnamed',
+        lead.clientPhone || lead.client_phone || null,
+        lead.clientEmail || lead.client_email || null,
+        vNo,
+        vNorm,
+        lead.status || 'New',
+        lead.city || null,
+        lead.assignedTo || lead.assigned_to || null,
+        safeIsoDate(lead.expiryDate || lead.expiry_date),
+        lead.remarks || null,
+        safeIsoDate(lead.updatedAt || lead.updated_at) || new Date().toISOString()
+      ]);
+    }
+  };
+
+  if (typeof db.withTransactionAsync === 'function') {
+    await db.withTransactionAsync(runBatch).catch(async () => {
+      await runBatch();
+    });
+  } else {
+    await runBatch();
+  }
 }
 
 export async function getLocalLeads(options: {
@@ -414,3 +485,125 @@ export async function clearSQLiteCache(): Promise<void> {
     console.error('[SQLite] Failed to clear general cache:', error);
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PREDEFINED RESPONSES & FOLLOW-UPS HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function getLocalResponses(): Promise<any[]> {
+  try {
+    const db = await getDB();
+    const rows = await db.getAllAsync<any>(
+      'SELECT id, text, category, requires_followup as requiresFollowUp, followup_days as followupDays FROM local_responses WHERE is_active = 1 ORDER BY order_index ASC'
+    );
+    if (rows && rows.length > 0) return rows;
+    return MASTER_CALL_OUTCOMES;
+  } catch (err) {
+    console.warn('[SQLite] getLocalResponses fallback to memory constant:', err);
+    return MASTER_CALL_OUTCOMES;
+  }
+}
+
+export async function upsertLocalFollowup(followup: any): Promise<void> {
+  if (!followup || !followup.id) return;
+  const db = await getDB();
+  await db.runAsync(
+    `INSERT OR REPLACE INTO local_followups (id, lead_id, assigned_to, lead_name, type, scheduled_at, status, notes, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      String(followup.id),
+      followup.leadId || followup.lead_id || '',
+      followup.assignedTo || followup.assigned_to || null,
+      followup.leadName || followup.lead_name || null,
+      followup.type || 'call',
+      safeIsoDate(followup.scheduledAt || followup.scheduled_at) || new Date().toISOString(),
+      followup.status || 'pending',
+      followup.notes || null,
+      safeIsoDate(followup.updatedAt || followup.updated_at) || new Date().toISOString()
+    ]
+  );
+}
+
+export async function upsertLocalFollowupsBatch(followups: any[]): Promise<void> {
+  if (!Array.isArray(followups) || followups.length === 0) return;
+  const db = await getDB();
+  const insertQuery = `INSERT OR REPLACE INTO local_followups (
+    id, lead_id, assigned_to, lead_name, type, scheduled_at, status, notes, updated_at
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+
+  const runBatch = async () => {
+    for (const f of followups) {
+      if (!f || !f.id) continue;
+      await db.runAsync(insertQuery, [
+        String(f.id),
+        f.leadId || f.lead_id || '',
+        f.assignedTo || f.assigned_to || null,
+        f.leadName || f.lead_name || null,
+        f.type || 'call',
+        safeIsoDate(f.scheduledAt || f.scheduled_at) || new Date().toISOString(),
+        f.status || 'pending',
+        f.notes || null,
+        safeIsoDate(f.updatedAt || f.updated_at) || new Date().toISOString()
+      ]);
+    }
+  };
+
+  if (typeof db.withTransactionAsync === 'function') {
+    await db.withTransactionAsync(runBatch).catch(async () => {
+      await runBatch();
+    });
+  } else {
+    await runBatch();
+  }
+}
+
+export async function getLocalFollowups(filter?: string): Promise<any[]> {
+  const db = await getDB();
+  let query = 'SELECT * FROM local_followups';
+  const params: any[] = [];
+  if (filter && filter !== 'all') {
+    query += ' WHERE status = ?';
+    params.push(filter);
+  }
+  query += ' ORDER BY scheduled_at ASC';
+  return db.getAllAsync<any>(query, params);
+}
+
+export async function updateLocalLeadOutcome(leadId: string, outcome: string, newExpiryDate?: string, remarks?: string): Promise<void> {
+  const db = await getDB();
+  const now = new Date().toISOString();
+  if (newExpiryDate) {
+    await db.runAsync(
+      "UPDATE local_leads SET status = 'Contacted', expiry_date = ?, remarks = COALESCE(?, remarks), updated_at = ? WHERE id = ?",
+      [newExpiryDate, remarks || outcome, now, leadId]
+    );
+  } else {
+    await db.runAsync(
+      "UPDATE local_leads SET status = 'Contacted', remarks = COALESCE(?, remarks), updated_at = ? WHERE id = ?",
+      [remarks || outcome, now, leadId]
+    );
+  }
+}
+
+export async function getLocalLeadById(id: string): Promise<any | null> {
+  try {
+    const db = await getDB();
+    const row = await db.getFirstAsync<any>('SELECT * FROM local_leads WHERE id = ?', [id]);
+    return row || null;
+  } catch (err) {
+    console.warn('[SQLite] getLocalLeadById error:', err);
+    return null;
+  }
+}
+
+export async function getLocalCallsForLead(leadId: string): Promise<any[]> {
+  try {
+    const db = await getDB();
+    return await db.getAllAsync<any>('SELECT * FROM local_calls WHERE lead_id = ? ORDER BY created_at DESC', [leadId]);
+  } catch (err) {
+    console.warn('[SQLite] getLocalCallsForLead error:', err);
+    return [];
+  }
+}
+
+

@@ -44,6 +44,7 @@ model User {
   leaveApprovals       LeaveRequest[]      @relation("LeaveApprovals")
   leaveRequests        LeaveRequest[]      @relation("LeaveRequests")
   loans                Loan[]
+  loanInquiries        LoanInquiry[]
   notifications        Notification[]
   createdQuotes        Quotation[]
   rtoWork              RTOWork[]
@@ -114,6 +115,7 @@ model Lead {
   assignee         User?               @relation("AssignedLeads", fields: [assignedTo], references: [id])
   customers        Customer[]
   loans            Loan[]
+  loanInquiries    LoanInquiry[]
   policies         Policy[]
   quotations       Quotation[]
   rtoWork          RTOWork[]
@@ -224,29 +226,58 @@ model FollowUp {
 }
 
 model Claim {
-  id             String    @id @default(uuid()) @db.Uuid
-  policyId       String?   @db.Uuid
-  leadId         String?   @db.Uuid
-  assignedTo     String?   @db.Uuid
-  customerName   String
-  policyNumber   String?
-  vehicleNumber  String?
-  claimType      String?
-  claimAmount    Decimal?  @db.Decimal(12, 2)
-  approvedAmount Decimal?  @db.Decimal(12, 2)
-  status         String    @default("filed")
-  incidentDate   DateTime?
-  filedDate      DateTime  @default(now())
-  settledDate    DateTime?
-  description    String?
-  documents      Json?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-  assignee       User?     @relation(fields: [assignedTo], references: [id])
-  lead           Lead?     @relation(fields: [leadId], references: [id])
-  policy         Policy?   @relation(fields: [policyId], references: [id])
+  id                    String    @id @default(uuid()) @db.Uuid
+  policyId              String?   @db.Uuid
+  leadId                String?   @db.Uuid
+  assignedTo            String?   @db.Uuid
+  customerName          String
+  policyNumber          String?
+  vehicleNumber         String?
+  claimType             String?
+  claimAmount           Decimal?  @db.Decimal(12, 2)
+  approvedAmount        Decimal?  @db.Decimal(12, 2)
+  status                String    @default("filed")
+  incidentDate          DateTime?
+  filedDate             DateTime  @default(now())
+  settledDate           DateTime?
+  description           String?
+  documents             Json?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  // Matching fields for New Claim Form
+  email                 String?
+  vehicleCategory       String?
+  insuranceCompany      String?
+  policyPdfUrl          String?
+  contactPersonName     String?
+  contactPersonMobile   String?
+  accidentDate          DateTime?
+  accidentTime          String?
+  accidentLocation      String?
+  claimCoverageType     String?
+  claimNumber           String?
+  claimInformDocUrl     String?
+  claimIntimationDocUrl String?
+  spotPhotosVideosUrl   String?
+  kycDocsUrl            String?
+  policyCheckFormUrl    String?
+  surveyorName          String?
+  surveyorMobile        String?
+  garageNameAddress     String?
+  garageContactName     String?
+  garageContactMobile   String?
+  estimatedLoss         Decimal?  @db.Decimal(12, 2)
+  estimatedTimeDays     Int?
+
+  assignee              User?     @relation(fields: [assignedTo], references: [id])
+  lead                  Lead?     @relation(fields: [leadId], references: [id])
+  policy                Policy?   @relation(fields: [policyId], references: [id])
 
   @@index([status])
+  @@index([vehicleNumber])
+  @@index([claimNumber])
+  @@index([vehicleCategory])
   @@map("claims")
 }
 
@@ -293,27 +324,93 @@ model Loan {
   @@map("loans")
 }
 
-model RTOWork {
-  id             String    @id @default(uuid()) @db.Uuid
-  leadId         String?   @db.Uuid
-  assignedTo     String?   @db.Uuid
-  customerName   String
-  vehicleNumber  String?
-  workType       String
-  status         String    @default("pending")
-  rtoOffice      String?
-  fees           Decimal?  @db.Decimal(12, 2)
-  paymentStatus  String    @default("Pending")
-  paymentAmount  Decimal?  @db.Decimal(12, 2)
-  paymentDate    DateTime?
-  dueDate        DateTime?
-  completionDate DateTime?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-  assignee       User?     @relation(fields: [assignedTo], references: [id])
-  lead           Lead?     @relation(fields: [leadId], references: [id])
+model LoanInquiry {
+  id               String    @id @default(uuid()) @db.Uuid
+  srNo             Int       @default(autoincrement()) @map("sr_no")
+  inwardDate       DateTime? @default(now()) @map("inward_date") @db.Date
+  customerName     String    @map("customer_name")
+  mobileNo         String?   @map("mobile_no")
+  vehicleNumber    String?   @map("vehicle_number")
+  category         String?
+  leadBy           String?   @map("lead_by")
+  requiredAmount   Decimal?  @map("required_amount") @db.Decimal(12, 2)
+  status           String    @default("ONLY INQUIRY")
+  reasonForNotDone String?   @map("reason_for_not_done")
+  bankNbfc         String?   @map("bank_nbfc")
+  sanctionedAmount Decimal?  @map("sanctioned_amount") @db.Decimal(12, 2)
+  disbursedDate    DateTime? @map("disbursed_date") @db.Date
+  noOfDays         Int?      @map("no_of_days")
+  payoutPercent    Decimal?  @map("payout_percent") @db.Decimal(5, 2)
+  payoutAmount     Decimal?  @map("payout_amount") @db.Decimal(12, 2)
+  remarksIfAny     String?   @map("remarks_if_any")
+  assignedTo       String?   @map("assigned_to") @db.Uuid
+  leadId           String?   @map("lead_id") @db.Uuid
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+  assignee         User?     @relation(fields: [assignedTo], references: [id])
+  lead             Lead?     @relation(fields: [leadId], references: [id])
 
+  @@index([status])
+  @@index([customerName])
+  @@index([vehicleNumber])
+  @@index([inwardDate])
+  @@map("loan_inquiries")
+}
+
+model RTOWork {
+  id                String    @id @default(uuid()) @db.Uuid
+  srNo              Int       @default(autoincrement()) @map("sr_no")
+  inDate            DateTime? @map("in_date") @db.Date
+  customerName      String
+  vehicleNumber     String?
+  vehicleType       String?   @map("vehicle_type")
+  vehicleNo         String?   @map("vehicle_no")
+  workType          String
+  amount            Decimal?  @default(0) @db.Decimal(12, 2)
+  jama              Decimal?  @default(0) @db.Decimal(12, 2)
+  baki              Decimal?  @default(0) @db.Decimal(12, 2)
+  mobileNo          String?   @map("mobile_no")
+  insuranceByTorque String?   @map("insurance_by_torque")
+  remarks           String?
+  status            String    @default("pending")
+  rtoOffice         String?
+  fees              Decimal?  @db.Decimal(12, 2)
+  paymentStatus     String    @default("Pending")
+  paymentAmount     Decimal?  @db.Decimal(12, 2)
+  paymentDate       DateTime?
+  dueDate           DateTime?
+  completionDate    DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  assignee          User?     @relation(fields: [assignedTo], references: [id])
+  lead              Lead?     @relation(fields: [leadId], references: [id])
+  leadId            String?   @db.Uuid
+  assignedTo        String?   @db.Uuid
+
+  @@index([inDate])
+  @@index([vehicleNo])
   @@map("rto_work")
+}
+
+model DLWork {
+  id        String    @id @default(uuid()) @db.Uuid
+  srNo      Int       @default(autoincrement()) @map("sr_no")
+  inDate    DateTime? @map("in_date") @db.Date
+  name      String
+  workType  String    @map("work_type")
+  amount    Decimal   @default(0) @db.Decimal(12, 2)
+  jama      Decimal   @default(0) @db.Decimal(12, 2)
+  baki      Decimal   @default(0) @db.Decimal(12, 2)
+  mobileNo  String?   @map("mobile_no")
+  remarks   String?
+  status    String    @default("pending")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  @@index([inDate])
+  @@index([name])
+  @@index([mobileNo])
+  @@map("dl_work")
 }
 
 model FitnessWork {

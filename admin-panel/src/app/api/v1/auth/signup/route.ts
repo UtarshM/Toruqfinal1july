@@ -11,17 +11,32 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'fullName, email, and password are required' }, { status: 400 })
     }
 
+    const cleanEmail = email.trim().toLowerCase()
+
+    // Check if user already exists in database
+    const existingDbUser = await prisma.user.findFirst({
+      where: { email: { equals: cleanEmail, mode: 'insensitive' } }
+    })
+    if (existingDbUser) {
+      return NextResponse.json({ 
+        error: 'An account with this email address already exists. Please sign in instead.' 
+      }, { status: 409 })
+    }
+
     // 1. Create user in Supabase Auth using the admin client
     // Setting email_confirm: true completely bypasses verification emails and low SMTP rate limits
     const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
-      email,
+      email: cleanEmail,
       password,
       email_confirm: true,
-      user_metadata: { full_name: fullName }
+      user_metadata: { full_name: fullName.trim() }
     })
 
     if (authError) {
       console.error('[auth-signup] Supabase Auth Error:', authError.message)
+      if (authError.message?.toLowerCase().includes('already') || authError.message?.toLowerCase().includes('exists')) {
+        return NextResponse.json({ error: 'An account with this email address already exists. Please sign in.' }, { status: 409 })
+      }
       return NextResponse.json({ error: authError.message }, { status: 400 })
     }
 
@@ -63,6 +78,9 @@ export async function POST(req: NextRequest) {
     })
   } catch (error: any) {
     console.error('[auth-signup] API Error:', error)
+    if (error?.code === 'P2002' || error?.message?.includes('Unique constraint')) {
+      return NextResponse.json({ error: 'An account with this email address already exists. Please sign in.' }, { status: 409 })
+    }
     return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 })
   }
 }

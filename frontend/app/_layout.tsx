@@ -88,11 +88,14 @@ function RootLayoutNav() {
 }
 
 import { initDB } from '../src/lib/db';
+import { initSyncListeners } from '../src/lib/sync-engine';
 import { UpdateBanner } from '../src/components/UpdateManager';
 
 export default function RootLayout() {
   useEffect(() => {
-    initDB().catch(err => console.error('[SQLite] Initialization failed:', err));
+    initDB().then(() => {
+      initSyncListeners();
+    }).catch(err => console.error('[SQLite] Initialization failed:', err));
   }, []);
 
   return (

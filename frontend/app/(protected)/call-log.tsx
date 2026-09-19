@@ -5,19 +5,25 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { api } from '../../src/utils/api';
 import { Colors, Spacing, FontSize, BorderRadius } from '../../src/utils/theme';
 import { Ionicons } from '@expo/vector-icons';
+import { useAuth } from '../../src/context/AuthContext';
+import { getLocalResponses } from '../../src/lib/db';
+import { MASTER_CALL_OUTCOMES } from '../../src/lib/call-outcomes';
+import { leadsService } from '../../src/services/leads';
 
 interface PredefinedResponse {
   id: string;
   text: string;
   requiresFollowUp: boolean;
+  followupDays?: number;
 }
 
 export default function CallLogScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ leadId: string; leadName: string }>();
+  const { user } = useAuth();
   
-  const [responses, setResponses] = useState<PredefinedResponse[]>([]);
-  const [loadingResponses, setLoadingResponses] = useState(true);
+  const [responses, setResponses] = useState<PredefinedResponse[]>(MASTER_CALL_OUTCOMES);
+  const [loadingResponses, setLoadingResponses] = useState(false);
   const [search, setSearch] = useState('');
   
   const [selectedResponse, setSelectedResponse] = useState<PredefinedResponse | null>(null);
@@ -34,13 +40,25 @@ export default function CallLogScreen() {
 
   const fetchResponses = async () => {
     try {
-      const res = await api.get<PredefinedResponse[]>('/settings/responses?activeOnly=true');
-      setResponses(res || []);
+      // 1. Instant load from local SQLite / master memory
+      const local = await getLocalResponses();
+      if (local && local.length > 0) {
+        setResponses(local);
+      }
+      
+      // 2. Background refresh if online
+      api.get<PredefinedResponse[]>('/settings/responses?activeOnly=true')
+        .then(res => {
+          if (Array.isArray(res) && res.length > 0) {
+            setResponses(res);
+          }
+        })
+        .catch(() => {
+          // Offline, seamlessly keep local master responses
+        });
     } catch (error) {
-      console.error('Failed to load responses', error);
-      Alert.alert('Error', 'Failed to load predefined responses');
-    } finally {
-      setLoadingResponses(false);
+      console.warn('Using local master responses:', error);
+      setResponses(MASTER_CALL_OUTCOMES);
     }
   };
 
@@ -63,37 +81,56 @@ export default function CallLogScreen() {
     }
 
     setSaving(true);
-    try {
-      const finalStatus = isCustomResponse 
-        ? (customNotes.trim() ? `Custom: ${customNotes.trim().slice(0, 50)}` : 'Other / Custom Note')
-        : (selectedResponse ? selectedResponse.text : 'Custom Note');
+    const finalStatus = isCustomResponse 
+      ? (customNotes.trim() ? `Custom: ${customNotes.trim().slice(0, 50)}` : 'Other / Custom Note')
+      : (selectedResponse ? selectedResponse.text : 'Custom Note');
 
-      const payload = {
+    const effectiveFollowupDate = needsFollowup && followupDate ? followupDate : undefined;
+    const effectiveExpiryDate = isExpiryResponse && newExpiryDate.trim() ? newExpiryDate.trim() : undefined;
+
+    try {
+      // 1. Optimistic local SQLite write (0ms latency, works 100% offline)
+      await leadsService.logCallOffline({
         leadId: params.leadId,
-        status: finalStatus,
+        userId: user?.id || 'offline-user',
+        outcome: finalStatus,
         notes: selectedResponse ? selectedResponse.text : '',
         customNotes: customNotes.trim() || undefined,
-        newExpiryDate: isExpiryResponse && newExpiryDate.trim() ? newExpiryDate.trim() : undefined,
-        followupDate: needsFollowup && followupDate ? followupDate : null
-      };
+        newExpiryDate: effectiveExpiryDate,
+        followupDate: effectiveFollowupDate
+      });
 
-      const res = await api.post<any>(`/leads/${params.leadId}/response`, payload);
-      
-      if (res.nextLeadId) {
-        Alert.alert(
-          'Saved', 
-          'Outcome saved. Would you like to call the next pending lead?',
-          [
-            { text: 'No', onPress: () => router.back(), style: 'cancel' },
-            { text: 'Yes', onPress: () => router.replace(`/lead/${res.nextLeadId}`) }
-          ]
-        );
-      } else {
-        Alert.alert('Success', 'Outcome saved. No more pending leads.');
-        router.back();
+      // 2. Try online sync in background; if response returns nextLeadId, handle it
+      try {
+        const payload = {
+          leadId: params.leadId,
+          status: finalStatus,
+          notes: selectedResponse ? selectedResponse.text : '',
+          customNotes: customNotes.trim() || undefined,
+          newExpiryDate: effectiveExpiryDate,
+          followupDate: effectiveFollowupDate || null
+        };
+
+        const res = await api.post<any>(`/leads/${params.leadId}/response`, payload);
+        if (res && res.nextLeadId) {
+          Alert.alert(
+            'Outcome Saved', 
+            'Call outcome recorded. Would you like to call the next pending lead?',
+            [
+              { text: 'No', onPress: () => router.back(), style: 'cancel' },
+              { text: 'Yes', onPress: () => router.replace(`/lead/${res.nextLeadId}`) }
+            ]
+          );
+          return;
+        }
+      } catch (netErr) {
+        console.log('[CallLog] Network deferred. Mutation queued locally:', netErr);
       }
+
+      Alert.alert('Outcome Saved', 'Call activity saved successfully.');
+      router.back();
     } catch (e: any) { 
-      Alert.alert('Error', e.message || 'Failed to save'); 
+      Alert.alert('Error', e.message || 'Failed to save outcome'); 
     } finally { 
       setSaving(false); 
     }

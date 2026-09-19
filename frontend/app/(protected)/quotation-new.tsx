@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { View, Text, TextInput, Pressable, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, Alert, ActivityIndicator, Modal } from 'react-native';
+import { View, Text, TextInput, Pressable, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, Alert, ActivityIndicator, Modal, Linking } from 'react-native';
 import { useRouter } from 'expo-router';
 import { api } from '../../src/utils/api';
 import { Colors, Spacing, FontSize, BorderRadius } from '../../src/utils/theme';
@@ -143,14 +143,6 @@ export default function QuotationNewScreen() {
 
   const update = (k: string, v: string) => setForm(p => ({ ...p, [k]: v }));
 
-  // Redirect non-admins back immediately
-  useEffect(() => {
-    if (currentUser && !isAdmin) {
-      Alert.alert('Access Denied', 'Only Admins and Super Admins can create quotations.');
-      router.back();
-    }
-  }, [currentUser, isAdmin]);
-
   // Fetch Leads list
   useEffect(() => {
     const fetchLeads = async () => {
@@ -274,7 +266,41 @@ export default function QuotationNewScreen() {
           benefit: parseFloat(calcData.benefit)
         },
       });
-      router.back();
+
+      const selectedLead = leads.find(l => l.id === form.lead_id);
+      Alert.alert(
+        'Quotation Saved',
+        'Vehicle quotation created successfully. Would you like to share it via WhatsApp?',
+        [
+          { text: 'Done', onPress: () => router.back() },
+          {
+            text: 'Share on WhatsApp',
+            onPress: () => {
+              const quoteText = `*TORQUE AUTO ADVISOR — INSURANCE QUOTATION*\n\n` +
+                `Customer: ${form.customer_name || 'Customer'}\n` +
+                `Vehicle No: ${form.vehicle_number || '-'}\n` +
+                `Vehicle Type: ${form.vehicle_type}\n` +
+                `Insurer: ${selectedCompany?.name || 'Torque Partner'}\n` +
+                `IDV: ₹${Number(form.idv || 0).toLocaleString()}\n` +
+                `Net Premium: ₹${Number(calcData.netPremium || 0).toLocaleString()}\n` +
+                `Total Premium: ₹${Number(calcData.totalPremium || 0).toLocaleString()}\n\n` +
+                `For instant renewal and claim support, contact your Torque Auto Advisor.`;
+
+              const phone = (selectedLead?.clientPhone || selectedLead?.phone || '').replace(/\D/g, '');
+              const target = phone.length === 10 ? `91${phone}` : phone;
+              const url = target
+                ? `whatsapp://send?phone=${target}&text=${encodeURIComponent(quoteText)}`
+                : `whatsapp://send?text=${encodeURIComponent(quoteText)}`;
+
+              Linking.openURL(url).catch(() => {
+                Alert.alert('Notice', 'Could not open WhatsApp app.');
+              }).finally(() => {
+                router.back();
+              });
+            }
+          }
+        ]
+      );
     } catch (e: any) { Alert.alert('Error', e.message); } finally { setLoading(false); }
   };
 

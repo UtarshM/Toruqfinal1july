@@ -2,50 +2,49 @@ const { PrismaClient } = require('@prisma/client')
 const prisma = new PrismaClient()
 
 async function main() {
-  console.log('Assigning permissions to all roles...\n')
+  console.log('Assigning permissions to Torque Auto Advisor roles...\n')
 
-  // Get all permissions
   const allPermissions = await prisma.permission.findMany()
   const allPermNames = allPermissions.map(p => p.name)
   console.log(`Found ${allPermissions.length} permissions in database`)
 
-  // Get all roles
   const allRoles = await prisma.role.findMany()
-  console.log(`Found ${allRoles.length} roles in database\n`)
+  console.log(`Found ${allRoles.length} roles in database:\n`, allRoles.map(r => r.name))
 
-  // Define permission sets for each role
-  const adminFullAccess = allPermNames // Super Admin & Admin get everything
+  const universalLoanPerms = [
+    'loan.view', 'loan.create', 'loan.edit', 'loan.delete', 'loan.update_status', 'loan.track_conversion',
+    'loan_inquiry.view', 'loan_inquiry.create', 'loan_inquiry.edit', 'loan_inquiry.delete'
+  ]
 
   const hrManagerPerms = [
-    // Dashboard
-    'dashboard.view_admin',
-    // Users & Onboarding
-    'users.view', 'users.create', 'users.edit',
-    'roles.view',
-    // HR, Attendance, Leaves & Salaries
+    'dashboard.view_admin', 'dashboard.view_manager', 'dashboard.view_agent', 'dashboard.export',
+    'users.view', 'users.create', 'users.edit', 'users.delete',
+    'role.view', 'role.create', 'role.edit', 'role.assign_permissions',
     'hr.view', 'hr.create', 'hr.edit', 'hr.delete', 'hr.manage_attendance', 'hr.manage_leave', 'hr.view_performance',
-    'accounts.manage_salary',
-    // Notifications & Settings
-    'notification.view',
-    'settings.view'
+    'accounts.view', 'accounts.manage_salary',
+    'notification.view', 'notification.send',
+    'settings.view', 'settings.manage',
+    ...universalLoanPerms
   ]
 
   const managerPerms = [
-    'dashboard.view_manager',
-    'leads.view', 'lead.view', 'leads.create', 'leads.edit', 'leads.assign', 'leads.change_status', 'leads.export',
-    'lead.create', 'lead.edit', 'lead.assign', 'lead.change_status', 'lead.export',
+    'dashboard.view_manager', 'dashboard.view_agent', 'dashboard.export',
+    'lead.view', 'lead.create', 'lead.edit', 'lead.assign', 'lead.import', 'lead.export', 'lead.change_status',
+    'leads.view', 'leads.create', 'leads.edit', 'leads.assign', 'leads.import', 'leads.export', 'leads.change_status',
     'crm.view', 'crm.create', 'crm.edit', 'crm.manage_followups', 'crm.view_revenue',
-    'claims.view', 'claims.create', 'claims.edit',
-    'loan.view', 'loan.create', 'loan.edit',
-    'rto.view', 'rto.create', 'rto.edit',
-    'fitness.view', 'fitness.edit',
-    'visit.view', 'visit.create', 'visit.edit',
-    'quotation.view', 'quotation.create', 'quotation.edit', 'quotation.share',
-    'quotations.create', 'quotations.edit', 'quotations.share',
-    'data.view', 'data.manage_documents',
+    'quotation.view', 'quotation.create', 'quotation.edit', 'quotation.share', 'quotation.generate_pdf',
+    'quotations.create', 'quotations.edit', 'quotations.share', 'quotations.approve',
+    'claims.view', 'claims.create', 'claims.edit', 'claims.update_status', 'claims.upload_documents',
+    'rto.view', 'rto.create', 'rto.edit', 'rto.update_status', 'rto.track_payment',
+    'vahan.view', 'vahan.create', 'vahan.edit', 'vahan.update_status', 'vahan.track_payment',
+    'fitness.view', 'fitness.create', 'fitness.edit', 'fitness.update_status', 'fitness.track_payment',
+    'visit.view', 'visit.create', 'visit.edit', 'visit.manage_followups',
+    'policy.view', 'policy.create', 'policy.edit',
+    'data.view', 'data.create', 'data.manage_documents',
     'users.view', 'users.create', 'users.edit',
-    'accounts.view_reports',
+    'accounts.view', 'accounts.view_reports',
     'notification.view', 'notification.send',
+    ...universalLoanPerms
   ]
 
   const salesExecutivePerms = [
@@ -54,86 +53,85 @@ async function main() {
     'leads.view', 'leads.create', 'leads.edit', 'leads.assign', 'leads.change_status',
     'crm.view', 'crm.create', 'crm.edit', 'crm.manage_followups',
     'visit.view', 'visit.create', 'visit.manage_followups',
+    'quotation.view', 'quotation.create', 'quotation.edit', 'quotation.share', 'quotation.generate_pdf',
+    'quotations.create', 'quotations.edit', 'quotations.share',
+    'policy.view',
     'data.view',
-    'quotation.view', 'quotation.create', 'quotation.edit', 'quotation.generate_pdf', 'quotation.share',
-    'quotations.create', 'quotations.edit', 'quotations.delete', 'quotations.share',
     'notification.view',
-  ]
-
-  const telecallerPerms = [
-    'dashboard.view_agent',
-    'lead.view', 'lead.create', 'lead.edit', 'lead.change_status',
-    'leads.view', 'leads.create', 'leads.edit', 'leads.change_status',
-    'crm.view', 'crm.manage_followups',
-    'notification.view',
+    ...universalLoanPerms
   ]
 
   const fieldExecutivePerms = [
     'dashboard.view_agent',
     'lead.view', 'lead.create', 'lead.edit', 'lead.change_status',
-    'leads.view', 'leads.create', 'leads.edit', 'leads.change_status',
     'visit.view', 'visit.create', 'visit.edit', 'visit.track_location', 'visit.manage_followups',
     'crm.view', 'crm.create',
     'data.view', 'data.manage_documents',
     'notification.view',
+    ...universalLoanPerms
   ]
 
   const rtoExecutivePerms = [
     'dashboard.view_agent',
-    'lead.view', 'leads.view',
+    'lead.view',
     'rto.view', 'rto.create', 'rto.edit', 'rto.update_status', 'rto.track_payment',
+    'vahan.view', 'vahan.create', 'vahan.edit', 'vahan.update_status', 'vahan.track_payment',
+    'fitness.view', 'fitness.create', 'fitness.edit', 'fitness.update_status', 'fitness.track_payment',
     'data.view', 'data.manage_documents',
     'notification.view',
+    ...universalLoanPerms
   ]
 
   const claimsExecutivePerms = [
     'dashboard.view_agent',
-    'lead.view', 'leads.view',
+    'lead.view',
     'claims.view', 'claims.create', 'claims.edit', 'claims.update_status', 'claims.upload_documents',
     'data.view', 'data.manage_documents',
     'notification.view',
+    ...universalLoanPerms
   ]
 
   const loanExecutivePerms = [
     'dashboard.view_agent',
-    'lead.view', 'leads.view',
-    'loan.view', 'loan.create', 'loan.edit', 'loan.update_status', 'loan.track_conversion',
+    'lead.view',
     'data.view', 'data.manage_documents',
     'notification.view',
+    ...universalLoanPerms
   ]
 
   const crmExecutivePerms = [
     'dashboard.view_agent',
-    'lead.view', 'leads.view',
+    'lead.view',
     'crm.view', 'crm.create', 'crm.edit', 'crm.manage_followups', 'crm.view_revenue',
     'visit.view', 'visit.create',
     'data.view',
     'notification.view',
+    ...universalLoanPerms
   ]
 
   const accountantPerms = [
-    'dashboard.view_admin',
+    'dashboard.view_admin', 'dashboard.view_agent',
     'accounts.view', 'accounts.create_entry', 'accounts.edit_entry', 'accounts.view_reports', 'accounts.export', 'accounts.manage_salary',
     'data.view',
     'notification.view',
+    ...universalLoanPerms
   ]
 
   const viewerPerms = [
     'dashboard.view_agent',
-    'lead.view', 'leads.view',
+    'lead.view',
     'crm.view',
     'data.view',
     'notification.view',
+    ...universalLoanPerms
   ]
 
-  // Map role names to their permission sets
   const rolePermMap = {
-    'Super Admin': adminFullAccess,
-    'Admin': adminFullAccess,
+    'Super Admin': allPermNames,
+    'Admin': allPermNames.filter(p => !p.startsWith('system.')),
     'HR Manager': hrManagerPerms,
     'Manager': managerPerms,
     'Sales Executive': salesExecutivePerms,
-    'Telecaller': telecallerPerms,
     'Field Executive': fieldExecutivePerms,
     'RTO Executive': rtoExecutivePerms,
     'Claims Executive': claimsExecutivePerms,
@@ -144,14 +142,13 @@ async function main() {
   }
 
   for (const role of allRoles) {
-    const permNames = rolePermMap[role.name]
-    if (!permNames) {
+    const desiredPerms = rolePermMap[role.name]
+    if (!desiredPerms) {
       console.log(`⚠ No permission mapping for role: ${role.name}`)
       continue
     }
 
-    // Find matching permissions in DB (filter out any that don't exist)
-    const matchingPerms = allPermissions.filter(p => permNames.includes(p.name))
+    const matchingPerms = allPermissions.filter(p => desiredPerms.includes(p.name))
 
     await prisma.role.update({
       where: { id: role.id },
@@ -165,7 +162,9 @@ async function main() {
     console.log(`✓ ${role.name}: ${matchingPerms.length} permissions assigned`)
   }
 
-  console.log('\n✅ All role permissions updated successfully!')
+  console.log('\n✅ All Torque Auto Advisor role permissions assigned successfully!')
 }
 
-main().catch(console.error).finally(() => prisma.$disconnect())
+main()
+  .catch(console.error)
+  .finally(() => prisma.$disconnect())

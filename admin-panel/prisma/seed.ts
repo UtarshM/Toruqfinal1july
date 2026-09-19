@@ -1,4 +1,5 @@
-import prisma from '../src/lib/prisma'
+import { PrismaClient } from '@prisma/client'
+const prisma = new PrismaClient()
 import { v4 as uuidv4 } from 'uuid'
 
 const PERMISSIONS = [
@@ -22,8 +23,9 @@ const PERMISSIONS = [
   "accounts.view", "accounts.create_entry", "accounts.edit_entry", "accounts.delete_entry", "accounts.view_reports", "accounts.export", "accounts.manage_salary",
   // 9. HR Management (7)
   "hr.view", "hr.create", "hr.edit", "hr.delete", "hr.manage_attendance", "hr.manage_leave", "hr.view_performance",
-  // 10. Loan Department (6)
+  // 10. Loan Department & Inquiries (10)
   "loan.view", "loan.create", "loan.edit", "loan.delete", "loan.update_status", "loan.track_conversion",
+  "loan_inquiry.view", "loan_inquiry.create", "loan_inquiry.edit", "loan_inquiry.delete",
   // 11. CRM System (6)
   "crm.view", "crm.create", "crm.edit", "crm.delete", "crm.manage_followups", "crm.view_revenue",
   // 12. Customer Visit Module (6)

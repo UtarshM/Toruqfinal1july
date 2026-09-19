@@ -22,6 +22,8 @@ import {
   markMutationFailed,
   upsertLocalLead,
   insertLocalCall,
+  upsertLocalFollowup,
+  updateLocalLeadOutcome,
   getDB,
   OfflineMutation
 } from './db';
@@ -264,10 +266,16 @@ export async function logCallOffline(params: {
   userId: string;
   outcome: string;
   notes?: string;
+  customNotes?: string;
+  newExpiryDate?: string;
+  followupDate?: string;
   duration?: number;
 }): Promise<{ callId: string; idempotencyKey: string }> {
   const callId = `call_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
   const idempotencyKey = `idemp_call_${callId}_${Date.now()}`;
+  const effectiveNotes = params.customNotes 
+    ? (params.notes ? `${params.notes} | ${params.customNotes}` : params.customNotes)
+    : (params.notes || '');
 
   // 1. Write to local SQLite calls table
   await insertLocalCall({
@@ -277,18 +285,36 @@ export async function logCallOffline(params: {
     type: 'outbound',
     outcome: params.outcome,
     duration: params.duration,
-    notes: params.notes,
+    notes: effectiveNotes,
     createdAt: new Date().toISOString()
   });
 
-  // 2. Optimistically update local lead status
-  const db = await getDB();
-  await db.runAsync(
-    "UPDATE local_leads SET status = 'Contacted', updated_at = ? WHERE id = ? AND status = 'New'",
-    [new Date().toISOString(), params.leadId]
-  );
+  // 2. Optimistically update local lead status, remarks & newExpiryDate
+  try {
+    await updateLocalLeadOutcome(params.leadId, params.outcome, params.newExpiryDate, effectiveNotes);
+  } catch (leadErr) {
+    console.warn('[SyncEngine] Failed to update local lead outcome:', leadErr);
+  }
 
-  // 3. Enqueue mutation
+  // 3. If follow-up date is provided, create local follow-up entry
+  if (params.followupDate) {
+    try {
+      const followupId = `fu_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+      await upsertLocalFollowup({
+        id: followupId,
+        leadId: params.leadId,
+        assignedTo: params.userId,
+        type: 'call',
+        scheduledAt: params.followupDate,
+        status: 'pending',
+        notes: effectiveNotes || `Follow-up: ${params.outcome}`
+      });
+    } catch (fuErr) {
+      console.warn('[SyncEngine] Failed to create local follow-up:', fuErr);
+    }
+  }
+
+  // 4. Enqueue mutation
   const mutation: OfflineMutation = {
     idempotencyKey,
     entityType: 'call',
@@ -297,7 +323,10 @@ export async function logCallOffline(params: {
     payload: {
       leadId: params.leadId,
       outcome: params.outcome,
-      notes: params.notes,
+      notes: effectiveNotes,
+      customNotes: params.customNotes,
+      newExpiryDate: params.newExpiryDate,
+      followupDate: params.followupDate,
       duration: params.duration,
       type: 'outbound'
     }
@@ -307,7 +336,7 @@ export async function logCallOffline(params: {
   const pending = await getPendingMutations();
   notifyStateChange({ pendingCount: pending.length, status: 'pending' });
 
-  // 4. Try background sync (non-blocking)
+  // 5. Try background sync (non-blocking)
   syncAll().catch(err => console.log('[SyncEngine] Background sync deferred:', err.message));
 
   return { callId, idempotencyKey };

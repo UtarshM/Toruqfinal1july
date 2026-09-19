@@ -8,9 +8,25 @@ import { apiSuccess, apiError } from '@/lib/api-response'
 export const maxDuration = 60
 export const dynamic = 'force-dynamic'
 
+let leadsSchemaHealed = false
+async function healLeadsSchema() {
+  if (leadsSchemaHealed) return
+  try {
+    await prisma.$executeRawUnsafe(`
+      ALTER TABLE "leads" ADD COLUMN IF NOT EXISTS "vehicleNoNormalized" VARCHAR(32);
+      CREATE INDEX IF NOT EXISTS "leads_vehicleNoNormalized_idx" ON "leads"("vehicleNoNormalized");
+    `)
+    leadsSchemaHealed = true
+  } catch (e) {
+    console.warn('[LeadsRoute] Schema auto-heal note:', e)
+  }
+}
+
 export async function GET(req: NextRequest) {
   const { error, context } = await validateAuth(req, 'leads.view')
   if (error) return error
+
+  await healLeadsSchema()
 
   try {
     const { searchParams } = new URL(req.url)
@@ -157,10 +173,28 @@ export async function GET(req: NextRequest) {
       totalPromise = prisma.lead.count({ where })
     }
 
-    const [rowsPlusOne, totalCount] = await Promise.all([
-      prisma.lead.findMany(queryArgs),
-      totalPromise ? totalPromise : Promise.resolve(null)
-    ])
+    let rowsPlusOne: any[] = []
+    let totalCount: number | null = null
+    try {
+      [rowsPlusOne, totalCount] = await Promise.all([
+        prisma.lead.findMany(queryArgs),
+        totalPromise ? totalPromise : Promise.resolve(null)
+      ])
+    } catch (queryErr: any) {
+      if (String(queryErr?.message || '').includes('vehicleNoNormalized')) {
+        console.warn('[LeadsRoute] Emergency healing vehicleNoNormalized column...')
+        await prisma.$executeRawUnsafe(`
+          ALTER TABLE "leads" ADD COLUMN IF NOT EXISTS "vehicleNoNormalized" VARCHAR(32);
+          CREATE INDEX IF NOT EXISTS "leads_vehicleNoNormalized_idx" ON "leads"("vehicleNoNormalized");
+        `).catch(() => {})
+        ;[rowsPlusOne, totalCount] = await Promise.all([
+          prisma.lead.findMany(queryArgs),
+          totalPromise ? totalPromise : Promise.resolve(null)
+        ])
+      } else {
+        throw queryErr
+      }
+    }
 
     const hasNextPage = rowsPlusOne.length > limit
     const leads = hasNextPage ? rowsPlusOne.slice(0, limit) : rowsPlusOne

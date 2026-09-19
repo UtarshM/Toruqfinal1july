@@ -102,12 +102,31 @@ export default function SettingsScreen() {
     ...(adminSection ? [adminSection] : [])
   ];
 
-  // Group permissions by module
+  // Group permissions by module safely
   const permGroups: Record<string, string[]> = {};
   (user?.permissions || []).forEach(p => {
-    const [mod, action] = p.split('.');
-    if (!permGroups[mod]) permGroups[mod] = [];
-    permGroups[mod].push(action);
+    if (!p) return;
+    const permStr = typeof p === 'string' ? p : ((p as any)?.name || (p as any)?.permission || (p as any)?.action || '');
+    if (!permStr || typeof permStr !== 'string') return;
+
+    if (permStr === '*') {
+      if (!permGroups['ALL']) permGroups['ALL'] = [];
+      permGroups['ALL'].push('Full Access');
+      return;
+    }
+
+    const parts = permStr.split('.');
+    if (parts.length > 1) {
+      const mod = parts[0] || 'GENERAL';
+      const action = parts.slice(1).join('.') || parts[0];
+      if (!permGroups[mod]) permGroups[mod] = [];
+      permGroups[mod].push(action);
+    } else {
+      const mod = 'GENERAL';
+      const action = parts[0] || 'access';
+      if (!permGroups[mod]) permGroups[mod] = [];
+      permGroups[mod].push(action);
+    }
   });
 
   return (
@@ -125,11 +144,11 @@ export default function SettingsScreen() {
         {/* Profile Card */}
         <View style={styles.profileCard}>
           <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{user?.name?.charAt(0) || '?'}</Text>
+            <Text style={styles.avatarText}>{user?.name?.charAt(0) || user?.full_name?.charAt(0) || '?'}</Text>
           </View>
           <View style={styles.profileInfo}>
             <Text style={styles.profileName}>{user?.name || user?.full_name || '—'}</Text>
-            <Text style={styles.profileEmail}>{user?.email}</Text>
+            <Text style={styles.profileEmail}>{user?.email || ''}</Text>
           </View>
           {!user?.is_active && (
             <View style={styles.pendingBadge}>
@@ -151,13 +170,16 @@ export default function SettingsScreen() {
               <View style={styles.permGrid}>
                 {Object.entries(permGroups).map(([mod, actions]) => (
                   <View key={mod} style={styles.permModule}>
-                    <Text style={styles.permModName}>{mod.toUpperCase()}</Text>
+                    <Text style={styles.permModName}>{String(mod || '').toUpperCase()}</Text>
                     <View style={styles.permActions}>
-                      {actions.map(a => (
-                        <View key={a} style={styles.permChip}>
-                          <Text style={styles.permChipText}>{a.replace(/_/g, ' ')}</Text>
-                        </View>
-                      ))}
+                      {(actions || []).filter(Boolean).map((a, idx) => {
+                        const label = typeof a === 'string' ? a.replace(/_/g, ' ') : String(a || '');
+                        return (
+                          <View key={`${a}-${idx}`} style={styles.permChip}>
+                            <Text style={styles.permChipText}>{label}</Text>
+                          </View>
+                        );
+                      })}
                     </View>
                   </View>
                 ))}
@@ -171,22 +193,26 @@ export default function SettingsScreen() {
         {/* Settings Sections */}
         {activeSections.map((sec, si) => (
           <View key={si}>
-            <Text style={styles.sectionTitle}>{sec.title.toUpperCase()}</Text>
-            {sec.items.map((item: any, ii) => (
-              <Pressable
-                key={ii}
-                testID={`setting-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
-                style={styles.item}
-                onPress={item.onPress}
-              >
-                <Ionicons name={item.icon as any} size={22} color={Colors.textMuted} />
-                <View style={styles.itemInfo}>
-                  <Text style={styles.itemLabel}>{item.label}</Text>
-                  <Text style={styles.itemDesc}>{item.desc}</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={18} color={Colors.textLight} />
-              </Pressable>
-            ))}
+            <Text style={styles.sectionTitle}>{String(sec?.title || '').toUpperCase()}</Text>
+            {(sec?.items || []).map((item: any, ii: number) => {
+              const label = String(item?.label || '');
+              const testId = `setting-${label.toLowerCase().replace(/\s+/g, '-')}`;
+              return (
+                <Pressable
+                  key={ii}
+                  testID={testId}
+                  style={styles.item}
+                  onPress={item?.onPress}
+                >
+                  <Ionicons name={(item?.icon as any) || 'ellipse-outline'} size={22} color={Colors.textMuted} />
+                  <View style={styles.itemInfo}>
+                    <Text style={styles.itemLabel}>{label}</Text>
+                    <Text style={styles.itemDesc}>{item?.desc || ''}</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={18} color={Colors.textLight} />
+                </Pressable>
+              );
+            })}
           </View>
         ))}
 

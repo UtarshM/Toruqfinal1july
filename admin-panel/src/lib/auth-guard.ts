@@ -175,6 +175,15 @@ export async function validateAuth(
 
     // Check for specific permission if required
     if (requiredPermission) {
+      const roleUpper = (context.role || '').toUpperCase();
+      const isSuperAdmin = roleUpper === 'SUPER ADMIN' || roleUpper === 'SUPER_ADMIN' || roleUpper === 'ADMIN' || context.email === 'torqueautoadvisor@gmail.com' || context.permissions.includes('*');
+      if (isSuperAdmin) {
+        return {
+          context,
+          userProfile: profile
+        };
+      }
+
       let hasPermission = context.permissions.includes(requiredPermission);
       
       // Self-healing fallback for singular vs plural mismatches

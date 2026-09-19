@@ -1,11 +1,13 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { View, Text, StyleSheet, FlatList, Pressable, RefreshControl, Alert, StatusBar, Modal, TextInput, ScrollView, ActivityIndicator, Platform } from 'react-native';
+import { View, Text, StyleSheet, FlatList, Pressable, RefreshControl, Alert, StatusBar, Modal, TextInput, ScrollView, ActivityIndicator, Platform, Linking } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { api } from '../../src/utils/api';
 import { Colors, Spacing, FontSize, BorderRadius, StatusColors } from '../../src/utils/theme';
 import { Ionicons } from '@expo/vector-icons';
 import { useCacheStore } from '../../src/store/cacheStore';
+import { getLocalFollowups, upsertLocalFollowupsBatch } from '../../src/lib/db';
+import { syncAll } from '../../src/lib/sync-engine';
 import Sidebar from '../../src/components/Sidebar';
 import AppFooter from '../../src/components/AppFooter';
 import * as Notifications from 'expo-notifications';
@@ -441,7 +443,8 @@ export default function FollowUpsScreen() {
 
   const [items, setItems] = useState<any[]>(cache['/follow-ups']?.items || []);
   const [refreshing, setRefreshing] = useState(false);
-  const [filter, setFilter] = useState<'pending' | 'completed' | 'all'>('pending');
+  type FollowUpBucket = 'today' | 'overdue' | 'tomorrow' | 'this_week' | 'all' | 'completed';
+  const [timeFilter, setTimeFilter] = useState<FollowUpBucket>('today');
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // Add Follow-up Modal states
@@ -503,8 +506,18 @@ export default function FollowUpsScreen() {
     }
   }, [addModalVisible]);
 
-  // Load cache on mount
+  // Load cache on mount & load local SQLite
   useEffect(() => {
+    getLocalFollowups('all').then(local => {
+      if (local && local.length > 0) {
+        setItems(local.map(f => ({
+          ...f,
+          scheduledAt: f.scheduled_at,
+          leadName: f.lead_name
+        })));
+      }
+    }).catch(() => {});
+
     loadCache().then(() => {
       const cached = cache['/follow-ups'];
       if (cached && cached.items) {
@@ -515,14 +528,82 @@ export default function FollowUpsScreen() {
 
   const load = useCallback(async () => {
     try {
-      const data = await api.get<any[]>(`/follow-ups?status=${filter}`);
+      // 1. Instant local SQLite read
+      const local = await getLocalFollowups('all');
+      if (local && local.length > 0) {
+        setItems(local.map(f => ({
+          ...f,
+          scheduledAt: f.scheduled_at,
+          leadName: f.lead_name
+        })));
+      }
+
+      // 2. Fetch fresh remote data
+      const data = await api.get<any[]>('/follow-ups?status=all');
       const arr = Array.isArray(data) ? data : [];
-      setItems(arr);
-      setCache('/follow-ups', { items: arr, timestamp: Date.now() });
+      if (arr.length > 0) {
+        setItems(arr);
+        setCache('/follow-ups', { items: arr, timestamp: Date.now() });
+        // Automatically save to local SQLite for offline access
+        upsertLocalFollowupsBatch(arr).catch(err => console.warn('[SQLite] Cache followups error:', err));
+      }
     } catch {
-      console.error('[FollowUpsScreen] Failed to load follow-ups');
+      console.log('[FollowUpsScreen] Offline mode: utilizing local SQLite follow-ups');
     }
-  }, [filter, setCache]);
+  }, [setCache]);
+
+  // Compute time-bucket groupings
+  const { filteredItems, counts } = React.useMemo(() => {
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+    const startOfTomorrow = new Date(startOfToday.getTime() + 24 * 60 * 60 * 1000);
+    const endOfTomorrow = new Date(startOfToday.getTime() + 2 * 24 * 60 * 60 * 1000 - 1);
+    const endOfWeek = new Date(startOfToday.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+    let overdue = 0;
+    let today = 0;
+    let tomorrow = 0;
+    let thisWeek = 0;
+    let completed = 0;
+    let all = items.length;
+
+    items.forEach(item => {
+      const isDone = (item.status || '').toLowerCase() === 'completed';
+      if (isDone) {
+        completed++;
+        return;
+      }
+      const sched = new Date(item.scheduledAt || item.scheduled_at);
+      if (isNaN(sched.getTime())) return;
+
+      if (sched < startOfToday) overdue++;
+      else if (sched >= startOfToday && sched <= endOfToday) today++;
+      else if (sched >= startOfTomorrow && sched <= endOfTomorrow) tomorrow++;
+      else if (sched > endOfTomorrow && sched <= endOfWeek) thisWeek++;
+    });
+
+    const filtered = items.filter(item => {
+      const isDone = (item.status || '').toLowerCase() === 'completed';
+      if (timeFilter === 'completed') return isDone;
+      if (timeFilter === 'all') return true;
+      if (isDone) return false;
+
+      const sched = new Date(item.scheduledAt || item.scheduled_at);
+      if (isNaN(sched.getTime())) return false;
+
+      if (timeFilter === 'overdue') return sched < startOfToday;
+      if (timeFilter === 'today') return sched >= startOfToday && sched <= endOfToday;
+      if (timeFilter === 'tomorrow') return sched >= startOfTomorrow && sched <= endOfTomorrow;
+      if (timeFilter === 'this_week') return sched >= startOfToday && sched <= endOfWeek;
+      return true;
+    });
+
+    return {
+      filteredItems: filtered,
+      counts: { overdue, today, tomorrow, thisWeek, completed, all }
+    };
+  }, [items, timeFilter]);
 
   useFocusEffect(
     useCallback(() => {
@@ -533,7 +614,12 @@ export default function FollowUpsScreen() {
       }
     }, [load, cache])
   );
-  const onRefresh = async () => { setRefreshing(true); await load(); setRefreshing(false); };
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await load();
+    syncAll().catch(() => {});
+    setRefreshing(false);
+  };
 
   const handleComplete = async (item: any) => {
     Alert.alert(
@@ -640,21 +726,43 @@ export default function FollowUpsScreen() {
         </Pressable>
       </View>
 
-      {/* Filter Tabs */}
-      <View style={styles.filterContainer}>
-        {(['pending', 'completed', 'all'] as const).map((f) => {
-          const active = filter === f;
-          return (
-            <Pressable key={f} style={[styles.filterTab, active && styles.filterTabActive]} onPress={() => setFilter(f)}>
-              <Text style={[styles.filterText, active && styles.filterTextActive]}>{f.toUpperCase()}</Text>
-            </Pressable>
-          );
-        })}
+      {/* Filter Tabs (Today, Overdue, Tomorrow, This Week, All, Completed) */}
+      <View style={{ height: 46 }}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScrollContent}>
+          {[
+            { key: 'today', label: 'Today', count: counts.today, badgeColor: Colors.primary },
+            { key: 'overdue', label: 'Overdue', count: counts.overdue, badgeColor: '#EF4444' },
+            { key: 'tomorrow', label: 'Tomorrow', count: counts.tomorrow, badgeColor: '#F59E0B' },
+            { key: 'this_week', label: 'This Week', count: counts.thisWeek, badgeColor: '#6366F1' },
+            { key: 'all', label: 'All', count: counts.all, badgeColor: Colors.textMuted },
+            { key: 'completed', label: 'Done', count: counts.completed, badgeColor: Colors.success },
+          ].map((tab) => {
+            const active = timeFilter === tab.key;
+            return (
+              <Pressable
+                key={tab.key}
+                style={[styles.filterPill, active && styles.filterPillActive]}
+                onPress={() => setTimeFilter(tab.key as any)}
+              >
+                <Text style={[styles.filterPillText, active && styles.filterPillTextActive]}>
+                  {tab.label}
+                </Text>
+                {tab.count > 0 && (
+                  <View style={[styles.countBadge, { backgroundColor: active ? '#FFFFFF' : tab.badgeColor }]}>
+                    <Text style={[styles.countBadgeText, { color: active ? Colors.primary : '#FFFFFF' }]}>
+                      {tab.count}
+                    </Text>
+                  </View>
+                )}
+              </Pressable>
+            );
+          })}
+        </ScrollView>
       </View>
 
       {/* List */}
       <FlatList
-        data={items}
+        data={filteredItems}
         keyExtractor={(item) => item.id}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
         contentContainerStyle={styles.listContent}
@@ -662,13 +770,14 @@ export default function FollowUpsScreen() {
           <View style={styles.empty}>
             <Ionicons name="calendar-outline" size={52} color={Colors.textLight} />
             <Text style={styles.emptyTitle}>No scheduled follow-ups</Text>
-            <Text style={styles.emptyText}>Tasks matching &quot;{filter}&quot; will appear here</Text>
+            <Text style={styles.emptyText}>No follow-up tasks in &quot;{timeFilter.replace('_', ' ')}&quot;</Text>
           </View>
         }
         renderItem={({ item }) => {
           const typeStyle = getTypeIcon(item.type);
           const statStyle = getStatusStyle(item.status);
-          const scheduledDate = new Date(item.scheduledAt);
+          const scheduledDate = new Date(item.scheduledAt || item.scheduled_at);
+          const phone = item.lead?.clientPhone || item.leadPhone || item.phone || item.lead?.phone;
 
           return (
             <View style={styles.card}>
@@ -697,24 +806,37 @@ export default function FollowUpsScreen() {
                 <View style={styles.timeContainer}>
                   <Ionicons name="time-outline" size={14} color={Colors.textMuted} />
                   <Text style={styles.timeText}>
-                    {scheduledDate.toLocaleDateString([], { month: 'short', day: 'numeric' })} at{' '}
-                    {scheduledDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    {!isNaN(scheduledDate.getTime()) 
+                      ? `${scheduledDate.toLocaleDateString([], { month: 'short', day: 'numeric' })} at ${scheduledDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                      : 'Scheduled'}
                   </Text>
                 </View>
 
-                {item.status === 'pending' ? (
-                  <Pressable style={({ pressed }) => [styles.completeBtn, pressed && styles.completeBtnPressed]} onPress={() => handleComplete(item)}>
-                    <Ionicons name="checkmark-circle-outline" size={18} color="#fff" />
-                    <Text style={styles.completeBtnText}>Complete</Text>
-                  </Pressable>
-                ) : (
-                  item.completedAt && (
-                    <View style={styles.completedAtContainer}>
-                      <Ionicons name="checkmark-circle" size={14} color={Colors.success} />
-                      <Text style={styles.completedAtText}>Done</Text>
-                    </View>
-                  )
-                )}
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm }}>
+                  {phone ? (
+                    <Pressable
+                      style={({ pressed }) => [styles.quickCallBtn, pressed && { opacity: 0.7 }]}
+                      onPress={() => Linking.openURL(`tel:${phone}`)}
+                    >
+                      <Ionicons name="call" size={13} color="#FFFFFF" />
+                      <Text style={styles.quickCallText}>Call</Text>
+                    </Pressable>
+                  ) : null}
+
+                  {item.status === 'pending' ? (
+                    <Pressable style={({ pressed }) => [styles.completeBtn, pressed && styles.completeBtnPressed]} onPress={() => handleComplete(item)}>
+                      <Ionicons name="checkmark-circle-outline" size={16} color="#fff" />
+                      <Text style={styles.completeBtnText}>Done</Text>
+                    </Pressable>
+                  ) : (
+                    item.completedAt && (
+                      <View style={styles.completedAtContainer}>
+                        <Ionicons name="checkmark-circle" size={14} color={Colors.success} />
+                        <Text style={styles.completedAtText}>Done</Text>
+                      </View>
+                    )
+                  )}
+                </View>
               </View>
             </View>
           );
@@ -837,6 +959,15 @@ const styles = StyleSheet.create({
   title: { flex: 1, fontSize: FontSize.xxl, fontWeight: '900', color: Colors.text },
   addBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: Colors.primaryLight, justifyContent: 'center', alignItems: 'center' },
   filterContainer: { flexDirection: 'row', backgroundColor: '#F8FAFC', marginHorizontal: Spacing.lg, marginTop: Spacing.md, borderRadius: BorderRadius.xl, padding: 4, borderWidth: 1, borderColor: '#F1F5F9' },
+  filterScrollContent: { paddingHorizontal: Spacing.lg, paddingVertical: 4, gap: 8, alignItems: 'center' },
+  filterPill: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, backgroundColor: '#F1F5F9', gap: 6 },
+  filterPillActive: { backgroundColor: Colors.primary },
+  filterPillText: { fontSize: 12, fontWeight: '700', color: Colors.textMuted },
+  filterPillTextActive: { color: '#FFFFFF' },
+  countBadge: { paddingHorizontal: 6, paddingVertical: 1, borderRadius: 10, minWidth: 18, alignItems: 'center', justifyContent: 'center' },
+  countBadgeText: { fontSize: 10, fontWeight: '900' },
+  quickCallBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#2563EB', paddingHorizontal: Spacing.sm + 2, paddingVertical: 6, borderRadius: BorderRadius.md, gap: 4 },
+  quickCallText: { color: '#FFFFFF', fontSize: 11, fontWeight: '800' },
   filterTab: { flex: 1, paddingVertical: Spacing.md - 2, alignItems: 'center', borderRadius: BorderRadius.lg },
   filterTabActive: { backgroundColor: '#FFFFFF', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2 },
   filterText: { fontSize: FontSize.sm - 1, fontWeight: '700', color: Colors.textMuted, letterSpacing: 0.5 },

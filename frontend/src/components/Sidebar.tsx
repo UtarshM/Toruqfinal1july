@@ -66,8 +66,9 @@ export default function Sidebar({ visible, onClose }: SidebarProps) {
     {
       label: 'OPERATIONS',
       items: [
+        { name: 'Loan Inquiries', icon: 'clipboard-outline', route: '/(protected)/loan-inquiries', visible: true },
+        { name: 'Loans', icon: 'cash-outline', route: '/(protected)/loans', visible: true },
         { name: 'Claims', icon: 'document-text-outline', route: '/(protected)/claims', visible: !isHrManager && (isAdmin || isManager || roleUpper.includes('CLAIM')) },
-        { name: 'Loans', icon: 'cash-outline', route: '/(protected)/loans', visible: !isHrManager && (isAdmin || isManager || roleUpper.includes('LOAN')) },
         { name: 'RTO Work', icon: 'car-outline', route: '/(protected)/rto', visible: !isHrManager && (isAdmin || isManager || roleUpper.includes('RTO')) },
         { name: 'Fitness', icon: 'fitness-outline', route: '/(protected)/fitness', visible: !isHrManager && (isAdmin || isManager || roleUpper.includes('FITNESS')) },
         { name: 'Cheques', icon: 'card-outline', route: '/(protected)/cheques', visible: !isHrManager && (isAdmin || isManager || roleUpper === 'ACCOUNTANT') },

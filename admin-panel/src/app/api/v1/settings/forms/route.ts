@@ -109,19 +109,33 @@ export const DEFAULT_FORM_SCHEMAS: Record<string, { name: string; description: s
     ]
   },
   claims: {
-    name: 'Claims Intimation Form',
-    description: 'Fields used to record and track customer motor insurance claim submissions',
+    name: 'New Claim Form',
+    description: 'Fields used to record, intimate, document, and process vehicle insurance claims',
     fields: [
-      { id: 'claimNumber', label: 'Claim Number / Intimation ID', type: 'text', required: false, enabled: true, placeholder: 'CLM-001' },
-      { id: 'lossDate', label: 'Accident / Loss Date', type: 'date', required: true, enabled: true },
-      { id: 'claimType', label: 'Claim Type', type: 'select', required: true, enabled: true, options: ['Accidental Damage', 'Theft', 'Third Party Damage', 'Windshield Glass', 'Total Loss'] },
-      { id: 'garageName', label: 'Repair Workshop / Garage Name', type: 'text', required: true, enabled: true, placeholder: 'Authorized Workshop' },
-      { id: 'garageContact', label: 'Garage Contact Phone', type: 'text', required: false, enabled: true, placeholder: 'Phone Number' },
-      { id: 'estimatedAmount', label: 'Estimated Repair Cost (₹)', type: 'number', required: true, enabled: true, placeholder: '₹' },
-      { id: 'surveyorName', label: 'Appointed Surveyor Name', type: 'text', required: false, enabled: true, placeholder: 'Surveyor Name' },
-      { id: 'surveyorMobile', label: 'Surveyor Mobile Number', type: 'text', required: false, enabled: true, placeholder: 'Mobile' },
-      { id: 'claimDescription', label: 'Incident Description', type: 'textarea', required: true, enabled: true, placeholder: 'Detailed description of accident...' },
-      { id: 'documents', label: 'Attach Claim Documents / Photos', type: 'file', required: false, enabled: true }
+      { id: 'email', label: 'Email', type: 'text', required: true, enabled: true, placeholder: 'name@example.com', helpText: 'Email address of respondent / customer' },
+      { id: 'vehicleRegNumber', label: 'VEHICLE REG NUMBER', type: 'text', required: true, enabled: true, placeholder: 'GJ01AB1234' },
+      { id: 'vehicleCategory', label: 'VEHICLE CATEGORY', type: 'select', required: true, enabled: true, options: ['HGV', 'LCV', 'LPV', 'LMV', '3W PCV', '3W GCV', '2W', 'OTHER'] },
+      { id: 'insuranceCompany', label: 'INSURANCE COMPANY', type: 'select', required: true, enabled: true, options: ['HDFC ERGO', 'ICICI Lombard', 'Tata AIG', 'Bajaj Allianz', 'Reliance General', 'Go Digit', 'National Insurance', 'New India Assurance', 'Oriental Insurance', 'United India Insurance', 'Kotak General', 'Cholamandalam', 'SBI General', 'Royal Sundaram', 'Other'] },
+      { id: 'policyPdfUrl', label: 'POLICY PDF', type: 'file', required: true, enabled: true, helpText: 'Upload 1 supported file. Max 10 MB.' },
+      { id: 'contactPersonName', label: 'CUSTOMER SIDE CONTACT PERSON NAME', type: 'text', required: true, enabled: true, placeholder: 'Full Name' },
+      { id: 'contactPersonMobile', label: 'CUSTOMER SIDE CONTACT PERSON MOBILE NUMBER', type: 'text', required: true, enabled: true, placeholder: '10-digit mobile number' },
+      { id: 'accidentDate', label: 'ACCIDENT DATE', type: 'date', required: true, enabled: true },
+      { id: 'accidentTime', label: 'ACCIDENT TIME', type: 'text', required: true, enabled: true, placeholder: 'HH:MM AM/PM' },
+      { id: 'accidentLocation', label: 'ACCIDENT LOCATION NAME', type: 'text', required: true, enabled: true, placeholder: 'City, Landmark, State' },
+      { id: 'claimCoverageType', label: 'OD CLAIM OR TP CLAIM', type: 'select', required: true, enabled: true, options: ['OD', 'TP'] },
+      { id: 'claimNumber', label: 'CLAIM NUMBER', type: 'text', required: true, enabled: true, placeholder: 'Claim Intimation No.' },
+      { id: 'claimInformDocUrl', label: 'CLAIM INFORM CALL RECORDING OF CUSTOMER OR SIGNED LETTER', type: 'file', required: true, enabled: true, helpText: 'Upload 1 supported file. Max 10 MB.' },
+      { id: 'claimIntimationDocUrl', label: 'CLAIM INTIMATION CALL RECORDING', type: 'file', required: true, enabled: true, helpText: 'Upload 1 supported file. Max 10 MB.' },
+      { id: 'spotPhotosVideosUrl', label: 'SPOT PHOTOS AND VIDEOS', type: 'file', required: true, enabled: true, helpText: 'Upload 1 supported file. Max 100 MB.' },
+      { id: 'kycDocsUrl', label: 'RC, MPARIVAHAN SCREENSHOT, DL, KYC etc Docs.', type: 'file', required: true, enabled: true, helpText: 'Upload 1 supported file. Max 10 MB.' },
+      { id: 'policyCheckFormUrl', label: 'POLICY CHECK FORM', type: 'file', required: true, enabled: true, helpText: 'Upload 1 supported file. Max 10 MB.' },
+      { id: 'surveyorName', label: 'SURVEYOR NAME', type: 'text', required: true, enabled: true, placeholder: 'Surveyor Full Name' },
+      { id: 'surveyorMobile', label: 'SURVEYOR MOBILE NUMBER', type: 'text', required: true, enabled: true, placeholder: 'Surveyor Contact No.' },
+      { id: 'garageNameAddress', label: 'GARAGE NAME AND ADDRESS', type: 'textarea', required: true, enabled: true, placeholder: 'Garage workshop name and full address' },
+      { id: 'garageContactName', label: 'GARAGE CONTACT PERSON NAME', type: 'text', required: true, enabled: true, placeholder: 'Garage manager/advisor' },
+      { id: 'garageContactMobile', label: 'GARAGE CONTACT PERSON MOBILE NUMBER', type: 'text', required: true, enabled: true, placeholder: 'Garage contact phone' },
+      { id: 'estimatedLoss', label: 'ESTIMATED LOSS IN Rs.', type: 'number', required: true, enabled: true, placeholder: '₹' },
+      { id: 'estimatedTimeDays', label: 'ESTIMATED TIME (IN DAYS)', type: 'number', required: true, enabled: true, placeholder: 'e.g. 7' }
     ]
   },
   loans: {
@@ -135,7 +149,29 @@ export const DEFAULT_FORM_SCHEMAS: Record<string, { name: string; description: s
       { id: 'interestRate', label: 'Annual Interest Rate (%)', type: 'number', required: true, enabled: true, placeholder: 'e.g. 8.75' },
       { id: 'emiAmount', label: 'Calculated Monthly EMI (₹)', type: 'number', required: false, enabled: true, placeholder: '₹' },
       { id: 'cibilScore', label: 'Customer CIBIL Score', type: 'number', required: false, enabled: true, placeholder: '300-900' },
-      { id: 'loanStatus', label: 'Current Processing Stage', type: 'select', required: true, enabled: true, options: ['Documents Collected', 'Logged in with Bank', 'Approved', 'Disbursed', 'Rejected'] }
+      { id: 'loanStatus', label: 'Current Processing Stage', type: 'select', required: true, enabled: true, options: ['ONLY INQUIRY', 'TRIED BUT NOT DONE', 'COMPLETED', 'REJECT', 'Applied', 'Processing', 'Approved', 'Disbursed', 'Rejected'] }
+    ]
+  },
+  loan_inquiries: {
+    name: 'Loan Inquiries Form',
+    description: 'Fields for managing customer vehicle loan inquiries, inward leads, conversions, and payouts',
+    fields: [
+      { id: 'inwardDate', label: 'Inward Date', type: 'date', required: true, enabled: true },
+      { id: 'customerName', label: 'Customer Full Name', type: 'text', required: true, enabled: true, placeholder: 'e.g. VIKAS TOYTA' },
+      { id: 'mobileNo', label: 'Mobile Number', type: 'text', required: false, enabled: true, placeholder: '10-digit mobile' },
+      { id: 'vehicleNumber', label: 'Vehicle Number', type: 'text', required: false, enabled: true, placeholder: 'e.g. GJ01WC7944' },
+      { id: 'category', label: 'Category', type: 'select', required: false, enabled: true, options: ['PRIVATE USED', 'COMMERCIAL', 'TWO WHEELER', 'NEW CAR', 'USED CAR', 'REFINANCE', 'PERSONAL LOAN'] },
+      { id: 'leadBy', label: 'Lead By / Referred By', type: 'text', required: false, enabled: true, placeholder: 'e.g. MITTAL MADAM' },
+      { id: 'requiredAmount', label: 'Required Loan Amount (₹)', type: 'number', required: false, enabled: true, placeholder: '₹' },
+      { id: 'status', label: 'Inquiry Status', type: 'select', required: true, enabled: true, options: ['ONLY INQUIRY', 'TRIED BUT NOT DONE', 'COMPLETED', 'REJECT'] },
+      { id: 'reasonForNotDone', label: 'Reason for Not Done', type: 'text', required: false, enabled: true, placeholder: 'e.g. CALL NOT ANSWERING' },
+      { id: 'bankNbfc', label: 'Bank/NBFC (If Done)', type: 'select', required: false, enabled: true, options: ['HDFC Bank', 'ICICI Bank', 'State Bank of India', 'Kotak Mahindra Prime', 'Axis Bank', 'Cholamandalam Finance', 'Mahindra Finance', 'Tata Capital', 'AU Small Finance Bank', 'Federal Bank'] },
+      { id: 'sanctionedAmount', label: 'Sanctioned Amount (₹)', type: 'number', required: false, enabled: true, placeholder: '₹' },
+      { id: 'disbursedDate', label: 'Disbursed Date', type: 'date', required: false, enabled: true },
+      { id: 'noOfDays', label: 'No. of Days', type: 'number', required: false, enabled: true, placeholder: 'Turnaround days' },
+      { id: 'payoutPercent', label: 'Payout %', type: 'number', required: false, enabled: true, placeholder: 'e.g. 1.5' },
+      { id: 'payoutAmount', label: 'Payout Amount (₹)', type: 'number', required: false, enabled: true, placeholder: '₹' },
+      { id: 'remarksIfAny', label: 'Remarks If Any', type: 'textarea', required: false, enabled: true, placeholder: 'Internal notes or follow-up details...' }
     ]
   },
   fitness: {

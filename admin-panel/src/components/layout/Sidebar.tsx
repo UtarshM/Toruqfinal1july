@@ -31,9 +31,11 @@ const MENU_GROUPS = [
   {
     label: 'OPERATIONS',
     items: [
-      { name: 'Claims', href: '/claims' },
+      { name: 'Loan Inquiries', href: '/loans/inquiries' },
       { name: 'Loans', href: '/loans' },
+      { name: 'Claims', href: '/claims' },
       { name: 'RTO Work', href: '/rto' },
+      { name: 'DL Work', href: '/dl' },
       { name: 'Fitness', href: '/fitness' },
     ]
   },
@@ -81,8 +83,11 @@ export default function Sidebar() {
     }
 
     if (isHr) {
-      // HR only manages Users, Onboarding Approvals, HR (staff/attendance/leaves), and Settings
-      if (group.label === 'SALES' || group.label === 'OPERATIONS') return null
+      // HR manages Users, Onboarding Approvals, HR, Settings, plus Operations ("all have right of this")
+      if (group.label === 'SALES') return null
+      if (group.label === 'OPERATIONS') {
+        items = items.filter(i => ['Loans', 'Loan Inquiries', 'RTO Work', 'DL Work'].includes(i.name))
+      }
       if (group.label === 'OVERVIEW') {
         items = items.filter(i => i.name === 'Dashboard')
       }
@@ -90,15 +95,17 @@ export default function Sidebar() {
         items = items.filter(i => ['Users', 'Onboarding Approvals', 'HR', 'Settings'].includes(i.name))
       }
     } else if (isExecutive) {
-      // Hide all management oversight items and policy approvals for Executives
+      // Operations are accessible to all roles including executives
       if (group.label === 'MANAGEMENT') return null
       if (group.label === 'OPERATIONS') {
-        items = items.filter(i => ['Claims', 'Loans'].includes(i.name))
+        items = items.filter(i => ['Claims', 'Loans', 'Loan Inquiries', 'RTO Work', 'DL Work'].includes(i.name))
       }
       items = items.filter(i => !['CRM', 'Reports', 'Import List', 'Import Leads', 'Policy Approvals'].includes(i.name))
     } else if (isManager && !isAdmin) {
-      // Role-based filtering for Managers
-      if (group.label === 'OPERATIONS') return null
+      // Role-based filtering for Managers - ensure Operations are accessible
+      if (group.label === 'OPERATIONS') {
+        items = items.filter(i => ['Loans', 'Loan Inquiries', 'Claims', 'RTO Work', 'DL Work', 'Fitness'].includes(i.name))
+      }
       if (group.label === 'SALES') {
         items = items.filter(i => ['List', 'Leads', 'CRM', 'Quotations', 'Policies', 'Renewals', 'Follow-ups'].includes(i.name))
       }

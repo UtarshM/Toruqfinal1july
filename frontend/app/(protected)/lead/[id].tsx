@@ -8,6 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../../src/context/AuthContext';
 import { usersService } from '../../../src/services/users';
 import LeadPolicySubmissionModal from '../../../src/components/LeadPolicySubmissionModal';
+import { getLocalLeadById, getLocalCallsForLead, upsertLocalLead, insertLocalCall } from '../../../src/lib/db';
 
 interface DropdownProps {
   label: string;
@@ -290,19 +291,56 @@ export default function LeadDetailScreen() {
   };
 
   const loadData = useCallback(async () => {
+    if (!id) return;
+    
+    // 1. Instant local SQLite read (0ms latency, works offline)
+    try {
+      const localLead = await getLocalLeadById(id as string);
+      if (localLead) {
+        const mappedLocal = {
+          ...localLead,
+          name: localLead.client_name,
+          phone: localLead.client_phone,
+          email: localLead.client_email,
+          vehicleNo: localLead.vehicle_no,
+          expiryDate: localLead.expiry_date,
+          status: localLead.status
+        };
+        setLead(mappedLocal);
+        setLoading(false);
+      }
+      const localCalls = await getLocalCallsForLead(id as string);
+      if (localCalls && localCalls.length > 0) {
+        setCalls(localCalls);
+      }
+    } catch (locErr) {
+      console.warn('[LeadDetail] Local read fallback:', locErr);
+    }
+
+    // 2. Fetch fresh remote data if online
     try {
       const leadData = await api.get<any>(`/leads/${id}`);
-      // Map DB field names to what the UI expects
-      const mappedLead = {
-        ...leadData,
-        name: leadData.clientName || leadData.client_name,
-        phone: leadData.clientPhone || leadData.client_phone,
-        email: leadData.clientEmail || leadData.client_email,
-      };
-      setLead(mappedLead);
-      setCalls(leadData.calls || []);
+      if (leadData) {
+        // Map DB field names to what the UI expects
+        const mappedLead = {
+          ...leadData,
+          name: leadData.clientName || leadData.client_name,
+          phone: leadData.clientPhone || leadData.client_phone,
+          email: leadData.clientEmail || leadData.client_email,
+        };
+        setLead(mappedLead);
+        setCalls(leadData.calls || []);
+
+        // Cache lead and calls into local SQLite for 100% offline access
+        upsertLocalLead(leadData).catch(() => {});
+        if (Array.isArray(leadData.calls)) {
+          for (const c of leadData.calls) {
+            insertLocalCall(c).catch(() => {});
+          }
+        }
+      }
     } catch (e) {
-      console.error('Failed to load lead details:', e);
+      console.log('[LeadDetail] Remote fetch deferred / offline mode active:', e);
     } finally {
       setLoading(false);
     }

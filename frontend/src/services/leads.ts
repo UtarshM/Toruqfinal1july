@@ -109,6 +109,9 @@ export const leadsService = {
     userId: string;
     outcome: string;
     notes?: string;
+    customNotes?: string;
+    newExpiryDate?: string;
+    followupDate?: string;
     duration?: number;
   }) => logCallOffline(params),
 

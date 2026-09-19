@@ -10,6 +10,9 @@ import AppFooter from '../../../src/components/AppFooter';
 import Sidebar from '../../../src/components/Sidebar';
 import { exportToCSV } from '../../../src/utils/exportHelper';
 import { useAuth } from '../../../src/context/AuthContext';
+import { leadsService } from '../../../src/services/leads';
+import { upsertLocalLeadsBatch } from '../../../src/lib/db';
+import { syncAll } from '../../../src/lib/sync-engine';
 
 export default function LeadsScreen() {
   const router = useRouter();
@@ -48,6 +51,19 @@ export default function LeadsScreen() {
   };
 
   React.useEffect(() => {
+    // 1. Instant load from local SQLite
+    leadsService.listLocal().then(local => {
+      if (local && local.length > 0) {
+        setItems(local.map(l => ({
+          ...l,
+          clientName: l.client_name,
+          clientPhone: l.client_phone,
+          vehicleNo: l.vehicle_no,
+          expiryDate: l.expiry_date
+        })));
+      }
+    }).catch(() => {});
+
     loadCache().then(() => {
       const query = selectedImportName ? `?importName=${encodeURIComponent(selectedImportName)}` : '';
       const cached = cache[`/leads${query}`] || cache['/leads'];
@@ -56,32 +72,50 @@ export default function LeadsScreen() {
       }
     });
     fetchImports();
+    load();
   }, []);
 
   const load = useCallback(async (importNameFilter = selectedImportName) => {
     try {
+      // Instant local read
+      const local = await leadsService.listLocal();
+      if (local && local.length > 0) {
+        setItems(local.map(l => ({
+          ...l,
+          clientName: l.client_name,
+          clientPhone: l.client_phone,
+          vehicleNo: l.vehicle_no,
+          expiryDate: l.expiry_date
+        })));
+      }
+
+      // Background delta refresh
       const query = importNameFilter ? `?importName=${encodeURIComponent(importNameFilter)}` : '';
       const res = await api.get<any>(`/leads${query}`);
-      const leads = res.leads || [];
-      setItems(leads);
-      setCache(`/leads${query}`, { leads, timestamp: Date.now() });
+      const leads = Array.isArray(res) ? res : (res?.leads || res?.data || []);
+      if (leads && leads.length > 0) {
+        setItems(leads);
+        setCache(`/leads${query}`, { leads, timestamp: Date.now() });
+        // Automatically cache to local SQLite so offline mode has all leads immediately
+        upsertLocalLeadsBatch(leads).catch(err => console.warn('[SQLite] Cache leads error:', err));
+      }
     } catch (e) {
-      console.error('[LeadsScreen] Failed to load leads', e);
+      console.log('[LeadsScreen] Offline mode active, serving local SQLite leads:', e);
     }
   }, [setCache, selectedImportName]);
 
   useFocusEffect(
     useCallback(() => {
-      const query = selectedImportName ? `?importName=${encodeURIComponent(selectedImportName)}` : '';
-      const cached = cache[`/leads${query}`];
-      const lastFetched = cached?.timestamp;
-      if (!lastFetched || Date.now() - lastFetched > 30000) {
-        load(selectedImportName);
-      }
+      load(selectedImportName);
       fetchImports();
-    }, [load, cache, selectedImportName])
+    }, [load, selectedImportName])
   );
-  const onRefresh = async () => { setRefreshing(true); await load(selectedImportName); setRefreshing(false); };
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await load(selectedImportName);
+    syncAll().catch(() => {});
+    setRefreshing(false);
+  };
 
   const handleSelectImport = (name: string) => {
     setSelectedImportName(name);

@@ -132,8 +132,24 @@ export default function LoansScreen() {
     tenureMonths: '',
     interestRate: '',
     bankName: '',
+    status: 'ONLY INQUIRY',
     leadId: ''
   });
+
+  const getLoanBadgeStyle = (status: string) => {
+    const s = (status || '').toUpperCase();
+    if (s === 'ONLY INQUIRY' || s === 'TRIED BUT NOT DONE') {
+      return { bg: '#E5E7EB', text: '#1F2937' };
+    }
+    if (s === 'COMPLETED') {
+      return { bg: '#156F3F', text: '#D1FADF' };
+    }
+    if (s === 'REJECT' || s === 'REJECTED') {
+      return { bg: '#A30D11', text: '#FFFFFF' };
+    }
+    const sc = StatusColors[status?.toLowerCase()] || StatusColors.applied || StatusColors.pending;
+    return { bg: sc?.bg || '#F1F5F9', text: sc?.text || '#334155' };
+  };
 
   const [leads, setLeads] = useState<any[]>([]);
   const [loadingLeads, setLoadingLeads] = useState(false);
@@ -196,10 +212,12 @@ export default function LoansScreen() {
         tenureMonths: newLoan.tenureMonths ? parseInt(newLoan.tenureMonths) : null,
         interestRate: newLoan.interestRate ? parseFloat(newLoan.interestRate) : null,
         bankName: newLoan.bankName.trim() || null,
+        status: newLoan.status || 'ONLY INQUIRY',
+        conversionStatus: newLoan.status || 'ONLY INQUIRY',
         leadId: newLoan.leadId || null
       });
       setAddModalVisible(false);
-      setNewLoan({ customerName: '', loanType: '', amount: '', tenureMonths: '', interestRate: '', bankName: '', leadId: '' });
+      setNewLoan({ customerName: '', loanType: '', amount: '', tenureMonths: '', interestRate: '', bankName: '', status: 'ONLY INQUIRY', leadId: '' });
       Alert.alert('Success', 'Loan application submitted successfully!');
       load();
     } catch (e: any) {
@@ -241,7 +259,8 @@ export default function LoansScreen() {
           </View>
         }
         renderItem={({ item }) => {
-          const sc = StatusColors[item.status] || StatusColors.applied || StatusColors.pending;
+          const currentStatus = item.conversionStatus || item.status || 'ONLY INQUIRY';
+          const badgeStyle = getLoanBadgeStyle(currentStatus);
           return (
             <View style={styles.card}>
               <View style={styles.cardTop}>
@@ -249,7 +268,9 @@ export default function LoansScreen() {
                   <Text style={styles.cardName}>{item.customerName || item.customer_name}</Text>
                   <Text style={styles.cardMeta}>{item.loanType || item.loan_type || 'N/A'} loan · {item.bankName || item.bank_name || 'N/A'}</Text>
                 </View>
-                <View style={[styles.badge, { backgroundColor: sc.bg }]}><Text style={[styles.badgeText, { color: sc.text }]}>{item.status}</Text></View>
+                <View style={[styles.badge, { backgroundColor: badgeStyle.bg }]}>
+                  <Text style={[styles.badgeText, { color: badgeStyle.text, fontWeight: '700' }]}>{currentStatus}</Text>
+                </View>
               </View>
               <View style={styles.cardBottom}>
                 <View>
@@ -275,7 +296,7 @@ export default function LoansScreen() {
         visible={addModalVisible}
         animationType="slide"
         transparent={true}
-        onRequestClose={() => setNewLoan({ customerName: '', loanType: '', amount: '', tenureMonths: '', interestRate: '', bankName: '', leadId: '' })}
+        onRequestClose={() => setNewLoan({ customerName: '', loanType: '', amount: '', tenureMonths: '', interestRate: '', bankName: '', status: 'ONLY INQUIRY', leadId: '' })}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -297,6 +318,23 @@ export default function LoansScreen() {
                   onChangeText={(val) => setNewLoan({ ...newLoan, customerName: val })}
                 />
               </View>
+
+              <DropdownSelector
+                label="Status"
+                placeholder="Select Status"
+                options={[
+                  { label: 'ONLY INQUIRY', value: 'ONLY INQUIRY' },
+                  { label: 'TRIED BUT NOT DONE', value: 'TRIED BUT NOT DONE' },
+                  { label: 'COMPLETED', value: 'COMPLETED' },
+                  { label: 'REJECT', value: 'REJECT' },
+                  { label: 'Applied', value: 'Applied' },
+                  { label: 'Processing', value: 'Processing' },
+                  { label: 'Approved', value: 'Approved' },
+                  { label: 'Disbursed', value: 'Disbursed' }
+                ]}
+                selectedValue={newLoan.status}
+                onSelect={(val) => setNewLoan({ ...newLoan, status: val })}
+              />
 
               <DropdownSelector
                 label="Loan Type"

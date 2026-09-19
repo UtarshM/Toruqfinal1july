@@ -128,6 +128,10 @@ const ACTION_LABELS: Record<string, string> = {
   'loan.track_conversion': 'Track Conversion',
   'loan.update_status': 'Update Status',
   'loan.view': 'View',
+  'loan_inquiry.view': 'View Inquiries',
+  'loan_inquiry.create': 'Create Inquiry',
+  'loan_inquiry.edit': 'Edit Inquiry',
+  'loan_inquiry.delete': 'Delete Inquiry',
   // crm
   'crm.create': 'Create',
   'crm.delete': 'Delete',
