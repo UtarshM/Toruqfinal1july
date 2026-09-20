@@ -43,6 +43,9 @@ export default function LeadsScreen() {
   const [selectedMonth, setSelectedMonth] = useState<number>(0); // 0 = All Months
   const MONTH_LABELS = ['All', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
+  // Allotment status filter
+  const [allotmentFilter, setAllotmentFilter] = useState<'all' | 'unallotted' | 'allotted'>('all');
+
   // WhatsApp draft preview modal
   const [waModalVisible, setWaModalVisible] = useState(false);
   const [waMessage, setWaMessage] = useState('');
@@ -176,9 +179,16 @@ export default function LeadsScreen() {
     }
   };
 
-  // Month-wise + search filtering
+  // Month-wise + allotment + search filtering
   const filteredItems = useMemo(() => {
     let result = items;
+
+    // Filter by allotment status (for managers/admins)
+    if (allotmentFilter === 'unallotted') {
+      result = result.filter(l => !l.assignedTo && !l.assignee && !l.assigned_to);
+    } else if (allotmentFilter === 'allotted') {
+      result = result.filter(l => !!(l.assignedTo || l.assignee || l.assigned_to));
+    }
 
     // Filter by month
     if (selectedMonth > 0) {
@@ -200,7 +210,7 @@ export default function LeadsScreen() {
     }
 
     return result;
-  }, [items, selectedMonth, search]);
+  }, [items, allotmentFilter, selectedMonth, search]);
 
   // Compute month counts for badge display
   const monthCounts = useMemo(() => {
@@ -217,23 +227,37 @@ export default function LeadsScreen() {
     return counts;
   }, [items]);
 
+  // Compute unallotted and allotted counts
+  const { unallottedCount, allottedCount } = useMemo(() => {
+    let unallotted = 0;
+    let allotted = 0;
+    items.forEach(l => {
+      if (l.assignedTo || l.assignee || l.assigned_to) {
+        allotted++;
+      } else {
+        unallotted++;
+      }
+    });
+    return { unallottedCount: unallotted, allottedCount: allotted };
+  }, [items]);
+
   const handleExport = () => {
     if (filteredItems.length === 0) {
-      Alert.alert('No Data', 'No leads found to export.');
+      Alert.alert('No Data', 'No records found to export.');
       return;
     }
 
-    const headers = ['Client Name', 'Client Phone', 'Vehicle Number', 'Status', 'Expiry Date', 'Assignee'];
+    const headers = ['Client Name', 'Client Phone', 'Vehicle Number', 'Status', 'Expiry Date', 'Allotted To'];
     const rows = filteredItems.map(l => [
       l.clientName || 'N/A',
       l.clientPhone || 'N/A',
       l.vehicleNo || 'N/A',
       l.status || 'New',
       l.expiryDate ? new Date(l.expiryDate).toLocaleDateString() : 'N/A',
-      l.assignee?.fullName || 'Unassigned'
+      l.assignee?.fullName || 'Unallotted'
     ]);
 
-    exportToCSV(`leads_export_${selectedImportName || 'all'}_${new Date().toISOString().split('T')[0]}.csv`, headers, rows);
+    exportToCSV(`list_export_${selectedImportName || 'all'}_${new Date().toISOString().split('T')[0]}.csv`, headers, rows);
   };
 
   const { user } = useAuth();
@@ -412,6 +436,43 @@ export default function LeadsScreen() {
                 <Text style={[styles.filterChipText, selectedImportName === name && styles.filterChipTextActive]} numberOfLines={1}>{name}</Text>
               </Pressable>
             ))}
+          </ScrollView>
+        </View>
+      )}
+
+      {/* Allotment Status Filter Chips (Admin / Manager) */}
+      {isAdminOrManager && (
+        <View style={styles.filterBar}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScroll}>
+            <Pressable 
+              style={[styles.monthChip, allotmentFilter === 'all' && styles.monthChipActive]}
+              onPress={() => setAllotmentFilter('all')}
+            >
+              <Text style={[styles.monthChipText, allotmentFilter === 'all' && styles.monthChipTextActive]}>All Records</Text>
+              <View style={[styles.monthBadge, allotmentFilter === 'all' && styles.monthBadgeActive]}>
+                <Text style={[styles.monthBadgeText, allotmentFilter === 'all' && styles.monthBadgeTextActive]}>{items.length}</Text>
+              </View>
+            </Pressable>
+            <Pressable 
+              style={[styles.monthChip, allotmentFilter === 'unallotted' && { backgroundColor: '#FFFBEB', borderColor: '#F59E0B' }]}
+              onPress={() => setAllotmentFilter('unallotted')}
+            >
+              <Ionicons name="alert-circle" size={13} color="#D97706" style={{ marginRight: 4 }} />
+              <Text style={[styles.monthChipText, allotmentFilter === 'unallotted' && { color: '#B45309', fontWeight: '800' }]}>Unallotted</Text>
+              <View style={[styles.monthBadge, { backgroundColor: '#FEF3C7' }, allotmentFilter === 'unallotted' && { backgroundColor: '#F59E0B' }]}>
+                <Text style={[styles.monthBadgeText, allotmentFilter === 'unallotted' && { color: '#FFFFFF' }]}>{unallottedCount}</Text>
+              </View>
+            </Pressable>
+            <Pressable 
+              style={[styles.monthChip, allotmentFilter === 'allotted' && styles.monthChipActive]}
+              onPress={() => setAllotmentFilter('allotted')}
+            >
+              <Ionicons name="checkmark-circle" size={13} color={allotmentFilter === 'allotted' ? '#FFFFFF' : Colors.success} style={{ marginRight: 4 }} />
+              <Text style={[styles.monthChipText, allotmentFilter === 'allotted' && styles.monthChipTextActive]}>Allotted</Text>
+              <View style={[styles.monthBadge, allotmentFilter === 'allotted' && styles.monthBadgeActive]}>
+                <Text style={[styles.monthBadgeText, allotmentFilter === 'allotted' && styles.monthBadgeTextActive]}>{allottedCount}</Text>
+              </View>
+            </Pressable>
           </ScrollView>
         </View>
       )}

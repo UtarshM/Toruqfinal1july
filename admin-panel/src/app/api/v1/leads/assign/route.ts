@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { validateAuth } from '@/lib/auth-guard'
+import { recordBulkSyncEvents } from '@/lib/sync-helper'
 
 export const maxDuration = 60
 export const dynamic = 'force-dynamic'
@@ -115,6 +116,15 @@ export async function POST(req: NextRequest) {
     } catch (logErr) {
       console.warn('ActivityLog warning:', logErr)
     }
+
+    // 6. Record sync events for offline mobile SQLite synchronization
+    recordBulkSyncEvents(leadIds.map(id => ({
+      entityType: 'lead',
+      entityId: id,
+      action: 'update',
+      payload: { assignedTo: assigneeId, status: 'Allotted' },
+      userId: assigneeId
+    }))).catch(() => {})
 
     return NextResponse.json({
       success: true,

@@ -218,7 +218,13 @@ export async function PUT(
     // assignedTo and status can always be updated directly
     if (body.assignedTo !== undefined || body.assigned_to !== undefined) {
       const newAssignee = body.assignedTo !== undefined ? body.assignedTo : body.assigned_to
-      data.assignedTo = newAssignee === 'unassigned' ? null : (newAssignee || null)
+      data.assignedTo = (newAssignee === 'unassigned' || newAssignee === 'unallotted') ? null : (newAssignee || null)
+      // If newly allotted and current status is New, update status to Allotted
+      if (data.assignedTo && (!body.status && currentLead.status === 'New')) {
+        data.status = 'Allotted'
+      } else if (!data.assignedTo && (currentLead.status === 'Allotted' || currentLead.status === 'Assigned') && !body.status) {
+        data.status = 'New'
+      }
     }
     if (body.status !== undefined) {
       data.status = body.status

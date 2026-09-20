@@ -122,6 +122,18 @@ export const leadsService = {
   }) => logCallOffline(params),
 
   /**
+   * Allots multiple leads to a designated team member / executive.
+   */
+  allotBulk: (leadIds: string[], assigneeId: string): Promise<{ success: boolean; message: string; count: number }> =>
+    api.post<any>(`${BASE}/assign`, { leadIds, assigneeId }),
+
+  /**
+   * De-allots multiple leads (returns them to unallotted pool).
+   */
+  deallotBulk: (leadIds: string[]): Promise<{ success: boolean; message: string; count: number }> =>
+    api.post<any>(`${BASE}/unassign`, { leadIds }),
+
+  /**
    * Triggers bidirectional synchronization
    */
   sync: () => syncAll(),

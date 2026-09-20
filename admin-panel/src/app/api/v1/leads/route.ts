@@ -76,7 +76,7 @@ export async function GET(req: NextRequest) {
 
     // Specific Assignee filter
     if (assignedToParam && assignedToParam !== 'all') {
-      if (assignedToParam === 'unassigned') {
+      if (assignedToParam === 'unassigned' || assignedToParam === 'unallotted') {
         where.assignedTo = null
       } else {
         where.assignedTo = assignedToParam
@@ -84,9 +84,9 @@ export async function GET(req: NextRequest) {
     }
 
     // Status & Assignment filtering
-    if (status === 'assigned' || assignedParam === 'true') {
+    if (status === 'assigned' || status === 'allotted' || assignedParam === 'true') {
       where.assignedTo = { not: null }
-    } else if (status === 'unassigned' || assignedParam === 'false') {
+    } else if (status === 'unassigned' || status === 'unallotted' || assignedParam === 'false') {
       where.assignedTo = null
     } else if (status === 'Follow Up' || status === 'Follow-up' || status?.toLowerCase() === 'followup') {
       where.status = { in: ['Follow Up', 'Follow-up'] }

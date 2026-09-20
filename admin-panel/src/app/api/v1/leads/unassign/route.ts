@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { validateAuth } from '@/lib/auth-guard'
+import { recordBulkSyncEvents } from '@/lib/sync-helper'
 
 export const maxDuration = 60
 export const dynamic = 'force-dynamic'
@@ -36,11 +37,11 @@ export async function POST(req: NextRequest) {
 
     if (leadIds && Array.isArray(leadIds) && leadIds.length > 0) {
       // 1. De-assign specific selected leads
-      // Reset status to 'New' if it was 'Assigned'
+      // Reset status to 'New' if it was 'Assigned' or 'Allotted'
       const assignedRes = await prisma.lead.updateMany({
         where: {
           id: { in: leadIds },
-          status: { in: ['Assigned', 'assigned'] }
+          status: { in: ['Assigned', 'assigned', 'Allotted', 'allotted'] }
         },
         data: {
           assignedTo: null,
@@ -52,7 +53,7 @@ export async function POST(req: NextRequest) {
       const otherRes = await prisma.lead.updateMany({
         where: {
           id: { in: leadIds },
-          status: { notIn: ['Assigned', 'assigned'] }
+          status: { notIn: ['Assigned', 'assigned', 'Allotted', 'allotted'] }
         },
         data: {
           assignedTo: null
@@ -77,10 +78,18 @@ export async function POST(req: NextRequest) {
         }
       }).catch(() => {})
 
+      // Record sync events for offline mobile SQLite synchronization
+      recordBulkSyncEvents(leadIds.map(id => ({
+        entityType: 'lead',
+        entityId: id,
+        action: 'update',
+        payload: { assignedTo: null, status: 'New' }
+      }))).catch(() => {})
+
       return NextResponse.json({
         success: true,
         count: affectedCount,
-        message: `Successfully de-assigned ${affectedCount} lead(s).`
+        message: `Successfully de-allotted ${affectedCount} lead(s).`
       })
     }
 
@@ -112,11 +121,11 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // Update leads with status 'Assigned' -> 'New'
+      // Update leads with status 'Assigned' or 'Allotted' -> 'New'
       const assignedRes = await prisma.lead.updateMany({
         where: {
           ...where,
-          status: { in: ['Assigned', 'assigned'] }
+          status: { in: ['Assigned', 'assigned', 'Allotted', 'allotted'] }
         },
         data: {
           assignedTo: null,
@@ -128,7 +137,7 @@ export async function POST(req: NextRequest) {
       const otherRes = await prisma.lead.updateMany({
         where: {
           ...where,
-          status: { notIn: ['Assigned', 'assigned'] }
+          status: { notIn: ['Assigned', 'assigned', 'Allotted', 'allotted'] }
         },
         data: {
           assignedTo: null
@@ -151,7 +160,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         success: true,
         count: affectedCount,
-        message: `Successfully de-assigned ${affectedCount} lead(s) and returned them to the unassigned pool.`
+        message: `Successfully de-allotted ${affectedCount} lead(s) and returned them to the unallotted pool.`
       })
     }
 

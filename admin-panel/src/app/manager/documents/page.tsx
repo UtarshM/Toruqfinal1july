@@ -626,7 +626,7 @@ export default function ManagerDocumentsPage() {
                       <div className="flex flex-wrap items-center gap-4 text-xs font-bold text-slate-600 pt-1">
                         <div className="flex items-center gap-1.5">
                           <User size={13} className="text-slate-400" />
-                          <span>Executive: <strong className="text-slate-900">{item.assignee?.fullName || 'Unassigned'}</strong></span>
+                          <span>Executive: <strong className="text-slate-900">{item.assignee?.fullName || 'Unallotted'}</strong></span>
                         </div>
                         {sub.documents && (() => {
                           const uniqueCats = new Set((sub.documents || []).map((d: any) => d.category))

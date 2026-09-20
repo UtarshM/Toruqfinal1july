@@ -9,7 +9,7 @@ import {
   AlertCircle, Users, Calendar, RefreshCw, Phone, MessageCircle, 
   X, Check, Clipboard, ChevronRight, Trash2, ArrowUpDown, ArrowUp, ArrowDown,
   ChevronDown, FileSpreadsheet, FileText, Shield, Download, ChevronLeft, ChevronsLeft, ChevronsRight,
-  UserX, UserCheck
+  UserX, UserCheck, UserMinus
 } from 'lucide-react'
 import LeadPolicySubmissionModal from '@/components/leads/LeadPolicySubmissionModal'
 
@@ -738,8 +738,10 @@ export default function LeadsPage() {
 
     // Active Card Filters
     if (statusFilter !== 'all') {
-      if (statusFilter === 'assigned') {
+      if (statusFilter === 'assigned' || statusFilter === 'allotted') {
         if (!l.assignedTo) return false
+      } else if (statusFilter === 'unassigned' || statusFilter === 'unallotted') {
+        if (l.assignedTo) return false
       } else if (statusFilter === 'Follow Up') {
         if (!l.status?.toLowerCase().includes('follow')) return false
       } else if (l.status?.toUpperCase() !== statusFilter.toUpperCase()) {
@@ -901,7 +903,7 @@ export default function LeadsPage() {
       </div>
 
       {/* Summary Cards with click filters */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mt-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mt-6">
         <StatCard 
           title="Total List" 
           value={stats?.total || leads.length || 0} 
@@ -911,20 +913,20 @@ export default function LeadsPage() {
           onClick={() => setStatusFilter('all')}
         />
         <StatCard 
-          title="Allotted" 
-          value={stats?.assigned || 0} 
-          icon={<CheckCircle className="text-emerald-600" />} 
-          color="bg-white hover:bg-emerald-50/20" 
-          isActive={statusFilter === 'assigned'}
-          onClick={() => setStatusFilter(prev => prev === 'assigned' ? 'all' : 'assigned')}
+          title="Unallotted" 
+          value={stats?.unallotted ?? stats?.unassigned ?? 0} 
+          icon={<UserMinus className="text-slate-600" />} 
+          color="bg-white hover:bg-slate-50/40" 
+          isActive={statusFilter === 'unallotted' || statusFilter === 'unassigned'}
+          onClick={() => setStatusFilter(prev => (prev === 'unallotted' || prev === 'unassigned') ? 'all' : 'unallotted')}
         />
         <StatCard 
-          title="Converted" 
-          value={stats?.converted || 0} 
-          icon={<CheckCircle className="text-purple-600" />} 
-          color="bg-white hover:bg-purple-50/20" 
-          isActive={statusFilter === 'Converted'}
-          onClick={() => setStatusFilter(prev => prev === 'Converted' ? 'all' : 'Converted')}
+          title="Allotted" 
+          value={stats?.allotted ?? stats?.assigned ?? 0} 
+          icon={<CheckCircle className="text-emerald-600" />} 
+          color="bg-white hover:bg-emerald-50/20" 
+          isActive={statusFilter === 'allotted' || statusFilter === 'assigned'}
+          onClick={() => setStatusFilter(prev => (prev === 'allotted' || prev === 'assigned') ? 'all' : 'allotted')}
         />
         <StatCard 
           title="Followups" 
@@ -934,15 +936,49 @@ export default function LeadsPage() {
           isActive={statusFilter === 'Follow Up'}
           onClick={() => setStatusFilter(prev => prev === 'Follow Up' ? 'all' : 'Follow Up')}
         />
+        <StatCard 
+          title="Converted" 
+          value={stats?.converted || 0} 
+          icon={<CheckCircle className="text-purple-600" />} 
+          color="bg-white hover:bg-purple-50/20" 
+          isActive={statusFilter === 'Converted'}
+          onClick={() => setStatusFilter(prev => prev === 'Converted' ? 'all' : 'Converted')}
+        />
       </div>
 
+      {/* Active "Unallotted" Banner with Quick Allot Action */}
+      {(statusFilter === 'unallotted' || statusFilter === 'unassigned') && (
+        <div className="bg-blue-50 border border-blue-200 text-blue-900 p-4 rounded-2xl text-xs font-bold mt-4 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-xs">
+          <div className="flex items-center gap-2">
+            <Users size={16} className="text-blue-600 shrink-0" />
+            <span>
+              Showing <strong>{stats?.unallotted ?? stats?.unassigned ?? filteredLeads.length}</strong> unallotted records. Select records and click <strong>Allot to Staff</strong> to distribute to advisors.
+            </span>
+          </div>
+          {isAdmin && filteredLeads.length > 0 && (
+            <button 
+              onClick={() => {
+                setSelectedIds(new Set(filteredLeads.map(l => l.id)))
+                setTargetAssigneeId('')
+                setShowAllotModal(true)
+              }} 
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer whitespace-nowrap flex items-center gap-1.5 shrink-0"
+              title="Allot all currently displayed unallotted leads"
+            >
+              <UserCheck size={14} />
+              Allot Displayed ({filteredLeads.length})
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Active "Allotted" Banner with De-allot All Action */}
-      {statusFilter === 'assigned' && (
+      {(statusFilter === 'allotted' || statusFilter === 'assigned') && (
         <div className="bg-emerald-50 border border-emerald-200 text-emerald-900 p-4 rounded-2xl text-xs font-bold mt-4 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-xs">
           <div className="flex items-center gap-2">
             <CheckCircle size={16} className="text-emerald-600 shrink-0" />
             <span>
-              Showing <strong>{stats?.assigned || filteredLeads.length}</strong> allotted records. You can select specific records to de-allot, or de-allot all back to the unallotted pool.
+              Showing <strong>{stats?.allotted ?? stats?.assigned ?? filteredLeads.length}</strong> allotted records. You can select specific records to de-allot, or de-allot all back to the unallotted pool.
             </span>
           </div>
           {isAdmin && (stats?.assigned || 0) > 0 && (
@@ -953,7 +989,7 @@ export default function LeadsPage() {
               title="De-allot all leads currently allotted to advisors"
             >
               <UserX size={14} />
-              De-allot All ({stats?.assigned})
+              De-allot All ({stats?.allotted ?? stats?.assigned})
             </button>
           )}
         </div>
@@ -1313,6 +1349,20 @@ export default function LeadsPage() {
                             className="p-1 hover:bg-amber-100 text-slate-400 hover:text-amber-700 rounded-md transition-all cursor-pointer shrink-0"
                           >
                             <UserX size={13} />
+                          </button>
+                        )}
+                        {isAdmin && !lead.assignedTo && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setSelectedIds(new Set([lead.id]))
+                              setTargetAssigneeId('')
+                              setShowAllotModal(true)
+                            }}
+                            title="Allot this lead to an advisor"
+                            className="p-1 hover:bg-emerald-100 text-slate-400 hover:text-emerald-700 rounded-md transition-all cursor-pointer shrink-0"
+                          >
+                            <UserCheck size={13} />
                           </button>
                         )}
                       </div>

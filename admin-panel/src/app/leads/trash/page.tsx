@@ -79,8 +79,8 @@ export default function TrashedLeadsPage() {
     <AdminLayout>
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tight">Trashed Leads</h1>
-          <p className="text-sm text-slate-500 mt-1">Deleted leads can be restored or permanently removed.</p>
+          <h1 className="text-3xl font-black text-slate-900 tracking-tight">Trashed List</h1>
+          <p className="text-sm text-slate-500 mt-1">Deleted records can be restored or permanently removed.</p>
         </div>
         {selectedIds.size > 0 && (
           <div className="flex items-center gap-3">

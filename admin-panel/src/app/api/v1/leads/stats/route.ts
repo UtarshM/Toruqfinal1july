@@ -112,7 +112,9 @@ export async function GET(req: NextRequest) {
       summary: {
         total: totalLeads,
         assigned: assignedLeads,
+        allotted: assignedLeads,
         unassigned: unassignedLeads,
+        unallotted: unassignedLeads,
         converted: convertedLeads,
         followups: pendingFollowups,
         notInterested: notInterestedLeads

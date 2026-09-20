@@ -56,7 +56,7 @@ export default function LeadClient({ params }: { params?: Promise<{ id: string }
         className="flex items-center gap-2 text-gray-500 hover:text-gray-900 mb-6 transition-colors"
       >
         <ArrowLeft size={18} />
-        <span className="text-sm font-semibold">Back to Leads</span>
+        <span className="text-sm font-semibold">Back to List</span>
       </button>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -70,6 +70,7 @@ export default function LeadClient({ params }: { params?: Promise<{ id: string }
             <p className="text-sm text-gray-500 font-medium">{lead.status} · ID: {lead.id.slice(0, 8)}</p>
             
             <div className="mt-8 space-y-4 text-left">
+              <InfoItem icon={User} label="Allotted To" value={lead.assignee?.fullName || 'Unallotted'} />
               <InfoItem icon={Phone} label="Phone" value={lead.clientPhone} />
               <InfoItem icon={Mail} label="Email" value={lead.clientEmail || 'Not Provided'} />
               <InfoItem icon={MapPin} label="Location" value={lead.city || 'Unknown'} />
