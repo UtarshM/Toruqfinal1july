@@ -4,7 +4,7 @@ import AdminLayout from '@/components/layout/AdminLayout'
 import { useAuth } from '@/context/AuthContext'
 import { useApi } from '@/hooks/useApi'
 import { 
-  Plus, Edit2, Trash2, ShieldAlert, Sparkles, Building, Folder, 
+  Plus, Edit2, Trash2, ShieldAlert, Sparkles, Building, 
   ListCollapse, Save, X, RefreshCw, Search, CheckCircle2, MessageSquare,
   SlidersHorizontal, Check, AlertCircle
 } from 'lucide-react'
@@ -13,7 +13,7 @@ export default function RatesSettingsPage() {
   const { user, isLoading: authLoading } = useAuth()
   const apiFetch = useApi()
 
-  const [activeTab, setActiveTab] = useState<'rules' | 'companies' | 'categories'>('rules')
+  const [activeTab, setActiveTab] = useState<'rules' | 'companies'>('rules')
   const [loading, setLoading] = useState(true)
   const [companies, setCompanies] = useState<any[]>([])
   const [categories, setCategories] = useState<any[]>([])
@@ -29,7 +29,6 @@ export default function RatesSettingsPage() {
 
   // Form States
   const [companyName, setCompanyName] = useState('')
-  const [categoryName, setCategoryName] = useState('')
   const [ruleForm, setRuleForm] = useState({
     id: '',
     companyId: '',
@@ -128,57 +127,17 @@ export default function RatesSettingsPage() {
     }
   }
 
-  // --- Categories CRUD ---
-  const handleAddCategory = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!categoryName.trim()) return
-    try {
-      const res = await apiFetch('/api/v1/rates/categories', {
-        method: 'POST',
-        body: JSON.stringify({ name: categoryName })
-      })
-      if (res.ok) {
-        setCategoryName('')
-        setIsMobileModalOpen(false)
-        showSuccess('Category added successfully!')
-        loadAllData()
-      } else {
-        const data = await res.json()
-        setErrorMsg(data.error || 'Failed to add category')
-      }
-    } catch {
-      setErrorMsg('Network error occurred.')
-    }
-  }
-
-  const handleUpdateCategory = async (id: string, newStatus?: number) => {
-    try {
-      const res = await apiFetch(`/api/v1/rates/categories/${id}`, {
-        method: 'PATCH',
-        body: JSON.stringify({
-          ...(newStatus !== undefined && { status: newStatus }),
-          ...(editingId === id && { name: editName })
-        })
-      })
-      if (res.ok) {
-        setEditingId(null)
-        setEditName('')
-        showSuccess('Category updated successfully!')
-        loadAllData()
-      } else {
-        const data = await res.json()
-        setErrorMsg(data.error || 'Failed to update category')
-      }
-    } catch {
-      setErrorMsg('Network error occurred.')
-    }
-  }
-
   // --- Rate Rules (Relationships) CRUD ---
   const handleSaveRule = async (e: React.FormEvent) => {
     e.preventDefault()
     const { id, companyId, categoryId, percentage, profit, remarks, status } = ruleForm
-    if (!companyId || !categoryId || percentage === '' || profit === '') return
+    if (!companyId || percentage === '' || profit === '') return
+
+    let effectiveCatId = categoryId
+    if (!effectiveCatId) {
+      const selectedComp = companies.find(c => c.id === companyId)
+      effectiveCatId = categories.find(c => c.name.trim().toLowerCase() === selectedComp?.name.trim().toLowerCase())?.id || categories[0]?.id || companyId
+    }
 
     try {
       const url = id ? `/api/v1/rates/relationships/${id}` : '/api/v1/rates/relationships'
@@ -188,7 +147,7 @@ export default function RatesSettingsPage() {
         method,
         body: JSON.stringify({
           companyId,
-          categoryId,
+          categoryId: effectiveCatId,
           percentage: parseFloat(percentage),
           profit: parseFloat(profit),
           remarks,
@@ -255,11 +214,6 @@ export default function RatesSettingsPage() {
     return !query || c.name?.toLowerCase().includes(query)
   })
 
-  const filteredCategories = categories.filter(c => {
-    const query = searchQuery.toLowerCase().trim()
-    return !query || c.name?.toLowerCase().includes(query)
-  })
-
   if (authLoading) {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
@@ -298,7 +252,7 @@ export default function RatesSettingsPage() {
                 <Sparkles size={12} /> vehicle-bk matrix
               </span>
             </div>
-            <p className="text-xs sm:text-sm text-slate-500 mt-1">Configure company, category percentages, profit bounds, and remarks.</p>
+            <p className="text-xs sm:text-sm text-slate-500 mt-1">Configure company percentages, profit bounds, and remarks.</p>
           </div>
 
           <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end">
@@ -310,7 +264,7 @@ export default function RatesSettingsPage() {
               className="lg:hidden flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-extrabold rounded-xl transition-all shadow-md active:scale-95"
             >
               <Plus size={16} />
-              <span>{activeTab === 'rules' ? 'New Rate Rule' : activeTab === 'companies' ? 'Add Company' : 'Add Category'}</span>
+              <span>{activeTab === 'rules' ? 'New Rate Rule' : 'Add Company'}</span>
             </button>
 
             <button
@@ -324,7 +278,7 @@ export default function RatesSettingsPage() {
         </div>
 
         {/* Quick Stat Bar */}
-        <div className="grid grid-cols-3 gap-2 sm:gap-4">
+        <div className="grid grid-cols-2 gap-2 sm:gap-4">
           <div className="bg-white p-3 sm:p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
             <div>
               <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider">Rate Rules</p>
@@ -342,16 +296,6 @@ export default function RatesSettingsPage() {
             </div>
             <div className="p-2 sm:p-3 bg-emerald-50 text-emerald-600 rounded-xl hidden sm:block">
               <Building size={20} />
-            </div>
-          </div>
-
-          <div className="bg-white p-3 sm:p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
-            <div>
-              <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider">Categories</p>
-              <p className="text-lg sm:text-2xl font-black text-slate-900 mt-0.5">{categories.length}</p>
-            </div>
-            <div className="p-2 sm:p-3 bg-amber-50 text-amber-600 rounded-xl hidden sm:block">
-              <Folder size={20} />
             </div>
           </div>
         </div>
@@ -382,8 +326,7 @@ export default function RatesSettingsPage() {
           <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1 sm:pb-0">
             {[
               { id: 'rules', label: 'Rate Rules', count: rules.length, icon: ListCollapse },
-              { id: 'companies', label: 'Companies', count: companies.length, icon: Building },
-              { id: 'categories', label: 'Categories', count: categories.length, icon: Folder }
+              { id: 'companies', label: 'Companies', count: companies.length, icon: Building }
             ].map(t => (
               <button
                 key={t.id}
@@ -453,19 +396,6 @@ export default function RatesSettingsPage() {
                       >
                         <option value="">Select Company</option>
                         {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Category *</label>
-                      <select
-                        required
-                        value={ruleForm.categoryId}
-                        onChange={e => setRuleForm({ ...ruleForm, categoryId: e.target.value })}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-blue-500/20"
-                      >
-                        <option value="">Select Category</option>
-                        {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                       </select>
                     </div>
 
@@ -568,31 +498,6 @@ export default function RatesSettingsPage() {
                   </button>
                 </form>
               )}
-
-              {activeTab === 'categories' && (
-                <form onSubmit={handleAddCategory} className="space-y-4">
-                  <h3 className="font-extrabold text-slate-900 text-sm uppercase tracking-wide pb-3 border-b border-slate-100">
-                    Add Vehicle Category
-                  </h3>
-                  <div>
-                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Category Name *</label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="e.g. Two Wheeler Comprehensive"
-                      value={categoryName}
-                      onChange={e => setCategoryName(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-blue-500/20"
-                    />
-                  </div>
-                  <button
-                    type="submit"
-                    className="w-full py-3 bg-slate-900 hover:bg-black text-white rounded-xl text-xs font-black uppercase tracking-wide transition-all shadow-md flex items-center justify-center gap-1.5 cursor-pointer"
-                  >
-                    <Plus size={14} /> Add Category
-                  </button>
-                </form>
-              )}
             </div>
 
             {/* Data View Panel (lg:col-span-8) */}
@@ -607,7 +512,6 @@ export default function RatesSettingsPage() {
                       <thead className="bg-slate-50 border-b border-slate-100">
                         <tr>
                           <th className="px-5 py-3.5 text-xs font-bold text-slate-400 uppercase tracking-wider">Company</th>
-                          <th className="px-5 py-3.5 text-xs font-bold text-slate-400 uppercase tracking-wider">Category</th>
                           <th className="px-5 py-3.5 text-xs font-bold text-slate-400 uppercase tracking-wider">Percentage</th>
                           <th className="px-5 py-3.5 text-xs font-bold text-slate-400 uppercase tracking-wider">Profit</th>
                           <th className="px-5 py-3.5 text-xs font-bold text-slate-400 uppercase tracking-wider">Remarks</th>
@@ -618,7 +522,7 @@ export default function RatesSettingsPage() {
                       <tbody className="divide-y divide-slate-100">
                         {filteredRules.length === 0 ? (
                           <tr>
-                            <td colSpan={7} className="px-6 py-12 text-center text-slate-400 italic text-sm">
+                            <td colSpan={6} className="px-6 py-12 text-center text-slate-400 italic text-sm">
                               No matching quotation rate rules found.
                             </td>
                           </tr>
@@ -626,7 +530,6 @@ export default function RatesSettingsPage() {
                           filteredRules.map(r => (
                             <tr key={r.id} className="hover:bg-slate-50/50 transition-colors">
                               <td className="px-5 py-4 text-xs font-bold text-slate-900">{r.company?.name || '—'}</td>
-                              <td className="px-5 py-4 text-xs text-slate-600 font-medium">{r.category?.name || '—'}</td>
                               <td className="px-5 py-4 text-xs font-bold text-emerald-700">
                                 <span className="bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-lg">
                                   {parseFloat(r.percentage.toString())}%
@@ -684,7 +587,6 @@ export default function RatesSettingsPage() {
                           <div className="flex items-start justify-between gap-2">
                             <div>
                               <h4 className="font-extrabold text-slate-900 text-sm">{r.company?.name || '—'}</h4>
-                              <p className="text-xs text-slate-500 font-medium mt-0.5">{r.category?.name || '—'}</p>
                             </div>
                             <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase shrink-0 ${
                               r.status === 1 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-amber-50 text-amber-700 border border-amber-200'
@@ -733,8 +635,8 @@ export default function RatesSettingsPage() {
                 </>
               )}
 
-              {/* COMPANIES & CATEGORIES TABS */}
-              {(activeTab === 'companies' || activeTab === 'categories') && (
+              {/* COMPANIES TAB */}
+              {activeTab === 'companies' && (
                 <>
                   {/* Desktop Table View */}
                   <div className="hidden md:block bg-white border border-slate-100 rounded-3xl shadow-sm overflow-hidden">
@@ -748,12 +650,12 @@ export default function RatesSettingsPage() {
                       </thead>
                       <tbody className="divide-y divide-slate-100">
                         {(() => {
-                          const dataList = activeTab === 'companies' ? filteredCompanies : filteredCategories
+                          const dataList = filteredCompanies
                           if (dataList.length === 0) {
                             return (
                               <tr>
                                 <td colSpan={3} className="px-6 py-12 text-center text-slate-400 italic text-sm">
-                                  No matching {activeTab} found.
+                                  No matching companies found.
                                 </td>
                               </tr>
                             )
@@ -785,7 +687,7 @@ export default function RatesSettingsPage() {
                                   {editingId === item.id ? (
                                     <>
                                       <button
-                                        onClick={() => activeTab === 'companies' ? handleUpdateCompany(item.id) : handleUpdateCategory(item.id)}
+                                        onClick={() => handleUpdateCompany(item.id)}
                                         className="px-3 py-1 bg-emerald-600 text-white rounded-lg text-[10px] font-black uppercase cursor-pointer"
                                       >
                                         Save
@@ -810,10 +712,7 @@ export default function RatesSettingsPage() {
                                         <Edit2 size={13} />
                                       </button>
                                       <button
-                                        onClick={() => activeTab === 'companies'
-                                          ? handleUpdateCompany(item.id, item.status === 1 ? 2 : 1)
-                                          : handleUpdateCategory(item.id, item.status === 1 ? 2 : 1)
-                                        }
+                                        onClick={() => handleUpdateCompany(item.id, item.status === 1 ? 2 : 1)}
                                         className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase cursor-pointer ${
                                           item.status === 1
                                             ? 'bg-rose-50 text-rose-600 hover:bg-rose-100'
@@ -836,11 +735,11 @@ export default function RatesSettingsPage() {
                   {/* Mobile Cards View (md:hidden) */}
                   <div className="md:hidden space-y-3">
                     {(() => {
-                      const dataList = activeTab === 'companies' ? filteredCompanies : filteredCategories
+                      const dataList = filteredCompanies
                       if (dataList.length === 0) {
                         return (
                           <div className="bg-white p-8 rounded-2xl text-center text-slate-400 text-xs italic border border-slate-100">
-                            No matching {activeTab} found.
+                            No matching companies found.
                           </div>
                         )
                       }
@@ -870,7 +769,7 @@ export default function RatesSettingsPage() {
                             {editingId === item.id ? (
                               <>
                                 <button
-                                  onClick={() => activeTab === 'companies' ? handleUpdateCompany(item.id) : handleUpdateCategory(item.id)}
+                                  onClick={() => handleUpdateCompany(item.id)}
                                   className="flex-1 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold"
                                 >
                                   Save Name
@@ -894,10 +793,7 @@ export default function RatesSettingsPage() {
                                   <Edit2 size={12} /> Rename
                                 </button>
                                 <button
-                                  onClick={() => activeTab === 'companies'
-                                    ? handleUpdateCompany(item.id, item.status === 1 ? 2 : 1)
-                                    : handleUpdateCategory(item.id, item.status === 1 ? 2 : 1)
-                                  }
+                                  onClick={() => handleUpdateCompany(item.id, item.status === 1 ? 2 : 1)}
                                   className={`py-2 px-4 rounded-xl text-xs font-bold ${
                                     item.status === 1
                                       ? 'bg-rose-50 text-rose-600 border border-rose-100'
@@ -929,9 +825,7 @@ export default function RatesSettingsPage() {
                 <h3 className="font-extrabold text-slate-900 text-base">
                   {activeTab === 'rules'
                     ? (ruleForm.id ? 'Edit Rate Rule' : 'New Rate Rule')
-                    : activeTab === 'companies'
-                    ? 'Add Insurance Company'
-                    : 'Add Vehicle Category'
+                    : 'Add Insurance Company'
                   }
                 </h3>
                 <button 
@@ -957,19 +851,6 @@ export default function RatesSettingsPage() {
                     </select>
                   </div>
 
-                  <div>
-                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Category *</label>
-                    <select
-                      required
-                      value={ruleForm.categoryId}
-                      onChange={e => setRuleForm({ ...ruleForm, categoryId: e.target.value })}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-slate-800 outline-none"
-                    >
-                      <option value="">Select Category</option>
-                      {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                    </select>
-                  </div>
-
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Percentage (%) *</label>
@@ -983,7 +864,8 @@ export default function RatesSettingsPage() {
                         value={ruleForm.percentage}
                         onChange={e => setRuleForm({ ...ruleForm, percentage: e.target.value })}
                         className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-slate-800 outline-none"
-                      />
+                      >
+                      </input>
                     </div>
 
                     <div>
@@ -1061,37 +943,6 @@ export default function RatesSettingsPage() {
                       className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold uppercase tracking-wide transition-all shadow-md"
                     >
                       Add Company
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setIsMobileModalOpen(false)}
-                      className="py-3 px-4 border border-slate-200 text-slate-600 rounded-xl text-xs font-bold uppercase tracking-wide"
-                    >
-                      Close
-                    </button>
-                  </div>
-                </form>
-              )}
-
-              {activeTab === 'categories' && (
-                <form onSubmit={handleAddCategory} className="space-y-3.5">
-                  <div>
-                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Category Name *</label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="e.g. Two Wheeler Comprehensive"
-                      value={categoryName}
-                      onChange={e => setCategoryName(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-slate-800 outline-none"
-                    />
-                  </div>
-                  <div className="pt-2 flex gap-2">
-                    <button
-                      type="submit"
-                      className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold uppercase tracking-wide transition-all shadow-md"
-                    >
-                      Add Category
                     </button>
                     <button
                       type="button"

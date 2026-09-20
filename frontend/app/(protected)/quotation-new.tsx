@@ -418,33 +418,22 @@ export default function QuotationNewScreen() {
             ))}
           </View>
           
-          {/* Company & Category Selectors */}
+          {/* Company Selector */}
           <DropdownSelector
             label="Company *"
             placeholder="Select Company"
             options={companies.map(c => ({ label: c.name, value: c.id }))}
             selectedValue={calcData.companyId}
-            onSelect={(val) => setCalcData(prev => ({ ...prev, companyId: val }))}
+            onSelect={(val) => {
+              const compRel = relationships.find(r => r.companyId === val);
+              setCalcData(prev => ({
+                ...prev,
+                companyId: val,
+                categoryId: compRel?.categoryId || ''
+              }));
+            }}
             loading={loadingConfig}
           />
-
-          <DropdownSelector
-            label="Category *"
-            placeholder="Select Category"
-            options={categories.map(c => ({ label: c.name, value: c.id }))}
-            selectedValue={calcData.categoryId}
-            onSelect={(val) => setCalcData(prev => ({ ...prev, categoryId: val }))}
-            loading={loadingConfig}
-          />
-
-          {calcData.companyId && calcData.categoryId && calcData.percentage === 0 && calcData.profit === 0 && (
-            <View style={styles.alertBox}>
-              <Ionicons name="alert-circle-outline" size={16} color="#B45309" />
-              <Text style={styles.alertText}>
-                No active rate rule configured for this Company + Category.
-              </Text>
-            </View>
-          )}
 
           {isAdmin && (
             <View style={styles.ruleContainer}>

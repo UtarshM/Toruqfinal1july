@@ -500,21 +500,7 @@ export default function RateCalculatorScreen() {
                 loading={loadingConfig && companies.length === 0}
               />
 
-              {/* 3. Category Dropdown */}
-              <DropdownSelector
-                label="Category"
-                placeholder="Select Category"
-                options={categories.map(c => ({ label: c.name, value: c.id }))}
-                selectedValue={currentSub.categoryId}
-                onSelect={(val) => {
-                  setSubCalcs(prev => ({
-                    ...prev,
-                    [activeTab]: { ...prev[activeTab], categoryId: val }
-                  }));
-                }}
-              />
-
-              {/* 4. Remarks Text Input (Clean standard field, NO yellow alert/banner!) */}
+              {/* 3. Remarks Text Input (Clean standard field, NO yellow alert/banner!) */}
               <View style={styles.formGroup}>
                 <Text style={styles.fieldLabel}>Remarks</Text>
                 <TextInput

@@ -81,9 +81,10 @@ export default function QuotationsPage() {
   // Lookup relationship percentage and profit
   useEffect(() => {
     const lookupRelation = async () => {
-      if (calcData.companyId && calcData.categoryId) {
+      if (calcData.companyId) {
         try {
-          const res = await fetchApi(`/api/v1/rates/relationships/lookup?companyId=${calcData.companyId}&categoryId=${calcData.categoryId}`)
+          const catParam = calcData.categoryId ? `&categoryId=${calcData.categoryId}` : ''
+          const res = await fetchApi(`/api/v1/rates/relationships/lookup?companyId=${calcData.companyId}${catParam}`)
           setCalcData(prev => ({
             ...prev,
             percentage: res.qtr_percentage || 0,
@@ -302,7 +303,7 @@ export default function QuotationsPage() {
                   </div>
                   {quote.company?.name && (
                     <div className="text-[9px] text-blue-600 font-extrabold uppercase mt-1">
-                      {quote.company.name} · {quote.category?.name || 'Insurance'}
+                      {quote.company.name}
                     </div>
                   )}
                 </td>
@@ -386,31 +387,20 @@ export default function QuotationsPage() {
                 </select>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Company *</label>
-                  <select required value={calcData.companyId} onChange={e => setCalcData({...calcData, companyId: e.target.value})}
+                  <select required value={calcData.companyId} onChange={e => {
+                    const compId = e.target.value
+                    const compMatch = categories.find(c => c.name.trim().toLowerCase() === companies.find(comp => comp.id === compId)?.name.trim().toLowerCase())
+                    setCalcData({...calcData, companyId: compId, categoryId: compMatch?.id || compId})
+                  }}
                     className="w-full px-3.5 py-2.5 bg-gray-50 border border-gray-200 rounded-xl outline-none text-xs">
                     <option value="">Select Company</option>
                     {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
                 </div>
-                <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Category *</label>
-                  <select required value={calcData.categoryId} onChange={e => setCalcData({...calcData, categoryId: e.target.value})}
-                    className="w-full px-3.5 py-2.5 bg-gray-50 border border-gray-200 rounded-xl outline-none text-xs">
-                    <option value="">Select Category</option>
-                    {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
-                </div>
               </div>
-
-              {calcData.companyId && calcData.categoryId && calcData.percentage === 0 && calcData.profit === 0 && (
-                <div className="bg-amber-50 border border-amber-100 p-3 rounded-2xl flex items-start gap-2 text-[10px] text-amber-700 font-bold leading-relaxed animate-pulse">
-                  <AlertCircle size={14} className="shrink-0 mt-0.5" />
-                  <span>No active rate rule configured for this Company + Category. Calculated values will fallback to defaults.</span>
-                </div>
-              )}
 
               {isAdmin && (
                 <div className="grid grid-cols-2 gap-4 bg-slate-50/50 p-3 border border-slate-100 rounded-2xl">

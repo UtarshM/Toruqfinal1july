@@ -62,7 +62,7 @@ function DropdownSelector({ label, placeholder, options, selectedValue, onSelect
 export default function RatesManagementScreen() {
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'rules' | 'companies' | 'categories'>('rules');
+  const [activeTab, setActiveTab] = useState<'rules' | 'companies'>('rules');
   const [loading, setLoading] = useState(true);
 
   const [companies, setCompanies] = useState<any[]>([]);
@@ -71,7 +71,6 @@ export default function RatesManagementScreen() {
 
   // Input states
   const [companyName, setCompanyName] = useState('');
-  const [categoryName, setCategoryName] = useState('');
   const [ruleForm, setRuleForm] = useState({
     id: '',
     companyId: '',
@@ -126,41 +125,26 @@ export default function RatesManagementScreen() {
     }
   };
 
-  // Categories CRUD
-  const handleAddCategory = async () => {
-    if (!categoryName.trim()) return;
-    try {
-      await api.post('/rates/categories', { name: categoryName.trim() });
-      setCategoryName('');
-      Alert.alert('Success', 'Category added successfully!');
-      loadData();
-    } catch (err: any) {
-      Alert.alert('Error', err.message || 'Failed to add category');
-    }
-  };
 
-  const handleToggleCategory = async (id: string, currentStatus: number) => {
-    try {
-      const nextStatus = currentStatus === 1 ? 2 : 1;
-      await api.patch(`/rates/categories/${id}`, { status: nextStatus });
-      loadData();
-    } catch (err: any) {
-      Alert.alert('Error', err.message || 'Failed to update status');
-    }
-  };
 
   // Rules CRUD
   const handleSaveRule = async () => {
     const { id, companyId, categoryId, percentage, profit, status } = ruleForm;
-    if (!companyId || !categoryId || percentage === '' || profit === '') {
+    if (!companyId || percentage === '' || profit === '') {
       Alert.alert('Error', 'Please fill all required fields.');
       return;
+    }
+
+    let effectiveCatId = categoryId;
+    if (!effectiveCatId) {
+      const selectedComp = companies.find(c => c.id === companyId);
+      effectiveCatId = categories.find(c => c.name.trim().toLowerCase() === selectedComp?.name.trim().toLowerCase())?.id || categories[0]?.id || companyId;
     }
 
     try {
       const body = {
         companyId,
-        categoryId,
+        categoryId: effectiveCatId,
         percentage: parseFloat(percentage),
         profit: parseFloat(profit),
         status: parseInt(status)
@@ -218,8 +202,7 @@ export default function RatesManagementScreen() {
       <View style={styles.tabBar}>
         {[
           { id: 'rules', label: 'Rate Rules' },
-          { id: 'companies', label: 'Companies' },
-          { id: 'categories', label: 'Categories' }
+          { id: 'companies', label: 'Companies' }
         ].map(tab => (
           <Pressable
             key={tab.id}
@@ -248,15 +231,14 @@ export default function RatesManagementScreen() {
                 placeholder="Select Company"
                 options={companies.map(c => ({ label: c.name, value: c.id }))}
                 selectedValue={ruleForm.companyId}
-                onSelect={(val) => setRuleForm({ ...ruleForm, companyId: val })}
-              />
-
-              <DropdownSelector
-                label="Category"
-                placeholder="Select Category"
-                options={categories.map(c => ({ label: c.name, value: c.id }))}
-                selectedValue={ruleForm.categoryId}
-                onSelect={(val) => setRuleForm({ ...ruleForm, categoryId: val })}
+                onSelect={(val) => {
+                  const compRel = rules.find(r => r.companyId === val);
+                  setRuleForm({
+                    ...ruleForm,
+                    companyId: val,
+                    categoryId: compRel?.categoryId || ''
+                  });
+                }}
               />
 
               <Text style={styles.label}>PERCENTAGE (IN %)</Text>
@@ -312,7 +294,6 @@ export default function RatesManagementScreen() {
                   <View key={item.id} style={styles.card}>
                     <View style={{ flex: 1 }}>
                       <Text style={styles.cardTitle}>{item.company?.name}</Text>
-                      <Text style={styles.cardDesc}>{item.category?.name}</Text>
                       <Text style={styles.cardDetails}>Pct: {parseFloat(item.percentage)}%  ·  Profit: ₹{parseFloat(item.profit)}</Text>
                     </View>
                     <View style={styles.actions}>
@@ -366,43 +347,6 @@ export default function RatesManagementScreen() {
                   <Pressable
                     style={[styles.toggleBtn, { backgroundColor: item.status === 1 ? Colors.errorBg : Colors.success + '15' }]}
                     onPress={() => handleToggleCompany(item.id, item.status)}
-                  >
-                    <Text style={[styles.toggleBtnText, { color: item.status === 1 ? Colors.error : Colors.success }]}>
-                      {item.status === 1 ? 'Disable' : 'Enable'}
-                    </Text>
-                  </Pressable>
-                </View>
-              ))}
-            </View>
-          )}
-
-          {/* Categories CRUD Forms */}
-          {activeTab === 'categories' && (
-            <View style={styles.section}>
-              <Text style={styles.sectionHeading}>Add Category</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="e.g. Two Wheeler Comprehensive"
-                placeholderTextColor={Colors.textLight}
-                value={categoryName}
-                onChangeText={setCategoryName}
-              />
-              <Pressable style={[styles.saveBtn, { marginTop: Spacing.md }]} onPress={handleAddCategory}>
-                <Text style={styles.saveBtnText}>Add Category</Text>
-              </Pressable>
-
-              <Text style={[styles.sectionHeading, { marginTop: Spacing.xl }]}>Categories list</Text>
-              {categories.map((item) => (
-                <View key={item.id} style={styles.card}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.cardTitle}>{item.name}</Text>
-                    <Text style={[styles.statusText, { color: item.status === 1 ? Colors.success : Colors.textMuted }]}>
-                      {item.status === 1 ? 'Active' : 'Inactive'}
-                    </Text>
-                  </View>
-                  <Pressable
-                    style={[styles.toggleBtn, { backgroundColor: item.status === 1 ? Colors.errorBg : Colors.success + '15' }]}
-                    onPress={() => handleToggleCategory(item.id, item.status)}
                   >
                     <Text style={[styles.toggleBtnText, { color: item.status === 1 ? Colors.error : Colors.success }]}>
                       {item.status === 1 ? 'Disable' : 'Enable'}

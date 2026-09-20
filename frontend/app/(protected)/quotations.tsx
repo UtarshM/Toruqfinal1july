@@ -135,7 +135,7 @@ export default function QuotationsScreen() {
                   </Text>
                   {(item.company?.name || item.details?.companyName) && (
                     <Text style={styles.cardMetaBlue}>
-                      {item.company?.name || item.details?.companyName} · {item.category?.name || item.details?.categoryName || 'Insurance'}
+                      {item.company?.name || item.details?.companyName}
                     </Text>
                   )}
                 </View>
