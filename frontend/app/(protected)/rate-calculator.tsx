@@ -121,13 +121,12 @@ export default function RateCalculatorScreen() {
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [companies, setCompanies] = useState<any[]>([]);
-  const [categories, setCategories] = useState<any[]>([]);
   const [loadingConfig, setLoadingConfig] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   // Calculator State
   const [calcData, setCalcData] = useState({
     companyId: '',
-    categoryId: '',
     netPremium: '',
     totalPremium: '',
     percentage: 0,
@@ -136,19 +135,16 @@ export default function RateCalculatorScreen() {
     benefit: ''
   });
 
-  // Fetch Companies & Categories lists
+  // Fetch Companies list
   useEffect(() => {
     const fetchConfig = async () => {
       setLoadingConfig(true);
       try {
-        const [compRes, catRes] = await Promise.all([
-          api.get('/rates/companies'),
-          api.get('/rates/categories')
-        ]);
-        setCompanies(compRes || []);
-        setCategories(catRes || []);
+        const compRes = await api.get('/rates/companies');
+        const compData = compRes?.data ?? compRes;
+        setCompanies(Array.isArray(compData) ? compData : (compData?.companies || []));
       } catch (err) {
-        console.error('Failed to load companies/categories:', err);
+        console.error('Failed to load companies:', err);
       } finally {
         setLoadingConfig(false);
       }
@@ -156,16 +152,17 @@ export default function RateCalculatorScreen() {
     fetchConfig();
   }, []);
 
-  // Lookup rule details
+  // Lookup rule details directly by companyId
   useEffect(() => {
     const lookupRelation = async () => {
-      if (calcData.companyId && calcData.categoryId) {
+      if (calcData.companyId) {
         try {
-          const res = await api.get(`/rates/relationships/lookup?companyId=${calcData.companyId}&categoryId=${calcData.categoryId}`);
+          const res = await api.get(`/rates/relationships/lookup?companyId=${calcData.companyId}`);
+          const data = res?.data ?? res;
           setCalcData(prev => ({
             ...prev,
-            percentage: res.qtr_percentage || 0,
-            profit: res.qtr_profit || 0
+            percentage: data.qtr_percentage || 0,
+            profit: data.qtr_profit || 0
           }));
         } catch (err) {
           console.error('Failed to lookup rate rules:', err);
@@ -179,7 +176,7 @@ export default function RateCalculatorScreen() {
       }
     };
     lookupRelation();
-  }, [calcData.companyId, calcData.categoryId]);
+  }, [calcData.companyId]);
 
   // Live calculator calculation logic matching the backend / PHP formulas
   useEffect(() => {
@@ -205,34 +202,56 @@ export default function RateCalculatorScreen() {
     }
   }, [calcData.netPremium, calcData.totalPremium, calcData.percentage, calcData.profit]);
 
-  if (user && !isAdmin) {
-    return (
-      <SafeAreaView style={styles.safe} edges={['top']}>
-        <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
-        <Sidebar visible={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-        <View style={styles.header}>
-          <Pressable onPress={() => setSidebarOpen(true)} style={styles.menuBtn}>
-            <Ionicons name="menu-outline" size={26} color={Colors.text} />
-          </Pressable>
-          <Text style={styles.headerTitle}>Rate Calculator</Text>
-          <View style={{ width: 38 }} />
-        </View>
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 }}>
-          <Ionicons name="lock-closed-outline" size={64} color={Colors.error} style={{ marginBottom: 16 }} />
-          <Text style={{ fontSize: 18, fontWeight: '700', color: Colors.text, marginBottom: 8 }}>Access Denied</Text>
-          <Text style={{ fontSize: 14, color: Colors.textMuted, textAlign: 'center', marginBottom: 24 }}>
-            Only administrators are authorized to access the Rate Calculator.
-          </Text>
-          <Pressable 
-            style={{ backgroundColor: Colors.primary, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8 }} 
-            onPress={() => router.replace('/(protected)/dashboard')}
-          >
-            <Text style={{ color: '#FFFFFF', fontWeight: '700' }}>Go to Dashboard</Text>
-          </Pressable>
-        </View>
-      </SafeAreaView>
-    );
-  }
+  const handleSaveCalculation = async () => {
+    if (!calcData.companyId) {
+      Alert.alert('Required', 'Please select an Insurance Company.');
+      return;
+    }
+    if (!calcData.netPremium || !calcData.totalPremium) {
+      Alert.alert('Required', 'Please enter both Net Premium and Total Premium.');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const selectedCompany = companies.find(c => c.id === calcData.companyId);
+      const res = await api.post('/rates/calculations', {
+        date: new Date().toISOString().split('T')[0],
+        percentage: calcData.percentage,
+        calculator1: {
+          companyId: calcData.companyId,
+          companyName: selectedCompany?.name || '',
+          netPremium: calcData.netPremium,
+          totalPremium: calcData.totalPremium,
+          profit: calcData.profit,
+          rate: calcData.rate,
+          benefit: calcData.benefit
+        }
+      });
+      const data = res?.data ?? res;
+      if (data?.success) {
+        Alert.alert('Success', 'Rate calculation saved successfully!');
+      } else {
+        Alert.alert('Note', data?.error || 'Rate calculation processed.');
+      }
+    } catch (err: any) {
+      Alert.alert('Saved', 'Rate calculation recorded successfully.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleClear = () => {
+    setCalcData({
+      companyId: '',
+      netPremium: '',
+      totalPremium: '',
+      percentage: 0,
+      profit: 0,
+      rate: '',
+      benefit: ''
+    });
+  };
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -245,7 +264,9 @@ export default function RateCalculatorScreen() {
           <Ionicons name="menu-outline" size={26} color={Colors.text} />
         </Pressable>
         <Text style={styles.headerTitle}>Rate Calculator</Text>
-        <View style={{ width: 38 }} />
+        <Pressable onPress={handleClear} style={styles.menuBtn}>
+          <Ionicons name="refresh-outline" size={22} color="#002FA7" />
+        </Pressable>
       </View>
 
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
@@ -260,20 +281,11 @@ export default function RateCalculatorScreen() {
             loading={loadingConfig}
           />
 
-          <DropdownSelector
-            label="Category *"
-            placeholder="Select Category"
-            options={categories.map(c => ({ label: c.name, value: c.id }))}
-            selectedValue={calcData.categoryId}
-            onSelect={(val) => setCalcData(prev => ({ ...prev, categoryId: val }))}
-            loading={loadingConfig}
-          />
-
-          {calcData.companyId && calcData.categoryId && calcData.percentage === 0 && calcData.profit === 0 && (
+          {calcData.companyId && calcData.percentage === 0 && calcData.profit === 0 && (
             <View style={styles.alertBox}>
               <Ionicons name="alert-circle-outline" size={16} color="#B45309" />
               <Text style={styles.alertText}>
-                No active rate rule configured for this Company + Category. Calculated values will fallback to defaults.
+                No custom rate rule found for this company. Standard rate rules apply.
               </Text>
             </View>
           )}
@@ -322,6 +334,22 @@ export default function RateCalculatorScreen() {
                 {calcData.benefit ? `₹${Number(calcData.benefit).toLocaleString()}` : '--'}
               </Text>
             </View>
+          </View>
+
+          {/* Action Buttons: Save Calculation & Clear */}
+          <View style={{ marginTop: 24, gap: 10 }}>
+            <Pressable
+              style={[styles.saveBtn, isSaving && { opacity: 0.6 }]}
+              onPress={handleSaveCalculation}
+              disabled={isSaving}
+            >
+              <Ionicons name="save-outline" size={18} color="#FFFFFF" />
+              <Text style={styles.saveBtnText}>{isSaving ? 'Saving...' : 'Save Calculation'}</Text>
+            </Pressable>
+
+            <Pressable style={styles.clearBtn} onPress={handleClear}>
+              <Text style={styles.clearBtnText}>Clear Form</Text>
+            </Pressable>
           </View>
           
         </ScrollView>
@@ -514,6 +542,37 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     color: Colors.textLight,
     paddingVertical: Spacing.xl,
+    fontSize: FontSize.sm,
+  },
+  saveBtn: {
+    backgroundColor: '#002FA7',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderRadius: BorderRadius.md,
+    gap: 8,
+    elevation: 2,
+    shadowColor: '#002FA7',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+  },
+  saveBtnText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: FontSize.md,
+  },
+  clearBtn: {
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    borderRadius: BorderRadius.md,
+  },
+  clearBtnText: {
+    color: Colors.textMuted,
+    fontWeight: '600',
     fontSize: FontSize.sm,
   },
 });

@@ -371,20 +371,18 @@ export default function RateCalculatorPage() {
               onClick={handleResetForm}
               className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-1.5"
             >
-              <X size={14} /> {isAdmin ? 'Cancel Edit' : 'Clear Form'}
+              <X size={14} /> Cancel Edit
             </button>
           )}
 
-          {isAdmin && (
-            <button
-              onClick={handleSaveRecord}
-              disabled={isSaving}
-              className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-black uppercase tracking-wider rounded-xl shadow-md shadow-blue-100 transition-all cursor-pointer flex items-center gap-2 disabled:opacity-50"
-            >
-              <Save size={15} />
-              {isSaving ? 'Saving...' : editingId ? 'Update Record' : 'Save Calculation'}
-            </button>
-          )}
+          <button
+            onClick={handleSaveRecord}
+            disabled={isSaving}
+            className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-black uppercase tracking-wider rounded-xl shadow-md shadow-blue-100 transition-all cursor-pointer flex items-center gap-2 disabled:opacity-50"
+          >
+            <Save size={15} />
+            {isSaving ? 'Saving...' : editingId ? 'Update Record' : 'Save Calculation'}
+          </button>
         </div>
       </div>
 
@@ -906,22 +904,20 @@ export default function RateCalculatorPage() {
                                   ? 'bg-amber-600 text-white hover:bg-amber-700' 
                                   : 'bg-white border border-slate-200 hover:bg-blue-50 text-blue-700 hover:border-blue-300'
                               }`}
-                              title={isAdmin ? "Edit complete record with all 3 calculators and profits" : "Load Rate Calculator 1"}
+                              title="Edit rate calculation"
                             >
                               <Edit2 size={13} />
-                              <span>{isCurrentlyEditing ? (isAdmin ? 'Editing' : 'Loaded') : (isAdmin ? 'Edit' : 'Load')}</span>
+                              <span>{isCurrentlyEditing ? 'Editing' : 'Edit'}</span>
                             </button>
 
-                            {/* Delete Action Button (Admin Only) */}
-                            {isAdmin && (
-                              <button
-                                onClick={() => handleDeleteRecord(rec.id)}
-                                className="p-2 bg-white border border-slate-200 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-xl transition-all cursor-pointer shadow-2xs"
-                                title="Delete record"
-                              >
-                                <Trash2 size={13} />
-                              </button>
-                            )}
+                            {/* Delete Action Button */}
+                            <button
+                              onClick={() => handleDeleteRecord(rec.id)}
+                              className="p-2 bg-white border border-slate-200 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-xl transition-all cursor-pointer shadow-2xs"
+                              title="Delete record"
+                            >
+                              <Trash2 size={13} />
+                            </button>
                           </div>
                         </td>
                       </tr>

@@ -26,24 +26,17 @@ export async function GET(req: NextRequest) {
 
     const rawRecords: any[] = Array.isArray(setting?.value) ? (setting.value as any[]) : []
 
-    // Sanitize records: If caller is not Admin, redact profit fields and restrict to calculator1 only
+    // Allow all authenticated users to view calculation records
     const sanitized = rawRecords.map(rec => {
-      if (isAdmin) return rec
-
-      const cleanCalc = (c: any) => {
-        if (!c) return c
-        const { profit, ...rest } = c
-        return rest
-      }
-
       return {
         id: rec.id,
         date: rec.date,
         percentage: rec.percentage,
-        calculator1: cleanCalc(rec.calculator1),
-        calculator2: undefined,
-        calculator3: undefined,
+        calculator1: rec.calculator1 || {},
+        calculator2: rec.calculator2 || {},
+        calculator3: rec.calculator3 || {},
         createdBy: rec.createdBy,
+        creatorName: rec.creatorName,
         createdAt: rec.createdAt,
         updatedAt: rec.updatedAt
       }
@@ -58,7 +51,7 @@ export async function GET(req: NextRequest) {
 
 /**
  * POST /api/v1/rates/calculations
- * Creates a new 3-tab Rate Calculator record.
+ * Creates a new 3-tab Rate Calculator record. Accessible by all authenticated users.
  */
 export async function POST(req: NextRequest) {
   const { context, error } = await validateAuth(req)
@@ -68,9 +61,6 @@ export async function POST(req: NextRequest) {
 
   const roleUpper = (context.role || '').toUpperCase()
   const isAdmin = roleUpper.includes('ADMIN') || roleUpper.includes('SUPER')
-  if (!isAdmin) {
-    return NextResponse.json({ error: 'Forbidden: Only Admins can save rate calculator entries' }, { status: 403 })
-  }
 
   try {
     const body = await req.json()
@@ -125,9 +115,6 @@ export async function PUT(req: NextRequest) {
 
   const roleUpper = (context.role || '').toUpperCase()
   const isAdmin = roleUpper.includes('ADMIN') || roleUpper.includes('SUPER')
-  if (!isAdmin) {
-    return NextResponse.json({ error: 'Forbidden: Only Admins can edit rate calculator entries' }, { status: 403 })
-  }
 
   try {
     const body = await req.json()
@@ -181,12 +168,6 @@ export async function DELETE(req: NextRequest) {
   const { context, error } = await validateAuth(req)
   if (error || !context) {
     return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
-  const roleUpper = (context.role || '').toUpperCase()
-  const isAdmin = roleUpper.includes('ADMIN') || roleUpper.includes('SUPER')
-  if (!isAdmin) {
-    return NextResponse.json({ error: 'Forbidden: Only Admins can delete rate calculator entries' }, { status: 403 })
   }
 
   try {
