@@ -1,7 +1,12 @@
 import * as SQLite from 'expo-sqlite';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MASTER_CALL_OUTCOMES } from './call-outcomes';
+import { DEFAULT_RATE_COMPANIES, DEFAULT_RATE_RELATIONSHIPS } from './rate-data-seed';
 
 let dbInstance: SQLite.SQLiteDatabase | null = null;
+const memoryCacheStore = new Map<string, any>();
+memoryCacheStore.set('rate_companies', DEFAULT_RATE_COMPANIES);
+memoryCacheStore.set('rate_relationships', DEFAULT_RATE_RELATIONSHIPS);
 
 /**
  * Retrieves the open database instance, creating it if it doesn't exist.
@@ -209,6 +214,29 @@ export async function initDB(): Promise<void> {
       }
     } catch (seedErr) {
       console.warn('[SQLite] Failed to seed local_responses:', seedErr);
+    }
+
+    // 11. Seed rate master data into general_cache if not present
+    try {
+      const compRow = await db.getFirstAsync<{ value: string }>('SELECT value FROM general_cache WHERE key = ?', ['rate_companies']);
+      if (!compRow) {
+        await db.runAsync(
+          'INSERT OR REPLACE INTO general_cache (key, value, timestamp) VALUES (?, ?, ?)',
+          ['rate_companies', JSON.stringify(DEFAULT_RATE_COMPANIES), Date.now()]
+        );
+        await AsyncStorage.setItem('@torque_cache_rate_companies', JSON.stringify(DEFAULT_RATE_COMPANIES)).catch(() => {});
+      }
+      const relRow = await db.getFirstAsync<{ value: string }>('SELECT value FROM general_cache WHERE key = ?', ['rate_relationships']);
+      if (!relRow) {
+        await db.runAsync(
+          'INSERT OR REPLACE INTO general_cache (key, value, timestamp) VALUES (?, ?, ?)',
+          ['rate_relationships', JSON.stringify(DEFAULT_RATE_RELATIONSHIPS), Date.now()]
+        );
+        await AsyncStorage.setItem('@torque_cache_rate_relationships', JSON.stringify(DEFAULT_RATE_RELATIONSHIPS)).catch(() => {});
+      }
+      console.log('[SQLite] Seeded rate master data into general_cache.');
+    } catch (seedRateErr) {
+      console.warn('[SQLite] Failed to seed rate cache:', seedRateErr);
     }
 
     console.log('[SQLite] Offline-first & application tables initialized successfully.');
@@ -449,40 +477,111 @@ export async function insertLocalCall(call: any): Promise<void> {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function getCacheItem(key: string): Promise<any | null> {
-  try {
-    const db = await getDB();
-    const row = await db.getFirstAsync<{ value: string; timestamp: number }>(
-      'SELECT value, timestamp FROM general_cache WHERE key = ?',
-      [key]
-    );
-    if (!row) return null;
-    return JSON.parse(row.value);
-  } catch (error) {
-    console.error(`[SQLite] Cache read failed for key ${key}:`, error);
-    return null;
+  // 1. Fast in-memory cache (0ms)
+  if (memoryCacheStore.has(key)) {
+    return memoryCacheStore.get(key);
   }
+
+  let value: any = null;
+
+  // 2. Fast AsyncStorage check
+  try {
+    const rawVal = await AsyncStorage.getItem(`@torque_cache_${key}`);
+    if (rawVal) {
+      value = JSON.parse(rawVal);
+    }
+  } catch (err) {
+    console.warn(`[Cache] AsyncStorage read error for ${key}:`, err);
+  }
+
+  // 3. SQLite check
+  if (!value) {
+    try {
+      const db = await getDB();
+      // Ensure general_cache table exists
+      await db.execAsync(`
+        CREATE TABLE IF NOT EXISTS general_cache (
+          key TEXT PRIMARY KEY,
+          value TEXT NOT NULL,
+          timestamp INTEGER NOT NULL
+        );
+      `);
+      const row = await db.getFirstAsync<{ value: string; timestamp: number }>(
+        'SELECT value, timestamp FROM general_cache WHERE key = ?',
+        [key]
+      );
+      if (row?.value) {
+        value = JSON.parse(row.value);
+      }
+    } catch (error) {
+      console.warn(`[SQLite] Cache read note for key ${key}:`, error);
+    }
+  }
+
+  // 4. Default Seed Fallbacks if not yet cached
+  if (!value || (Array.isArray(value) && value.length === 0)) {
+    if (key === 'rate_companies') {
+      value = DEFAULT_RATE_COMPANIES;
+    } else if (key === 'rate_relationships') {
+      value = DEFAULT_RATE_RELATIONSHIPS;
+    }
+  }
+
+  if (value) {
+    memoryCacheStore.set(key, value);
+  }
+
+  return value;
 }
 
 export async function setCacheItem(key: string, value: any): Promise<void> {
+  // 1. Memory update immediately (0ms)
+  memoryCacheStore.set(key, value);
+
+  const jsonStr = JSON.stringify(value);
+
+  // 2. AsyncStorage write (guaranteed persistence)
+  try {
+    await AsyncStorage.setItem(`@torque_cache_${key}`, jsonStr);
+  } catch (err) {
+    console.warn(`[Cache] AsyncStorage write note for ${key}:`, err);
+  }
+
+  // 3. SQLite write
   try {
     const db = await getDB();
-    const jsonStr = JSON.stringify(value);
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS general_cache (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL,
+        timestamp INTEGER NOT NULL
+      );
+    `);
     const now = Date.now();
     await db.runAsync(
       'INSERT OR REPLACE INTO general_cache (key, value, timestamp) VALUES (?, ?, ?)',
       [key, jsonStr, now]
     );
   } catch (error) {
-    console.error(`[SQLite] Cache write failed for key ${key}:`, error);
+    console.warn(`[SQLite] Cache write note for key ${key}:`, error);
   }
 }
 
 export async function clearSQLiteCache(): Promise<void> {
+  memoryCacheStore.clear();
+  try {
+    await AsyncStorage.multiRemove([
+      '@torque_cache_rate_companies',
+      '@torque_cache_rate_categories',
+      '@torque_cache_rate_relationships',
+      '@torque_cache_quotations_list'
+    ]);
+  } catch {}
   try {
     const db = await getDB();
     await db.runAsync('DELETE FROM general_cache');
   } catch (error) {
-    console.error('[SQLite] Failed to clear general cache:', error);
+    console.warn('[SQLite] Failed to clear general cache:', error);
   }
 }
 

@@ -21,6 +21,7 @@ import { Colors, Spacing, FontSize, BorderRadius } from '../../src/utils/theme';
 import { Ionicons } from '@expo/vector-icons';
 import Sidebar from '../../src/components/Sidebar';
 import { getCacheItem, setCacheItem } from '../../src/lib/db';
+import { DEFAULT_RATE_COMPANIES, DEFAULT_RATE_RELATIONSHIPS } from '../../src/lib/rate-data-seed';
 
 interface DropdownProps {
   label: string;
@@ -175,12 +176,10 @@ export default function RateCalculatorScreen() {
   const isAdmin = roleUpper === 'SUPER ADMIN' || roleUpper === 'ADMIN' || roleUpper.includes('ADMIN') || isSuperAdminEmail;
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<1 | 2 | 3>(1);
 
-  // Master lists
-  const [companies, setCompanies] = useState<any[]>([]);
-  const [categories, setCategories] = useState<any[]>([]);
-  const [relationships, setRelationships] = useState<any[]>([]);
+  // Master lists initialized with default seed data for guaranteed 100% offline instant availability (0ms)
+  const [companies, setCompanies] = useState<any[]>(DEFAULT_RATE_COMPANIES);
+  const [relationships, setRelationships] = useState<any[]>(DEFAULT_RATE_RELATIONSHIPS);
   const [loadingConfig, setLoadingConfig] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -188,30 +187,17 @@ export default function RateCalculatorScreen() {
   const today = new Date();
   const formattedToday = `${String(today.getDate()).padStart(2, '0')}/${String(today.getMonth() + 1).padStart(2, '0')}/${today.getFullYear()}`;
 
-  // Multi-calculator state for Tabs 1, 2, 3
-  const [subCalcs, setSubCalcs] = useState<Record<1 | 2 | 3, SubCalcState>>({
-    1: { ...emptySubCalc },
-    2: { ...emptySubCalc },
-    3: { ...emptySubCalc }
-  });
+  // Single Rate Calculator State (Rate Calculator 1 Rules)
+  const [calcState, setCalcState] = useState<SubCalcState>({ ...emptySubCalc });
 
-  // Current active sub-calculator
-  const currentSub = subCalcs[activeTab];
-
-  // 1. Instant SQLite Cache Read on Mount (0ms delay) + Background API Revalidation
+  // 1. Instant Local Read on Mount + Background Revalidation
   useEffect(() => {
     let isMounted = true;
 
-    // Fast local read from SQLite cache
+    // Fast local read from multi-tier cache (Memory -> AsyncStorage -> SQLite)
     getCacheItem('rate_companies').then((data) => {
       if (isMounted && data && Array.isArray(data) && data.length > 0) {
         setCompanies(data);
-      }
-    });
-
-    getCacheItem('rate_categories').then((data) => {
-      if (isMounted && data && Array.isArray(data) && data.length > 0) {
-        setCategories(data);
       }
     });
 
@@ -221,36 +207,30 @@ export default function RateCalculatorScreen() {
       }
     });
 
-    // Background fetch to ensure latest data from database
+    // Background sync to ensure fresh rules if device has internet
     const fetchMasterData = async () => {
       setLoadingConfig(true);
       try {
-        const [compRes, catRes, relRes] = await Promise.all([
-          api.get('/rates/companies'),
-          api.get('/rates/categories'),
-          api.get('/rates/relationships')
+        const [compRes, relRes] = await Promise.all([
+          api.get('/rates/companies').catch(() => null),
+          api.get('/rates/relationships').catch(() => null)
         ]);
 
         const compData = Array.isArray(compRes?.data ?? compRes) ? (compRes?.data ?? compRes) : ((compRes?.data ?? compRes)?.companies || []);
-        const catData = Array.isArray(catRes?.data ?? catRes) ? (catRes?.data ?? catRes) : ((catRes?.data ?? catRes)?.categories || []);
         const relData = Array.isArray(relRes?.data ?? relRes) ? (relRes?.data ?? relRes) : [];
 
         if (isMounted) {
-          if (compData.length > 0) {
+          if (compData && compData.length > 0) {
             setCompanies(compData);
             setCacheItem('rate_companies', compData);
           }
-          if (catData.length > 0) {
-            setCategories(catData);
-            setCacheItem('rate_categories', catData);
-          }
-          if (relData.length > 0) {
+          if (relData && relData.length > 0) {
             setRelationships(relData);
             setCacheItem('rate_relationships', relData);
           }
         }
       } catch (err) {
-        console.warn('[RateCalc] Background master sync note:', err);
+        console.warn('[RateCalc] Master sync note:', err);
       } finally {
         if (isMounted) setLoadingConfig(false);
       }
@@ -263,51 +243,36 @@ export default function RateCalculatorScreen() {
     };
   }, []);
 
-  // Instant Local Lookup on Company Selection (0ms)
+  // Instant Local Rule Lookup on Company Selection (0ms)
   const handleSelectCompany = (companyId: string) => {
-    const selectedComp = companies.find(c => c.id === companyId);
-    
-    // Find matching relationship locally from SQLite cached array
+    // Find matching relationship locally from SQLite / Seed cached array
     const compRel = relationships.find(r => r.companyId === companyId);
-
-    // Auto-match Category
-    let matchedCatId = compRel?.categoryId || '';
-    if (!matchedCatId && selectedComp) {
-      const catMatch = categories.find(
-        c => c.name.trim().toLowerCase() === selectedComp.name.trim().toLowerCase()
-      );
-      if (catMatch) matchedCatId = catMatch.id;
-    }
 
     const pct = compRel?.percentage ? parseFloat(String(compRel.percentage)) : 0;
     const prof = compRel?.profit ? parseFloat(String(compRel.profit)) : 0;
     const rem = compRel?.remarks || '';
 
-    setSubCalcs(prev => {
-      const cur = prev[activeTab];
+    setCalcState(cur => {
       const net = parseFloat(cur.netPremium) || 0;
       const total = parseFloat(cur.totalPremium) || 0;
 
       let rVal = '';
       let bVal = '';
       if (pct > 0 && prof > 0 && net > 0 && total > 0) {
+        // Calculator 1 rule formula: Rate = Total - (Net * Pct / 100) + Profit
         const rateNum = Math.round(total - (net * (pct / 100)) + prof);
         rVal = String(rateNum);
         bVal = String(Math.round(total - rateNum));
       }
 
       return {
-        ...prev,
-        [activeTab]: {
-          ...cur,
-          companyId,
-          categoryId: matchedCatId,
-          percentage: pct,
-          profit: prof,
-          remarks: rem,
-          rate: rVal,
-          benefit: bVal
-        }
+        ...cur,
+        companyId,
+        percentage: pct,
+        profit: prof,
+        remarks: rem,
+        rate: rVal,
+        benefit: bVal
       };
     });
 
@@ -316,8 +281,7 @@ export default function RateCalculatorScreen() {
       api.get(`/rates/relationships/lookup?companyId=${companyId}`).then(res => {
         const data = res?.data ?? res;
         if (data && (data.qtr_percentage > 0 || data.qtr_profit > 0 || data.qtr_remarks)) {
-          setSubCalcs(prev => {
-            const cur = prev[activeTab];
+          setCalcState(cur => {
             const p = data.qtr_percentage || cur.percentage;
             const pr = data.qtr_profit || cur.profit;
             const remText = data.qtr_remarks || cur.remarks;
@@ -333,15 +297,12 @@ export default function RateCalculatorScreen() {
             }
 
             return {
-              ...prev,
-              [activeTab]: {
-                ...cur,
-                percentage: p,
-                profit: pr,
-                remarks: remText,
-                rate: rVal,
-                benefit: bVal
-              }
+              ...cur,
+              percentage: p,
+              profit: pr,
+              remarks: remText,
+              rate: rVal,
+              benefit: bVal
             };
           });
         }
@@ -349,10 +310,9 @@ export default function RateCalculatorScreen() {
     }
   };
 
-  // Live Premium Calculation
+  // Live Premium Calculation (Calculator 1 Rules)
   const handlePremiumChange = (field: 'netPremium' | 'totalPremium', value: string) => {
-    setSubCalcs(prev => {
-      const cur = prev[activeTab];
+    setCalcState(cur => {
       const updated = { ...cur, [field]: value };
       const net = parseFloat(field === 'netPremium' ? value : cur.netPremium) || 0;
       const total = parseFloat(field === 'totalPremium' ? value : cur.totalPremium) || 0;
@@ -360,6 +320,7 @@ export default function RateCalculatorScreen() {
       const prof = cur.profit || 0;
 
       if (pct > 0 && prof > 0 && net > 0 && total > 0) {
+        // Calculator 1 formula: Rate = Total - (Net * Pct / 100) + Profit
         const rateNum = Math.round(total - (net * (pct / 100)) + prof);
         updated.rate = String(rateNum);
         updated.benefit = String(Math.round(total - rateNum));
@@ -368,54 +329,45 @@ export default function RateCalculatorScreen() {
         updated.benefit = '';
       }
 
-      return {
-        ...prev,
-        [activeTab]: updated
-      };
+      return updated;
     });
   };
 
   const handleClearCurrent = () => {
-    setSubCalcs(prev => ({
-      ...prev,
-      [activeTab]: { ...emptySubCalc }
-    }));
+    setCalcState({ ...emptySubCalc });
   };
 
   const handleSaveCalculation = async () => {
-    if (!currentSub.companyId) {
+    if (!calcState.companyId) {
       Alert.alert('Required', 'Please select an Insurance Company.');
       return;
     }
-    if (!currentSub.netPremium || !currentSub.totalPremium) {
+    if (!calcState.netPremium || !calcState.totalPremium) {
       Alert.alert('Required', 'Please enter both Net Premium and Total Premium.');
       return;
     }
 
     setIsSaving(true);
     try {
-      const buildSub = (t: 1 | 2 | 3) => {
-        const s = subCalcs[t];
-        const comp = companies.find(c => c.id === s.companyId);
-        return {
-          companyId: s.companyId,
-          companyName: comp?.name || '',
-          categoryId: s.categoryId,
-          netPremium: s.netPremium,
-          totalPremium: s.totalPremium,
-          profit: s.profit,
-          rate: s.rate,
-          benefit: s.benefit,
-          remarks: s.remarks
-        };
+      const comp = companies.find(c => c.id === calcState.companyId);
+      const subPayload = {
+        companyId: calcState.companyId,
+        companyName: comp?.name || '',
+        categoryId: calcState.categoryId,
+        netPremium: calcState.netPremium,
+        totalPremium: calcState.totalPremium,
+        profit: calcState.profit,
+        rate: calcState.rate,
+        benefit: calcState.benefit,
+        remarks: calcState.remarks
       };
 
       const res = await api.post('/rates/calculations', {
         date: new Date().toISOString().split('T')[0],
-        percentage: subCalcs[1].percentage || currentSub.percentage,
-        calculator1: buildSub(1),
-        calculator2: buildSub(2),
-        calculator3: buildSub(3)
+        percentage: calcState.percentage,
+        calculator1: subPayload,
+        calculator2: { ...emptySubCalc },
+        calculator3: { ...emptySubCalc }
       });
       const data = res?.data ?? res;
       if (data?.success) {
@@ -423,7 +375,7 @@ export default function RateCalculatorScreen() {
       } else {
         Alert.alert('Saved', 'Rate calculation recorded successfully.');
       }
-    } catch (err: any) {
+    } catch {
       Alert.alert('Saved', 'Rate calculation recorded successfully.');
     } finally {
       setIsSaving(false);
@@ -440,7 +392,7 @@ export default function RateCalculatorScreen() {
         <Pressable onPress={() => setSidebarOpen(true)} style={styles.menuBtn}>
           <Ionicons name="menu-outline" size={26} color="#1E293B" />
         </Pressable>
-        <Text style={styles.headerTitle}>Rate Calculator - {activeTab}</Text>
+        <Text style={styles.headerTitle}>Rate Calculator</Text>
         <Pressable onPress={handleClearCurrent} style={styles.menuBtn}>
           <Ionicons name="refresh-outline" size={22} color="#002FA7" />
         </Pressable>
@@ -452,33 +404,10 @@ export default function RateCalculatorScreen() {
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
         >
-          {/* Sub-Calculator Tabs: 1, 2, 3 */}
-          <View style={styles.tabContainer}>
-            {([1, 2, 3] as const).map((tabNum) => {
-              const isActive = activeTab === tabNum;
-              return (
-                <Pressable
-                  key={tabNum}
-                  style={[styles.tabButton, isActive && styles.tabButtonActive]}
-                  onPress={() => setActiveTab(tabNum)}
-                >
-                  <Ionicons
-                    name={isActive ? "calculator" : "calculator-outline"}
-                    size={16}
-                    color={isActive ? "#002FA7" : "#64748B"}
-                  />
-                  <Text style={[styles.tabButtonText, isActive && styles.tabButtonTextActive]}>
-                    Rate Calculator - {tabNum}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-
-          {/* Clean Card matching qutcalc_one.php */}
+          {/* Clean Card matching qutcalc_one.php - ONLY ONE CALCULATOR */}
           <View style={styles.calculatorCard}>
             <View style={styles.cardHeader}>
-              <Text style={styles.cardTitle}>Rate Calculator - {activeTab}</Text>
+              <Text style={styles.cardTitle}>Rate Calculator</Text>
             </View>
 
             <View style={styles.cardBody}>
@@ -495,7 +424,7 @@ export default function RateCalculatorScreen() {
                 label="Company"
                 placeholder="Select Company"
                 options={companies.map(c => ({ label: c.name, value: c.id }))}
-                selectedValue={currentSub.companyId}
+                selectedValue={calcState.companyId}
                 onSelect={handleSelectCompany}
                 loading={loadingConfig && companies.length === 0}
               />
@@ -507,12 +436,9 @@ export default function RateCalculatorScreen() {
                   style={[styles.inputBox, styles.remarksInput]}
                   placeholder="Remarks"
                   placeholderTextColor="#94A3B8"
-                  value={currentSub.remarks}
+                  value={calcState.remarks}
                   onChangeText={(val) => {
-                    setSubCalcs(prev => ({
-                      ...prev,
-                      [activeTab]: { ...prev[activeTab], remarks: val }
-                    }));
+                    setCalcState(prev => ({ ...prev, remarks: val }));
                   }}
                   multiline={true}
                   numberOfLines={2}
@@ -524,12 +450,12 @@ export default function RateCalculatorScreen() {
                 <View style={styles.ruleCard}>
                   <View style={styles.ruleItem}>
                     <Text style={styles.ruleTitle}>Percentage Rule</Text>
-                    <Text style={styles.ruleValue}>{currentSub.percentage}%</Text>
+                    <Text style={styles.ruleValue}>{calcState.percentage}%</Text>
                   </View>
                   <View style={styles.ruleDivider} />
                   <View style={styles.ruleItem}>
                     <Text style={styles.ruleTitle}>Profit Rule</Text>
-                    <Text style={styles.ruleValue}>₹{currentSub.profit}</Text>
+                    <Text style={styles.ruleValue}>₹{calcState.profit}</Text>
                   </View>
                 </View>
               )}
@@ -541,7 +467,7 @@ export default function RateCalculatorScreen() {
                   style={styles.inputBox}
                   placeholder="ex: 30000"
                   placeholderTextColor="#94A3B8"
-                  value={currentSub.netPremium}
+                  value={calcState.netPremium}
                   onChangeText={(v) => handlePremiumChange('netPremium', v)}
                   keyboardType="numeric"
                 />
@@ -554,7 +480,7 @@ export default function RateCalculatorScreen() {
                   style={styles.inputBox}
                   placeholder="ex: 34000"
                   placeholderTextColor="#94A3B8"
-                  value={currentSub.totalPremium}
+                  value={calcState.totalPremium}
                   onChangeText={(v) => handlePremiumChange('totalPremium', v)}
                   keyboardType="numeric"
                 />
@@ -565,7 +491,7 @@ export default function RateCalculatorScreen() {
                 <Text style={styles.fieldLabel}>Rate</Text>
                 <View style={[styles.inputBox, styles.rateBox]}>
                   <Text style={styles.rateValueText}>
-                    {currentSub.rate ? `₹${Number(currentSub.rate).toLocaleString()}` : ''}
+                    {calcState.rate ? `₹${Number(calcState.rate).toLocaleString()}` : ''}
                   </Text>
                 </View>
               </View>
@@ -576,7 +502,7 @@ export default function RateCalculatorScreen() {
                   <Text style={styles.fieldLabel}>Benefit</Text>
                   <View style={[styles.inputBox, styles.benefitBox]}>
                     <Text style={styles.benefitValueText}>
-                      {currentSub.benefit ? `₹${Number(currentSub.benefit).toLocaleString()}` : ''}
+                      {calcState.benefit ? `₹${Number(calcState.benefit).toLocaleString()}` : ''}
                     </Text>
                   </View>
                 </View>
@@ -636,40 +562,6 @@ const styles = StyleSheet.create({
   content: {
     padding: 16,
     paddingBottom: 36
-  },
-  tabContainer: {
-    flexDirection: 'row',
-    backgroundColor: '#EDF2F7',
-    borderRadius: 8,
-    padding: 4,
-    marginBottom: 16,
-    gap: 4
-  },
-  tabButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 10,
-    borderRadius: 6,
-    gap: 6
-  },
-  tabButtonActive: {
-    backgroundColor: '#FFFFFF',
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
-    shadowRadius: 2
-  },
-  tabButtonText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#64748B'
-  },
-  tabButtonTextActive: {
-    color: '#002FA7',
-    fontWeight: '700'
   },
   calculatorCard: {
     backgroundColor: '#FFFFFF',

@@ -28,15 +28,19 @@ export async function initDB(): Promise<void> {
   console.log('[SQLite Web Mock] Database initialized.');
 }
 
+import { DEFAULT_RATE_COMPANIES, DEFAULT_RATE_RELATIONSHIPS } from './rate-data-seed';
+
 export async function getCacheItem(key: string): Promise<any | null> {
   if (typeof window !== 'undefined') {
     try {
       const val = window.localStorage.getItem(`@sqlite_cache_${key}`);
-      return val ? JSON.parse(val) : null;
+      if (val) return JSON.parse(val);
     } catch {
-      return null;
+      // continue to fallback
     }
   }
+  if (key === 'rate_companies') return DEFAULT_RATE_COMPANIES;
+  if (key === 'rate_relationships') return DEFAULT_RATE_RELATIONSHIPS;
   return null;
 }
 
