@@ -40,6 +40,7 @@ export default function Sidebar({ visible, onClose }: SidebarProps) {
   const isSuperAdminEmail = user?.email?.toLowerCase() === 'torqueautoadvisor@gmail.com';
   const isAdmin = roleUpper === 'SUPER ADMIN' || roleUpper === 'ADMIN' || roleUpper.includes('ADMIN') || isSuperAdminEmail;
   const isManager = roleUpper === 'MANAGER' || (roleUpper.includes('MANAGER') && !roleUpper.includes('HR'));
+  const isAccountant = roleUpper === 'ACCOUNTANT' || roleUpper.includes('ACCOUNT') || roleUpper.includes('FINANCE');
   const isHrManager = roleUpper === 'HR MANAGER' || roleUpper === 'HR';
 
   const MENU_GROUPS = [
@@ -51,42 +52,41 @@ export default function Sidebar({ visible, onClose }: SidebarProps) {
       ]
     },
     {
-      label: 'SALES',
+      label: 'SALES & CRM',
       items: [
-        { name: 'Leads', icon: 'people-outline', route: '/(protected)/leads', visible: !isHrManager },
-        { name: 'Import Leads', icon: 'cloud-upload-outline', route: '/(protected)/leads/import', visible: isAdmin },
-        { name: 'Imported Spreadsheets', icon: 'grid-outline', route: '/(protected)/sheets', visible: isAdmin },
-        { name: 'CRM', icon: 'person-add-outline', route: '/(protected)/crm', visible: !['ACCOUNTANT'].includes(roleUpper) && !isHrManager },
-        { name: 'Quotations', icon: 'clipboard-outline', route: '/(protected)/quotations', visible: isAdmin || isManager },
-        { name: 'Rate Calculator', icon: 'calculator-outline', route: '/(protected)/rate-calculator', visible: !isHrManager },
+        { name: 'My Leads', icon: 'people-outline', route: '/(protected)/leads', visible: !isHrManager && !isAccountant },
+        { name: 'Today Follow-ups', icon: 'calendar-outline', route: '/(protected)/follow-ups', visible: !isHrManager && !isAccountant },
+        { name: 'Renewals Pipeline', icon: 'sync-outline', route: '/(protected)/renewals', visible: !isHrManager && !isAccountant },
+        { name: 'Rate Calculator', icon: 'calculator-outline', route: '/(protected)/rate-calculator', visible: !isHrManager && !isAccountant },
+        { name: 'Quotations', icon: 'clipboard-outline', route: '/(protected)/quotations', visible: isAdmin || isManager || !isHrManager },
         { name: 'Policies', icon: 'shield-checkmark-outline', route: '/(protected)/policies', visible: isAdmin || isManager },
-        { name: 'Follow-ups', icon: 'calendar-outline', route: '/(protected)/follow-ups', visible: !['ACCOUNTANT'].includes(roleUpper) && !isHrManager },
+        { name: 'Import Leads', icon: 'cloud-upload-outline', route: '/(protected)/leads/import', visible: isAdmin },
+        { name: 'Spreadsheets', icon: 'grid-outline', route: '/(protected)/sheets', visible: isAdmin },
+        { name: 'CRM Pipeline', icon: 'person-add-outline', route: '/(protected)/crm', visible: !isAccountant && !isHrManager },
       ]
     },
     {
       label: 'OPERATIONS',
       items: [
-        { name: 'Loan Inquiries', icon: 'clipboard-outline', route: '/(protected)/loan-inquiries', visible: true },
-        { name: 'Loans', icon: 'cash-outline', route: '/(protected)/loans', visible: true },
-        { name: 'Claims', icon: 'document-text-outline', route: '/(protected)/claims', visible: !isHrManager && (isAdmin || isManager || roleUpper.includes('CLAIM')) },
+        { name: 'Loan Inquiries', icon: 'clipboard-outline', route: '/(protected)/loan-inquiries', visible: !isAccountant && !isHrManager },
+        { name: 'Vehicle Loans', icon: 'cash-outline', route: '/(protected)/loans', visible: !isAccountant && !isHrManager },
+        { name: 'Claims Hub', icon: 'document-text-outline', route: '/(protected)/claims', visible: !isHrManager && (isAdmin || isManager || roleUpper.includes('CLAIM')) },
         { name: 'RTO Work', icon: 'car-outline', route: '/(protected)/rto', visible: !isHrManager && (isAdmin || isManager || roleUpper.includes('RTO')) },
-        { name: 'Fitness', icon: 'fitness-outline', route: '/(protected)/fitness', visible: !isHrManager && (isAdmin || isManager || roleUpper.includes('FITNESS')) },
-        { name: 'Cheques', icon: 'card-outline', route: '/(protected)/cheques', visible: !isHrManager && (isAdmin || isManager || roleUpper === 'ACCOUNTANT') },
-        { name: 'Ughrani (Collections)', icon: 'list-outline', route: '/(protected)/ughrani', visible: !['ACCOUNTANT'].includes(roleUpper) && !isHrManager },
+        { name: 'Fitness Desk', icon: 'fitness-outline', route: '/(protected)/fitness', visible: !isHrManager && (isAdmin || isManager || roleUpper.includes('FITNESS')) },
+        { name: 'Cheques Clearing', icon: 'card-outline', route: '/(protected)/cheques', visible: isAdmin || isManager || isAccountant },
+        { name: 'Ughrani (Collections)', icon: 'wallet-outline', route: '/(protected)/ughrani', visible: isAdmin || isManager || isAccountant },
       ]
     },
     {
-      label: 'MANAGEMENT',
+      label: 'MANAGEMENT & FINANCE',
       items: [
         { name: 'Policy Approvals', icon: 'shield-checkmark-outline', route: '/(protected)/policy-approvals', visible: isAdmin || isManager },
-        { name: 'Users', icon: 'person-outline', route: '/(protected)/users', visible: isAdmin || isHrManager },
+        { name: 'Finance & Ledger', icon: 'wallet-outline', route: '/(protected)/finance', visible: isAdmin || isAccountant },
+        { name: 'Users & Staff', icon: 'person-outline', route: '/(protected)/users', visible: isAdmin || isHrManager },
         { name: 'Onboarding Approvals', icon: 'checkmark-circle-outline', route: '/(protected)/onboarding-approvals', visible: isAdmin || isHrManager || isManager },
+        { name: 'Payroll & Salaries', icon: 'cash-outline', route: '/(protected)/payroll', visible: isAdmin || isHrManager },
+        { name: 'HR Desk', icon: 'people-circle-outline', route: '/(protected)/hr', visible: true },
         { name: 'Roles & Permissions', icon: 'ribbon-outline', route: '/(protected)/roles', visible: isAdmin },
-        { name: 'Data Approvals', icon: 'checkbox-outline', route: '/(protected)/data-approvals', visible: isAdmin },
-        { name: 'Finance', icon: 'wallet-outline', route: '/(protected)/finance', visible: isAdmin || roleUpper === 'ACCOUNTANT' },
-        { name: 'HR', icon: 'people-circle-outline', route: '/(protected)/hr', visible: true },
-        { name: 'Payroll & Salaries', icon: 'people-outline', route: '/(protected)/payroll', visible: isAdmin || isHrManager },
-        { name: 'Lead Responses', icon: 'chatbubble-ellipses-outline', route: '/(protected)/responses', visible: isAdmin },
         { name: 'Quotation Rates', icon: 'options-outline', route: '/(protected)/rates-management', visible: isAdmin },
         { name: 'Settings', icon: 'settings-outline', route: '/(protected)/settings', visible: true },
       ]
@@ -173,34 +173,68 @@ export default function Sidebar({ visible, onClose }: SidebarProps) {
             ))}
           </ScrollView>
 
-          {/* Footer */}
-          <View style={styles.footer}>
-            <Text style={styles.userLabel}>LOGGED IN AS</Text>
-            <Text style={styles.userName} numberOfLines={1}>{user?.full_name || user?.name || (isSuperAdminEmail ? 'Admin' : 'User')}</Text>
-            <Text style={styles.userRole}>{isAdmin ? 'SUPER ADMIN' : (user?.role?.toUpperCase() || 'EXECUTIVE')}</Text>
+          {/* Footer with Modern User Card */}
+          {(() => {
+            const roleTheme = isAdmin
+              ? { bg: '#FEF2F2', border: '#FECACA', text: '#DC2626', label: 'SUPER ADMIN' }
+              : isManager
+              ? { bg: '#EFF6FF', border: '#BFDBFE', text: '#2563EB', label: 'MANAGER' }
+              : isAccountant
+              ? { bg: '#FFFBEB', border: '#FDE68A', text: '#D97706', label: 'ACCOUNTANT' }
+              : isHrManager
+              ? { bg: '#FAF5FF', border: '#E9D5FF', text: '#7E22CE', label: 'HR MANAGER' }
+              : { bg: '#ECFDF5', border: '#A7F3D0', text: '#059669', label: user?.role?.toUpperCase() || 'SALES EXECUTIVE' };
 
-            <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
-              <Pressable
-                style={[styles.logoutBtn, { flex: 1, backgroundColor: '#F0FDF4', borderColor: '#BBF7D0', borderWidth: 1 }]}
-                onPress={handleCheckUpdate}
-                disabled={checkingUpdate}
-              >
-                {checkingUpdate ? (
-                  <ActivityIndicator size="small" color="#16A34A" />
-                ) : (
-                  <>
-                    <Ionicons name="sync-outline" size={16} color="#16A34A" />
-                    <Text style={[styles.logoutText, { color: '#16A34A' }]}>Sync App</Text>
-                  </>
-                )}
-              </Pressable>
+            const initials = (user?.full_name || user?.name || (isSuperAdminEmail ? 'Admin' : 'U'))
+              .split(' ')
+              .map((p: string) => p[0])
+              .filter(Boolean)
+              .slice(0, 2)
+              .join('')
+              .toUpperCase();
 
-              <Pressable style={[styles.logoutBtn, { flex: 1 }]} onPress={handleLogout}>
-                <Ionicons name="log-out-outline" size={16} color={Colors.error} />
-                <Text style={styles.logoutText}>Logout</Text>
-              </Pressable>
-            </View>
-          </View>
+            return (
+              <View style={styles.footer}>
+                <View style={styles.userProfileCard}>
+                  <View style={[styles.avatarCircle, { backgroundColor: roleTheme.bg, borderColor: roleTheme.border }]}>
+                    <Text style={[styles.avatarText, { color: roleTheme.text }]}>{initials}</Text>
+                  </View>
+                  <View style={{ flex: 1, marginLeft: 10 }}>
+                    <Text style={styles.userName} numberOfLines={1}>
+                      {user?.full_name || user?.name || (isSuperAdminEmail ? 'Admin' : 'User')}
+                    </Text>
+                    <View style={[styles.roleBadge, { backgroundColor: roleTheme.bg, borderColor: roleTheme.border }]}>
+                      <Text style={[styles.roleBadgeText, { color: roleTheme.text }]}>
+                        {roleTheme.label}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+
+                <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
+                  <Pressable
+                    style={[styles.actionBtn, { backgroundColor: '#F0FDF4', borderColor: '#BBF7D0' }]}
+                    onPress={handleCheckUpdate}
+                    disabled={checkingUpdate}
+                  >
+                    {checkingUpdate ? (
+                      <ActivityIndicator size="small" color="#16A34A" />
+                    ) : (
+                      <>
+                        <Ionicons name="sync-outline" size={15} color="#16A34A" />
+                        <Text style={[styles.actionBtnText, { color: '#16A34A' }]}>Sync App</Text>
+                      </>
+                    )}
+                  </Pressable>
+
+                  <Pressable style={[styles.actionBtn, { backgroundColor: '#FEF2F2', borderColor: '#FECACA' }]} onPress={handleLogout}>
+                    <Ionicons name="log-out-outline" size={15} color={Colors.error} />
+                    <Text style={[styles.actionBtnText, { color: Colors.error }]}>Logout</Text>
+                  </Pressable>
+                </View>
+              </View>
+            );
+          })()}
         </Animated.View>
       </View>
     </Modal>
@@ -260,10 +294,54 @@ const styles = StyleSheet.create({
   menuItemPressed: { backgroundColor: Colors.surfaceMuted },
   menuIcon: { marginRight: Spacing.md },
   menuText: { fontSize: FontSize.md - 1, fontWeight: '600', color: Colors.text },
-  footer: { padding: Spacing.lg, borderTopWidth: 1, borderTopColor: Colors.border, backgroundColor: 'transparent' },
-  userLabel: { fontSize: 9, fontWeight: '700', color: Colors.textMuted, textTransform: 'uppercase' },
-  userName: { fontSize: FontSize.md, fontWeight: '800', color: Colors.text, marginTop: 2 },
-  userRole: { fontSize: 10, fontWeight: '600', color: Colors.primary, marginTop: 1, textTransform: 'uppercase' },
-  logoutBtn: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginTop: Spacing.md, paddingVertical: Spacing.sm },
-  logoutText: { color: Colors.error, fontSize: FontSize.sm, fontWeight: '700' },
+  footer: { padding: Spacing.md, borderTopWidth: 1, borderTopColor: Colors.border, backgroundColor: 'transparent' },
+  userProfileCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    padding: 10,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  avatarCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1.5,
+  },
+  avatarText: {
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  userName: { fontSize: FontSize.md - 1, fontWeight: '800', color: Colors.text },
+  roleBadge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+    borderWidth: 1,
+    marginTop: 3,
+  },
+  roleBadgeText: {
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  actionBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 9,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+  },
+  actionBtnText: {
+    fontSize: FontSize.xs,
+    fontWeight: '700',
+  },
 });

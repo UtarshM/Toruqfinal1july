@@ -24,53 +24,233 @@ import Sidebar from '../../src/components/Sidebar';
 
 const { width } = Dimensions.get('window');
 
-// Banners for Hero Carousel matching partner reference design
-const HERO_BANNERS = [
-  {
-    id: 'insurance',
-    badge: '20+ TOP INSURERS ONBOARD',
-    title: 'Motor & Commercial Hub',
-    subtitle: 'Tata AIG · Digit · ICICI · Chola · Shriram',
-    leftTag: 'COMMISSION PAYOUT',
-    leftValue: 'UP TO 25%',
-    rightTag: 'POLICY ISSUANCE',
-    rightValue: 'INSTANT CASHLESS',
-    btnText: 'Rate Calculator & Quotes',
-    type: 'quote',
-    gradientBg: '#0F172A',
-  },
-  {
-    id: 'claims',
-    badge: 'FAST-TRACK CLAIMS',
-    title: 'Zero-Hassle Claim Intimation',
-    subtitle: 'Spot Survey & Quick Desk Processing',
-    leftTag: 'OD & TP CLAIMS',
-    leftValue: 'DIRECT DESK',
-    rightTag: 'SURVEYOR SUPPORT',
-    rightValue: '24/7 HELPLINE',
-    btnText: 'File New Claim',
-    type: 'claim',
-    gradientBg: '#831843',
-  },
-  {
-    id: 'loans',
-    badge: 'VEHICLE LOANS & REFINANCE',
-    title: 'Used Vehicle Finance Desk',
-    subtitle: 'Direct Tie-ups with Leading Banks & NBFCs',
-    leftTag: 'FAST SANCTION',
-    leftValue: 'WITHIN 24 HRS',
-    rightTag: 'DOCS REQUIRED',
-    rightValue: 'MINIMAL KYC',
-    btnText: 'New Loan Inquiry',
-    type: 'loan',
-    gradientBg: '#14532D',
-  },
-];
+const getBannersForRole = (isAdmin: boolean, isManager: boolean, isAccountant: boolean, isHrManager: boolean) => {
+  if (isAccountant) {
+    return [
+      {
+        id: 'cheques',
+        badge: 'CHEQUES & CLEARING',
+        title: 'Inward Cheques Desk',
+        subtitle: 'Fast Clearance & Banking Reconciliation',
+        leftTag: 'STATUS TRACKING',
+        leftValue: 'INWARD / DEPOSITED',
+        rightTag: 'BANK DEPOSIT',
+        rightValue: 'DAILY VOUCHERS',
+        btnText: 'View Cheques Clearing',
+        type: 'cheques',
+        gradientBg: '#1E293B',
+      },
+      {
+        id: 'ughrani',
+        badge: 'COLLECTIONS & RECOVERY',
+        title: 'Ughrani Debt Ledgers',
+        subtitle: 'Track Field & Office Payment Recoveries',
+        leftTag: 'OUTSTANDING',
+        leftValue: 'ACTIVE BOOKS',
+        rightTag: 'RECEIPTS',
+        rightValue: 'INSTANT VOUCHER',
+        btnText: 'Manage Ughrani Books',
+        type: 'ughrani',
+        gradientBg: '#831843',
+      },
+      {
+        id: 'finance',
+        badge: 'FINANCE & LEDGER',
+        title: 'Receivables & Ledgers',
+        subtitle: 'Real-time Premium Collections & Expenses',
+        leftTag: 'RECONCILIATION',
+        leftValue: 'DAILY AUDIT',
+        rightTag: 'MONEY RECEIPTS',
+        rightValue: 'PRINT & SHARE',
+        btnText: 'Open Finance Desk',
+        type: 'finance',
+        gradientBg: '#064E3B',
+      },
+    ];
+  }
+  if (isHrManager) {
+    return [
+      {
+        id: 'users',
+        badge: 'PEOPLE & TEAM',
+        title: 'Staff Directory Desk',
+        subtitle: 'Manage Advisors, Telecallers & Backoffice',
+        leftTag: 'ACTIVE MEMBERS',
+        leftValue: 'VERIFIED KYC',
+        rightTag: 'ROLES & RIGHTS',
+        rightValue: 'ROLE BASED',
+        btnText: 'View Staff Directory',
+        type: 'users',
+        gradientBg: '#3B0764',
+      },
+      {
+        id: 'onboarding',
+        badge: 'FAST-TRACK ONBOARDING',
+        title: 'Candidate Approvals',
+        subtitle: 'Review New Joining Requests & Docs',
+        leftTag: 'DOCUMENT VERIFY',
+        leftValue: 'INSTANT REVIEW',
+        rightTag: 'DESK STATUS',
+        rightValue: 'READY TO WORK',
+        btnText: 'Review Onboarding',
+        type: 'onboarding',
+        gradientBg: '#1E1B4B',
+      },
+      {
+        id: 'payroll',
+        badge: 'SALARIES & PAYROLL',
+        title: 'Monthly Salary Desks',
+        subtitle: 'Attendance Slips, Deductions & Payouts',
+        leftTag: 'ATTENDANCE',
+        leftValue: 'BIOMETRIC / APP',
+        rightTag: 'PAYROLL SLIPS',
+        rightValue: 'MONTHLY AUDIT',
+        btnText: 'View Payroll Desk',
+        type: 'payroll',
+        gradientBg: '#064E3B',
+      },
+    ];
+  }
+  if (isAdmin || isManager) {
+    return [
+      {
+        id: 'insurance',
+        badge: '20+ TOP INSURERS ONBOARD',
+        title: 'Motor & Commercial Hub',
+        subtitle: 'Tata AIG · Digit · ICICI · Chola · Shriram',
+        leftTag: 'COMMISSION PAYOUT',
+        leftValue: 'UP TO 25%',
+        rightTag: 'POLICY ISSUANCE',
+        rightValue: 'INSTANT CASHLESS',
+        btnText: 'Rate Calculator & Quotes',
+        type: 'quote',
+        gradientBg: '#0F172A',
+      },
+      {
+        id: 'approvals',
+        badge: 'EXECUTIVE APPROVALS',
+        title: 'Policy Submissions Desk',
+        subtitle: 'Review & Verify Submissions Before Issuance',
+        leftTag: 'PENDING VERIFY',
+        leftValue: 'SAME DAY QC',
+        rightTag: 'COMMISSION',
+        rightValue: 'VERIFIED',
+        btnText: 'Review Policy Approvals',
+        type: 'approvals',
+        gradientBg: '#701A75',
+      },
+      {
+        id: 'renewals',
+        badge: 'RETENTION ENGINE',
+        title: 'Overdue Renewals Pipeline',
+        subtitle: 'Auto Reminders & One-Click WhatsApp Follow-up',
+        leftTag: 'EXPIRY RETENTION',
+        leftValue: 'HIGH CONVERSION',
+        rightTag: 'POLICY RENEWAL',
+        rightValue: 'AUTOMATED',
+        btnText: 'Open Renewals Desk',
+        type: 'renewals',
+        gradientBg: '#064E3B',
+      },
+    ];
+  }
+  // Default: Sales Executive / Telecaller
+  return [
+    {
+      id: 'insurance',
+      badge: '20+ TOP INSURERS ONBOARD',
+      title: 'Motor & Commercial Hub',
+      subtitle: 'Tata AIG · Digit · ICICI · Chola · Shriram',
+      leftTag: 'COMMISSION PAYOUT',
+      leftValue: 'UP TO 25%',
+      rightTag: 'POLICY ISSUANCE',
+      rightValue: 'INSTANT CASHLESS',
+      btnText: 'Rate Calculator & Quotes',
+      type: 'quote',
+      gradientBg: '#0F172A',
+    },
+    {
+      id: 'renewals',
+      badge: 'RETENTION ENGINE',
+      title: 'Overdue Renewals Pipeline',
+      subtitle: 'Auto Reminders & One-Click WhatsApp Follow-up',
+      leftTag: 'EXPIRY RETENTION',
+      leftValue: 'HIGH CONVERSION',
+      rightTag: 'POLICY RENEWAL',
+      rightValue: 'AUTOMATED',
+      btnText: 'Open Renewals Desk',
+      type: 'renewals',
+      gradientBg: '#064E3B',
+    },
+    {
+      id: 'claims',
+      badge: 'FAST-TRACK CLAIMS',
+      title: 'Zero-Hassle Claim Intimation',
+      subtitle: 'Spot Survey & Quick Desk Processing',
+      leftTag: 'OD & TP CLAIMS',
+      leftValue: 'DIRECT DESK',
+      rightTag: 'SURVEYOR SUPPORT',
+      rightValue: '24/7 HELPLINE',
+      btnText: 'File New Claim',
+      type: 'claim',
+      gradientBg: '#831843',
+    },
+    {
+      id: 'loans',
+      badge: 'VEHICLE LOANS & REFINANCE',
+      title: 'Used Vehicle Finance Desk',
+      subtitle: 'Direct Tie-ups with Leading Banks & NBFCs',
+      leftTag: 'FAST SANCTION',
+      leftValue: 'WITHIN 24 HRS',
+      rightTag: 'DOCS REQUIRED',
+      rightValue: 'MINIMAL KYC',
+      btnText: 'New Loan Inquiry',
+      type: 'loan',
+      gradientBg: '#14532D',
+    },
+  ];
+};
 
 export default function DashboardScreen() {
   const router = useRouter();
   const { user } = useAuth();
   const { cache, setCache, loadCache } = useCacheStore();
+
+  const roleUpper = user?.role?.toUpperCase() || '';
+  const isSuperAdminEmail = user?.email?.toLowerCase() === 'torqueautoadvisor@gmail.com';
+  const isAdmin = roleUpper === 'SUPER ADMIN' || roleUpper === 'ADMIN' || roleUpper.includes('ADMIN') || isSuperAdminEmail;
+  const isManager = roleUpper === 'MANAGER' || (roleUpper.includes('MANAGER') && !roleUpper.includes('HR'));
+  const isAccountant = roleUpper === 'ACCOUNTANT' || roleUpper.includes('ACCOUNT') || roleUpper.includes('FINANCE');
+  const isHrManager = roleUpper === 'HR MANAGER' || roleUpper === 'HR' || roleUpper.includes('HR');
+  const isSales = !isAdmin && !isManager && !isAccountant && !isHrManager;
+
+  const roleTheme = isAdmin
+    ? { bg: '#FEF2F2', border: '#FECACA', text: '#DC2626', label: 'SUPER ADMIN' }
+    : isManager
+    ? { bg: '#EFF6FF', border: '#BFDBFE', text: '#2563EB', label: 'MANAGER' }
+    : isAccountant
+    ? { bg: '#FFFBEB', border: '#FDE68A', text: '#D97706', label: 'ACCOUNTANT' }
+    : isHrManager
+    ? { bg: '#FAF5FF', border: '#E9D5FF', text: '#7E22CE', label: 'HR MANAGER' }
+    : { bg: '#ECFDF5', border: '#A7F3D0', text: '#059669', label: user?.role?.toUpperCase() || 'SALES EXECUTIVE' };
+
+  const userName = user?.full_name || user?.name || (isSuperAdminEmail ? 'Admin' : 'Torque Advisor');
+  const userInitials = userName
+    .split(' ')
+    .map((p: string) => p[0])
+    .filter(Boolean)
+    .slice(0, 2)
+    .join('')
+    .toUpperCase() || 'TA';
+
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Good Morning';
+    if (hour < 17) return 'Good Afternoon';
+    return 'Good Evening';
+  };
+
+  const heroBanners = getBannersForRole(isAdmin, isManager, isAccountant, isHrManager);
 
   const [stats, setStats] = useState<any>(
     cache['/dashboard/stats']?.stats || {
@@ -97,7 +277,6 @@ export default function DashboardScreen() {
 
   // Modals
   const [fabActionVisible, setFabActionVisible] = useState(false);
-  const [categoryFilter, setCategoryFilter] = useState<'all' | 'motor' | 'commercial'>('all');
 
   // Carousel Active Index
   const [activeBannerIndex, setActiveBannerIndex] = useState(0);
@@ -210,24 +389,31 @@ export default function DashboardScreen() {
     }
   };
 
-  const handleBannerAction = (banner: (typeof HERO_BANNERS)[0]) => {
+  const handleBannerAction = (banner: any) => {
     if (banner.type === 'quote') {
-      router.push('/(protected)/quotations' as any);
+      router.push('/(protected)/rate-calculator' as any);
     } else if (banner.type === 'claim') {
       router.push('/(protected)/claims' as any);
     } else if (banner.type === 'loan') {
       router.push('/(protected)/loan-inquiries' as any);
+    } else if (banner.type === 'cheques') {
+      router.push('/(protected)/cheques' as any);
+    } else if (banner.type === 'ughrani') {
+      router.push('/(protected)/ughrani' as any);
+    } else if (banner.type === 'finance') {
+      router.push('/(protected)/finance' as any);
+    } else if (banner.type === 'users') {
+      router.push('/(protected)/users' as any);
+    } else if (banner.type === 'onboarding') {
+      router.push('/(protected)/onboarding-approvals' as any);
+    } else if (banner.type === 'payroll') {
+      router.push('/(protected)/payroll' as any);
+    } else if (banner.type === 'approvals') {
+      router.push('/(protected)/policy-approvals' as any);
+    } else if (banner.type === 'renewals') {
+      router.push('/(protected)/renewals' as any);
     }
   };
-
-  const handleCategoryPress = (category: string) => {
-    router.push({
-      pathname: '/(protected)/quotation-new',
-      params: { category },
-    } as any);
-  };
-
-  const userName = user?.full_name || user?.name || 'Torque Advisor';
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -236,37 +422,47 @@ export default function DashboardScreen() {
       {/* Drawer Sidebar */}
       <Sidebar visible={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
-      {/* 1. TOP HEADER (Clean, Professional Torque CRM) */}
+      {/* 1. TOP HEADER (Modern, Sleek, Role-Badge Driven) */}
       <View style={styles.header}>
-        {/* Left: User Profile Avatar */}
+        {/* Left: User Profile Avatar with Initials & Online Dot */}
         <Pressable onPress={() => setSidebarOpen(true)} style={styles.avatarButton}>
-          <View style={styles.avatarCircle}>
-            <Ionicons name="person" size={20} color="#2563EB" />
+          <View style={[styles.avatarCircle, { backgroundColor: roleTheme.bg, borderColor: roleTheme.border }]}>
+            <Text style={[styles.avatarInitials, { color: roleTheme.text }]}>{userInitials}</Text>
           </View>
           <View style={styles.onlineDot} />
         </Pressable>
 
-        {/* Center / Welcome text */}
+        {/* Center: Greeting, Name & Dynamic Role Chip */}
         <View style={styles.headerCenter}>
-          <Text style={styles.brandTitle}>Torque Auto Advisor</Text>
+          <Text style={styles.headerGreeting}>{getGreeting()}</Text>
           <Text style={styles.advisorName} numberOfLines={1}>
             {userName}
           </Text>
+          <View style={[styles.headerRolePill, { backgroundColor: roleTheme.bg, borderColor: roleTheme.border }]}>
+            <Text style={[styles.headerRolePillText, { color: roleTheme.text }]}>
+              {roleTheme.label}
+            </Text>
+          </View>
         </View>
 
-        {/* Right Action Icons */}
+        {/* Right Action Icons: Refresh & Notification */}
         <View style={styles.headerActions}>
-          {/* Notification Bell */}
+          <Pressable onPress={onRefresh} style={styles.headerIconBtn}>
+            <Ionicons name="sync-outline" size={18} color="#0F172A" />
+          </Pressable>
+
           <Pressable
             onPress={() => router.push('/(protected)/notifications')}
             style={styles.headerIconBtn}
           >
-            <Ionicons name="notifications-outline" size={22} color="#0F172A" />
-            <View style={styles.notifBadge}>
-              <Text style={styles.notifBadgeText}>
-                {items.length > 0 ? (items.length > 9 ? '9+' : items.length) : '4'}
-              </Text>
-            </View>
+            <Ionicons name="notifications-outline" size={20} color="#0F172A" />
+            {items.length > 0 && (
+              <View style={styles.notifBadge}>
+                <Text style={styles.notifBadgeText}>
+                  {items.length > 9 ? '9+' : items.length}
+                </Text>
+              </View>
+            )}
           </Pressable>
         </View>
       </View>
@@ -276,7 +472,7 @@ export default function DashboardScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#002FA7" />}
         showsVerticalScrollIndicator={false}
       >
-        {/* 2. HERO PROMOTIONAL CAROUSEL (MALAMAAL Weekly & Torque Business Highlights) */}
+        {/* 2. HERO PROMOTIONAL CAROUSEL (Role-Tailored Banners) */}
         <View style={styles.carouselContainer}>
           <ScrollView
             ref={carouselScrollRef}
@@ -285,13 +481,13 @@ export default function DashboardScreen() {
             showsHorizontalScrollIndicator={false}
             onScroll={(e) => {
               const slide = Math.round(e.nativeEvent.contentOffset.x / (width - 32));
-              if (slide !== activeBannerIndex && slide >= 0 && slide < HERO_BANNERS.length) {
+              if (slide !== activeBannerIndex && slide >= 0 && slide < heroBanners.length) {
                 setActiveBannerIndex(slide);
               }
             }}
             scrollEventThrottle={16}
           >
-            {HERO_BANNERS.map((banner) => (
+            {heroBanners.map((banner) => (
               <View key={banner.id} style={[styles.heroCard, { backgroundColor: banner.gradientBg }]}>
                 {/* Decorative Elements */}
                 <View style={styles.heroDecorativeCircle} />
@@ -314,8 +510,8 @@ export default function DashboardScreen() {
 
                   <View style={styles.heroWheelIconWrap}>
                     <Ionicons
-                      name={banner.type === 'reward' ? 'sparkles' : 'shield-checkmark'}
-                      size={28}
+                      name="shield-checkmark"
+                      size={26}
                       color="#FBBF24"
                     />
                   </View>
@@ -340,7 +536,7 @@ export default function DashboardScreen() {
 
           {/* Carousel Pagination Dots */}
           <View style={styles.dotsContainer}>
-            {HERO_BANNERS.map((_, i) => (
+            {heroBanners.map((_, i) => (
               <View
                 key={i}
                 style={[
@@ -352,11 +548,19 @@ export default function DashboardScreen() {
           </View>
         </View>
 
-        {/* 3. MY PERFORMANCE SECTION (Styled identically to the reference screenshot) */}
+        {/* 3. PERFORMANCE METRICS (Fully Role-Adaptive) */}
         <View style={styles.performanceOuterCard}>
           {/* Header row with Title & Dropdown Filter */}
           <View style={styles.performanceHeaderRow}>
-            <Text style={styles.sectionHeading}>My Performance</Text>
+            <Text style={styles.sectionHeading}>
+              {isAccountant
+                ? 'Collections & Cash Flow'
+                : isHrManager
+                ? 'Staff & HR Operations'
+                : isSales
+                ? 'My Sales Pipeline'
+                : 'Executive Performance'}
+            </Text>
             <Pressable
               onPress={() => setTimeframeModalVisible(true)}
               style={styles.dropdownPill}
@@ -366,170 +570,582 @@ export default function DashboardScreen() {
             </Pressable>
           </View>
 
-          {/* 3 Primary Metric Cards in a row */}
-          <View style={styles.metricsRow}>
-            {/* Policies */}
-            <Pressable
-              style={styles.metricCard}
-              onPress={() => router.push('/(protected)/policies')}
-            >
-              <View style={styles.metricTopRow}>
-                <Ionicons name="shield-checkmark" size={16} color="#3B82F6" />
-                <Text style={styles.metricLabel}>Policies</Text>
-              </View>
-              <Text style={styles.metricValue}>
-                {stats.active_policies ?? stats.policies ?? 0}
-              </Text>
-            </Pressable>
+          {/* 3 Primary Metric Cards in a row (Role-Adaptive) */}
+          {isAccountant ? (
+            <View style={styles.metricsRow}>
+              {/* Inward Cheques */}
+              <Pressable
+                style={styles.metricCard}
+                onPress={() => router.push('/(protected)/cheques')}
+              >
+                <View style={styles.metricTopRow}>
+                  <Ionicons name="card" size={16} color="#D97706" />
+                  <Text style={styles.metricLabel}>Cheques</Text>
+                </View>
+                <Text style={styles.metricValue}>
+                  {stats.pending_cheques ?? stats.cheques_count ?? 0}
+                </Text>
+              </Pressable>
 
-            {/* Premium */}
-            <Pressable
-              style={styles.metricCard}
-              onPress={() => router.push('/(protected)/policies')}
-            >
-              <View style={styles.metricTopRow}>
-                <Ionicons name="cash" size={16} color="#10B981" />
-                <Text style={styles.metricLabel}>Premium</Text>
-              </View>
-              <Text style={styles.metricValue}>
-                {stats.revenue ? `₹${stats.revenue.toLocaleString()}` : '₹0'}
-              </Text>
-            </Pressable>
+              {/* Ughrani Debt */}
+              <Pressable
+                style={styles.metricCard}
+                onPress={() => router.push('/(protected)/ughrani')}
+              >
+                <View style={styles.metricTopRow}>
+                  <Ionicons name="wallet" size={16} color="#DC2626" />
+                  <Text style={styles.metricLabel}>Ughrani</Text>
+                </View>
+                <Text style={styles.metricValue}>
+                  {stats.ughrani_pending || 'Active'}
+                </Text>
+              </Pressable>
 
-            {/* Renewals */}
-            <Pressable
-              style={styles.metricCard}
-              onPress={() => router.push('/(protected)/renewals')}
-            >
-              <View style={styles.metricTopRow}>
-                <Ionicons name="sync" size={16} color="#F59E0B" />
-                <Text style={styles.metricLabel}>Renewals</Text>
-              </View>
-              <Text style={styles.metricValue}>
-                {stats.renewals_count ?? 0}
-              </Text>
-            </Pressable>
-          </View>
+              {/* Collections Inflow */}
+              <Pressable
+                style={styles.metricCard}
+                onPress={() => router.push('/(protected)/finance')}
+              >
+                <View style={styles.metricTopRow}>
+                  <Ionicons name="cash" size={16} color="#10B981" />
+                  <Text style={styles.metricLabel}>Total Inflow</Text>
+                </View>
+                <Text style={styles.metricValue}>
+                  {stats.revenue ? `₹${stats.revenue.toLocaleString()}` : '₹0'}
+                </Text>
+              </Pressable>
+            </View>
+          ) : isHrManager ? (
+            <View style={styles.metricsRow}>
+              {/* Active Staff */}
+              <Pressable
+                style={styles.metricCard}
+                onPress={() => router.push('/(protected)/users')}
+              >
+                <View style={styles.metricTopRow}>
+                  <Ionicons name="people" size={16} color="#2563EB" />
+                  <Text style={styles.metricLabel}>Staff Members</Text>
+                </View>
+                <Text style={styles.metricValue}>
+                  {stats.users_count ?? stats.active_users ?? 0}
+                </Text>
+              </Pressable>
 
-          {/* Operational Sub-Metrics Bar */}
+              {/* Onboarding Pending */}
+              <Pressable
+                style={styles.metricCard}
+                onPress={() => router.push('/(protected)/onboarding-approvals')}
+              >
+                <View style={styles.metricTopRow}>
+                  <Ionicons name="checkmark-circle" size={16} color="#D97706" />
+                  <Text style={styles.metricLabel}>Onboarding</Text>
+                </View>
+                <Text style={styles.metricValue}>
+                  {stats.pending_onboarding ?? 0}
+                </Text>
+              </Pressable>
+
+              {/* Payroll Desk */}
+              <Pressable
+                style={styles.metricCard}
+                onPress={() => router.push('/(protected)/payroll')}
+              >
+                <View style={styles.metricTopRow}>
+                  <Ionicons name="cash" size={16} color="#10B981" />
+                  <Text style={styles.metricLabel}>Salaries</Text>
+                </View>
+                <Text style={styles.metricValue}>Active</Text>
+              </Pressable>
+            </View>
+          ) : isSales ? (
+            <View style={styles.metricsRow}>
+              {/* My Assigned Leads */}
+              <Pressable
+                style={styles.metricCard}
+                onPress={() => router.push('/(protected)/leads')}
+              >
+                <View style={styles.metricTopRow}>
+                  <Ionicons name="people" size={16} color="#2563EB" />
+                  <Text style={styles.metricLabel}>My Leads</Text>
+                </View>
+                <Text style={styles.metricValue}>
+                  {stats.my_leads ?? stats.leads ?? 0}
+                </Text>
+              </Pressable>
+
+              {/* Today's Follow-ups */}
+              <Pressable
+                style={styles.metricCard}
+                onPress={() => router.push('/(protected)/follow-ups')}
+              >
+                <View style={styles.metricTopRow}>
+                  <Ionicons name="calendar" size={16} color="#D97706" />
+                  <Text style={styles.metricLabel}>Follow-ups</Text>
+                </View>
+                <Text style={styles.metricValue}>
+                  {stats.pending_followups ?? stats.pending ?? 0}
+                </Text>
+              </Pressable>
+
+              {/* Renewals */}
+              <Pressable
+                style={styles.metricCard}
+                onPress={() => router.push('/(protected)/renewals')}
+              >
+                <View style={styles.metricTopRow}>
+                  <Ionicons name="sync" size={16} color="#10B981" />
+                  <Text style={styles.metricLabel}>Renewals</Text>
+                </View>
+                <Text style={styles.metricValue}>
+                  {stats.renewals_count ?? 0}
+                </Text>
+              </Pressable>
+            </View>
+          ) : (
+            // Admin & Manager Executive Overview
+            <View style={styles.metricsRow}>
+              {/* Premium */}
+              <Pressable
+                style={styles.metricCard}
+                onPress={() => router.push('/(protected)/policies')}
+              >
+                <View style={styles.metricTopRow}>
+                  <Ionicons name="cash" size={16} color="#10B981" />
+                  <Text style={styles.metricLabel}>Total Premium</Text>
+                </View>
+                <Text style={styles.metricValue}>
+                  {stats.revenue ? `₹${stats.revenue.toLocaleString()}` : '₹0'}
+                </Text>
+              </Pressable>
+
+              {/* Policies */}
+              <Pressable
+                style={styles.metricCard}
+                onPress={() => router.push('/(protected)/policies')}
+              >
+                <View style={styles.metricTopRow}>
+                  <Ionicons name="shield-checkmark" size={16} color="#3B82F6" />
+                  <Text style={styles.metricLabel}>Policies</Text>
+                </View>
+                <Text style={styles.metricValue}>
+                  {stats.active_policies ?? stats.policies ?? 0}
+                </Text>
+              </Pressable>
+
+              {/* Total Leads */}
+              <Pressable
+                style={styles.metricCard}
+                onPress={() => router.push('/(protected)/leads')}
+              >
+                <View style={styles.metricTopRow}>
+                  <Ionicons name="people" size={16} color="#7C3AED" />
+                  <Text style={styles.metricLabel}>Leads Pipeline</Text>
+                </View>
+                <Text style={styles.metricValue}>
+                  {stats.total_leads ?? stats.leads ?? 0}
+                </Text>
+              </Pressable>
+            </View>
+          )}
+
+          {/* Operational Sub-Metrics Bar (Role-Adaptive) */}
           <View style={styles.subMetricsBar}>
-            <Pressable
-              style={styles.subMetricItem}
-              onPress={() => router.push('/(protected)/claims')}
-            >
-              <Text style={styles.subMetricLabel}>ACTIVE CLAIMS</Text>
-              <Text style={styles.subMetricValue}>{stats.active_claims ?? 0}</Text>
-            </Pressable>
-            <View style={styles.subMetricDivider} />
-            <Pressable
-              style={styles.subMetricItem}
-              onPress={() => router.push('/(protected)/loan-inquiries' as any)}
-            >
-              <Text style={styles.subMetricLabel}>LOAN INQUIRIES</Text>
-              <Text style={styles.subMetricValue}>{stats.active_loans ?? 0}</Text>
-            </Pressable>
-            <View style={styles.subMetricDivider} />
-            <Pressable
-              style={styles.subMetricItem}
-              onPress={() => router.push('/(protected)/rto')}
-            >
-              <Text style={styles.subMetricLabel}>RTO & FITNESS</Text>
-              <Text style={styles.subMetricValue}>
-                {(stats.pending_rto ?? 0) + (stats.pending_fitness ?? 0)}
-              </Text>
-            </Pressable>
+            {isAccountant ? (
+              <>
+                <Pressable
+                  style={styles.subMetricItem}
+                  onPress={() => router.push('/(protected)/cheques')}
+                >
+                  <Text style={styles.subMetricLabel}>CHEQUES CLEARING</Text>
+                  <Text style={styles.subMetricValue}>{stats.pending_cheques ?? 0}</Text>
+                </Pressable>
+                <View style={styles.subMetricDivider} />
+                <Pressable
+                  style={styles.subMetricItem}
+                  onPress={() => router.push('/(protected)/ughrani')}
+                >
+                  <Text style={styles.subMetricLabel}>UGHRANI LEDGERS</Text>
+                  <Text style={styles.subMetricValue}>Active</Text>
+                </Pressable>
+                <View style={styles.subMetricDivider} />
+                <Pressable
+                  style={styles.subMetricItem}
+                  onPress={() => router.push('/(protected)/finance')}
+                >
+                  <Text style={styles.subMetricLabel}>MONEY RECEIPTS</Text>
+                  <Text style={styles.subMetricValue}>Vouchers</Text>
+                </Pressable>
+              </>
+            ) : isHrManager ? (
+              <>
+                <Pressable
+                  style={styles.subMetricItem}
+                  onPress={() => router.push('/(protected)/users')}
+                >
+                  <Text style={styles.subMetricLabel}>STAFF DIRECTORY</Text>
+                  <Text style={styles.subMetricValue}>{stats.users_count ?? 0}</Text>
+                </Pressable>
+                <View style={styles.subMetricDivider} />
+                <Pressable
+                  style={styles.subMetricItem}
+                  onPress={() => router.push('/(protected)/hr')}
+                >
+                  <Text style={styles.subMetricLabel}>HR DESK</Text>
+                  <Text style={styles.subMetricValue}>Active</Text>
+                </Pressable>
+                <View style={styles.subMetricDivider} />
+                <Pressable
+                  style={styles.subMetricItem}
+                  onPress={() => router.push('/(protected)/onboarding-approvals')}
+                >
+                  <Text style={styles.subMetricLabel}>NEW JOINING</Text>
+                  <Text style={styles.subMetricValue}>{stats.pending_onboarding ?? 0}</Text>
+                </Pressable>
+              </>
+            ) : isSales ? (
+              <>
+                <Pressable
+                  style={styles.subMetricItem}
+                  onPress={() => router.push('/(protected)/policies')}
+                >
+                  <Text style={styles.subMetricLabel}>POLICIES ISSUED</Text>
+                  <Text style={styles.subMetricValue}>{stats.active_policies ?? 0}</Text>
+                </Pressable>
+                <View style={styles.subMetricDivider} />
+                <Pressable
+                  style={styles.subMetricItem}
+                  onPress={() => router.push('/(protected)/rate-calculator')}
+                >
+                  <Text style={styles.subMetricLabel}>RATE CALCULATOR</Text>
+                  <Text style={[styles.subMetricValue, { color: '#002FA7' }]}>Quotes</Text>
+                </Pressable>
+                <View style={styles.subMetricDivider} />
+                <Pressable
+                  style={styles.subMetricItem}
+                  onPress={() => router.push('/(protected)/claims')}
+                >
+                  <Text style={styles.subMetricLabel}>ACTIVE CLAIMS</Text>
+                  <Text style={styles.subMetricValue}>{stats.active_claims ?? 0}</Text>
+                </Pressable>
+              </>
+            ) : (
+              <>
+                <Pressable
+                  style={styles.subMetricItem}
+                  onPress={() => router.push('/(protected)/policy-approvals')}
+                >
+                  <Text style={styles.subMetricLabel}>APPROVALS PENDING</Text>
+                  <Text style={styles.subMetricValue}>{stats.pending_approvals ?? 0}</Text>
+                </Pressable>
+                <View style={styles.subMetricDivider} />
+                <Pressable
+                  style={styles.subMetricItem}
+                  onPress={() => router.push('/(protected)/renewals')}
+                >
+                  <Text style={styles.subMetricLabel}>RENEWALS DUE</Text>
+                  <Text style={styles.subMetricValue}>{stats.renewals_count ?? 0}</Text>
+                </Pressable>
+                <View style={styles.subMetricDivider} />
+                <Pressable
+                  style={styles.subMetricItem}
+                  onPress={() => router.push('/(protected)/claims')}
+                >
+                  <Text style={styles.subMetricLabel}>ACTIVE CLAIMS</Text>
+                  <Text style={styles.subMetricValue}>{stats.active_claims ?? 0}</Text>
+                </Pressable>
+              </>
+            )}
           </View>
         </View>
 
-        {/* 4. RECOMMENDED FOR YOU / CORE SOP MODULES (Styled like reference screenshot) */}
+        {/* 4. RECOMMENDED MODULES (Role-Filtered Grid) */}
         <View style={styles.sectionCard}>
-          <Text style={styles.sectionHeading}>Recommended For You</Text>
+          <Text style={styles.sectionHeading}>Quick Access Modules</Text>
 
-          <View style={styles.recommendedGrid}>
-            {/* 1. Claims Hub */}
-            <Pressable
-              style={styles.recommendedItem}
-              onPress={() => router.push('/(protected)/claims')}
-            >
-              <View style={[styles.recIconWrap, { backgroundColor: '#EFF6FF' }]}>
-                <Ionicons name="document-text" size={24} color="#2563EB" />
+          {isAccountant ? (
+            <>
+              <View style={styles.recommendedGrid}>
+                <Pressable
+                  style={styles.recommendedItem}
+                  onPress={() => router.push('/(protected)/cheques')}
+                >
+                  <View style={[styles.recIconWrap, { backgroundColor: '#FEF3C7' }]}>
+                    <Ionicons name="card" size={24} color="#D97706" />
+                  </View>
+                  <Text style={styles.recItemTitle}>Cheques</Text>
+                </Pressable>
+
+                <Pressable
+                  style={styles.recommendedItem}
+                  onPress={() => router.push('/(protected)/ughrani')}
+                >
+                  <View style={[styles.recIconWrap, { backgroundColor: '#FEE2E2' }]}>
+                    <Ionicons name="wallet" size={24} color="#DC2626" />
+                  </View>
+                  <Text style={styles.recItemTitle}>Ughrani</Text>
+                </Pressable>
+
+                <Pressable
+                  style={styles.recommendedItem}
+                  onPress={() => router.push('/(protected)/finance')}
+                >
+                  <View style={[styles.recIconWrap, { backgroundColor: '#DCFCE7' }]}>
+                    <Ionicons name="cash" size={24} color="#16A34A" />
+                  </View>
+                  <Text style={styles.recItemTitle}>Finance Desk</Text>
+                </Pressable>
+
+                <Pressable
+                  style={styles.recommendedItem}
+                  onPress={() => router.push('/(protected)/quotations')}
+                >
+                  <View style={[styles.recIconWrap, { backgroundColor: '#EFF6FF' }]}>
+                    <Ionicons name="clipboard" size={24} color="#2563EB" />
+                  </View>
+                  <Text style={styles.recItemTitle}>Quotations</Text>
+                </Pressable>
               </View>
-              <Text style={styles.recItemTitle}>Claims Hub</Text>
-            </Pressable>
 
-            {/* 2. Loan Inquiries */}
-            <Pressable
-              style={styles.recommendedItem}
-              onPress={() => router.push('/(protected)/loan-inquiries' as any)}
-            >
-              <View style={[styles.recIconWrap, { backgroundColor: '#FEF3C7' }]}>
-                <Ionicons name="cash" size={24} color="#D97706" />
+              <View style={styles.secondaryRecRow}>
+                <Pressable
+                  style={styles.secRecPill}
+                  onPress={() => router.push('/(protected)/rate-calculator')}
+                >
+                  <Ionicons name="calculator-outline" size={14} color="#002FA7" />
+                  <Text style={styles.secRecPillText}>Rate Calc</Text>
+                </Pressable>
+                <Pressable
+                  style={styles.secRecPill}
+                  onPress={() => router.push('/(protected)/settings')}
+                >
+                  <Ionicons name="settings-outline" size={14} color="#002FA7" />
+                  <Text style={styles.secRecPillText}>Settings</Text>
+                </Pressable>
               </View>
-              <Text style={styles.recItemTitle}>Loans Desk</Text>
-            </Pressable>
+            </>
+          ) : isHrManager ? (
+            <>
+              <View style={styles.recommendedGrid}>
+                <Pressable
+                  style={styles.recommendedItem}
+                  onPress={() => router.push('/(protected)/users')}
+                >
+                  <View style={[styles.recIconWrap, { backgroundColor: '#EFF6FF' }]}>
+                    <Ionicons name="people" size={24} color="#2563EB" />
+                  </View>
+                  <Text style={styles.recItemTitle}>Staff Users</Text>
+                </Pressable>
 
-            {/* 3. RTO Work */}
-            <Pressable
-              style={styles.recommendedItem}
-              onPress={() => router.push('/(protected)/rto')}
-            >
-              <View style={[styles.recIconWrap, { backgroundColor: '#FCE7F3' }]}>
-                <Ionicons name="car-sport" size={24} color="#DB2777" />
+                <Pressable
+                  style={styles.recommendedItem}
+                  onPress={() => router.push('/(protected)/onboarding-approvals')}
+                >
+                  <View style={[styles.recIconWrap, { backgroundColor: '#F3E8FF' }]}>
+                    <Ionicons name="checkmark-circle" size={24} color="#7E22CE" />
+                  </View>
+                  <Text style={styles.recItemTitle}>Onboarding</Text>
+                </Pressable>
+
+                <Pressable
+                  style={styles.recommendedItem}
+                  onPress={() => router.push('/(protected)/hr')}
+                >
+                  <View style={[styles.recIconWrap, { backgroundColor: '#FEF3C7' }]}>
+                    <Ionicons name="person-circle" size={24} color="#D97706" />
+                  </View>
+                  <Text style={styles.recItemTitle}>HR Desk</Text>
+                </Pressable>
+
+                <Pressable
+                  style={styles.recommendedItem}
+                  onPress={() => router.push('/(protected)/payroll')}
+                >
+                  <View style={[styles.recIconWrap, { backgroundColor: '#DCFCE7' }]}>
+                    <Ionicons name="cash" size={24} color="#16A34A" />
+                  </View>
+                  <Text style={styles.recItemTitle}>Payroll</Text>
+                </Pressable>
               </View>
-              <Text style={styles.recItemTitle}>RTO Work</Text>
-            </Pressable>
 
-            {/* 4. Renewals */}
-            <Pressable
-              style={styles.recommendedItem}
-              onPress={() => router.push('/(protected)/renewals')}
-            >
-              <View style={[styles.recIconWrap, { backgroundColor: '#E0F2FE' }]}>
-                <Ionicons name="repeat-outline" size={24} color="#0284C7" />
+              <View style={styles.secondaryRecRow}>
+                <Pressable
+                  style={styles.secRecPill}
+                  onPress={() => router.push('/(protected)/settings')}
+                >
+                  <Ionicons name="settings-outline" size={14} color="#002FA7" />
+                  <Text style={styles.secRecPillText}>Settings</Text>
+                </Pressable>
               </View>
-              <Text style={styles.recItemTitle}>Renewals</Text>
-            </Pressable>
-          </View>
+            </>
+          ) : isSales ? (
+            <>
+              <View style={styles.recommendedGrid}>
+                <Pressable
+                  style={styles.recommendedItem}
+                  onPress={() => router.push('/(protected)/leads')}
+                >
+                  <View style={[styles.recIconWrap, { backgroundColor: '#EFF6FF' }]}>
+                    <Ionicons name="people" size={24} color="#2563EB" />
+                  </View>
+                  <Text style={styles.recItemTitle}>My Leads</Text>
+                </Pressable>
 
-          {/* Secondary Operations Row */}
-          <View style={styles.secondaryRecRow}>
-            <Pressable
-              style={styles.secRecPill}
-              onPress={() => router.push('/(protected)/fitness')}
-            >
-              <Ionicons name="fitness-outline" size={14} color="#002FA7" />
-              <Text style={styles.secRecPillText}>Fitness Desk</Text>
-            </Pressable>
+                <Pressable
+                  style={styles.recommendedItem}
+                  onPress={() => router.push('/(protected)/follow-ups')}
+                >
+                  <View style={[styles.recIconWrap, { backgroundColor: '#FEF3C7' }]}>
+                    <Ionicons name="calendar" size={24} color="#D97706" />
+                  </View>
+                  <Text style={styles.recItemTitle}>Follow-ups</Text>
+                </Pressable>
 
-            <Pressable
-              style={styles.secRecPill}
-              onPress={() => router.push('/(protected)/ughrani')}
-            >
-              <Ionicons name="wallet-outline" size={14} color="#002FA7" />
-              <Text style={styles.secRecPillText}>Ughrani (Collections)</Text>
-            </Pressable>
+                <Pressable
+                  style={styles.recommendedItem}
+                  onPress={() => router.push('/(protected)/rate-calculator')}
+                >
+                  <View style={[styles.recIconWrap, { backgroundColor: '#ECFDF5' }]}>
+                    <Ionicons name="calculator" size={24} color="#059669" />
+                  </View>
+                  <Text style={styles.recItemTitle}>Rate Calc</Text>
+                </Pressable>
 
-            <Pressable
-              style={styles.secRecPill}
-              onPress={() => router.push('/(protected)/rate-calculator')}
-            >
-              <Ionicons name="calculator-outline" size={14} color="#002FA7" />
-              <Text style={styles.secRecPillText}>Rate Calc</Text>
-            </Pressable>
+                <Pressable
+                  style={styles.recommendedItem}
+                  onPress={() => router.push('/(protected)/renewals')}
+                >
+                  <View style={[styles.recIconWrap, { backgroundColor: '#F0FDF4' }]}>
+                    <Ionicons name="repeat" size={24} color="#16A34A" />
+                  </View>
+                  <Text style={styles.recItemTitle}>Renewals</Text>
+                </Pressable>
+              </View>
 
-            <Pressable
-              style={styles.secRecPill}
-              onPress={() => router.push('/(protected)/quotations')}
-            >
-              <Ionicons name="clipboard-outline" size={14} color="#002FA7" />
-              <Text style={styles.secRecPillText}>Quotations</Text>
-            </Pressable>
-          </View>
+              <View style={styles.secondaryRecRow}>
+                <Pressable
+                  style={styles.secRecPill}
+                  onPress={() => router.push('/(protected)/quotations')}
+                >
+                  <Ionicons name="clipboard-outline" size={14} color="#002FA7" />
+                  <Text style={styles.secRecPillText}>Quotations</Text>
+                </Pressable>
+
+                <Pressable
+                  style={styles.secRecPill}
+                  onPress={() => router.push('/(protected)/claims')}
+                >
+                  <Ionicons name="document-text-outline" size={14} color="#002FA7" />
+                  <Text style={styles.secRecPillText}>Claims Hub</Text>
+                </Pressable>
+
+                <Pressable
+                  style={styles.secRecPill}
+                  onPress={() => router.push('/(protected)/loan-inquiries' as any)}
+                >
+                  <Ionicons name="cash-outline" size={14} color="#002FA7" />
+                  <Text style={styles.secRecPillText}>Loans Desk</Text>
+                </Pressable>
+
+                <Pressable
+                  style={styles.secRecPill}
+                  onPress={() => router.push('/(protected)/fitness')}
+                >
+                  <Ionicons name="fitness-outline" size={14} color="#002FA7" />
+                  <Text style={styles.secRecPillText}>Fitness Desk</Text>
+                </Pressable>
+              </View>
+            </>
+          ) : (
+            // Admin & Manager Core Modules
+            <>
+              <View style={styles.recommendedGrid}>
+                <Pressable
+                  style={styles.recommendedItem}
+                  onPress={() => router.push('/(protected)/leads')}
+                >
+                  <View style={[styles.recIconWrap, { backgroundColor: '#EFF6FF' }]}>
+                    <Ionicons name="people" size={24} color="#2563EB" />
+                  </View>
+                  <Text style={styles.recItemTitle}>Leads Hub</Text>
+                </Pressable>
+
+                <Pressable
+                  style={styles.recommendedItem}
+                  onPress={() => router.push('/(protected)/policy-approvals')}
+                >
+                  <View style={[styles.recIconWrap, { backgroundColor: '#FEE2E2' }]}>
+                    <Ionicons name="shield-checkmark" size={24} color="#DC2626" />
+                  </View>
+                  <Text style={styles.recItemTitle}>Approvals</Text>
+                </Pressable>
+
+                <Pressable
+                  style={styles.recommendedItem}
+                  onPress={() => router.push('/(protected)/renewals')}
+                >
+                  <View style={[styles.recIconWrap, { backgroundColor: '#F0FDF4' }]}>
+                    <Ionicons name="repeat" size={24} color="#16A34A" />
+                  </View>
+                  <Text style={styles.recItemTitle}>Renewals</Text>
+                </Pressable>
+
+                <Pressable
+                  style={styles.recommendedItem}
+                  onPress={() => router.push('/(protected)/rate-calculator')}
+                >
+                  <View style={[styles.recIconWrap, { backgroundColor: '#F3E8FF' }]}>
+                    <Ionicons name="calculator" size={24} color="#7E22CE" />
+                  </View>
+                  <Text style={styles.recItemTitle}>Rate Calc</Text>
+                </Pressable>
+              </View>
+
+              <View style={styles.secondaryRecRow}>
+                <Pressable
+                  style={styles.secRecPill}
+                  onPress={() => router.push('/(protected)/cheques')}
+                >
+                  <Ionicons name="card-outline" size={14} color="#002FA7" />
+                  <Text style={styles.secRecPillText}>Cheques</Text>
+                </Pressable>
+
+                <Pressable
+                  style={styles.secRecPill}
+                  onPress={() => router.push('/(protected)/ughrani')}
+                >
+                  <Ionicons name="wallet-outline" size={14} color="#002FA7" />
+                  <Text style={styles.secRecPillText}>Ughrani</Text>
+                </Pressable>
+
+                <Pressable
+                  style={styles.secRecPill}
+                  onPress={() => router.push('/(protected)/finance')}
+                >
+                  <Ionicons name="cash-outline" size={14} color="#002FA7" />
+                  <Text style={styles.secRecPillText}>Finance</Text>
+                </Pressable>
+
+                <Pressable
+                  style={styles.secRecPill}
+                  onPress={() => router.push('/(protected)/claims')}
+                >
+                  <Ionicons name="document-text-outline" size={14} color="#002FA7" />
+                  <Text style={styles.secRecPillText}>Claims</Text>
+                </Pressable>
+
+                <Pressable
+                  style={styles.secRecPill}
+                  onPress={() => router.push('/(protected)/reports')}
+                >
+                  <Ionicons name="bar-chart-outline" size={14} color="#002FA7" />
+                  <Text style={styles.secRecPillText}>Reports</Text>
+                </Pressable>
+              </View>
+            </>
+          )}
         </View>
 
-
-
-        {/* 6. RECENT UPDATES & SCHEDULED FOLLOW-UPS */}
+        {/* 5. RECENT UPDATES & INQUIRIES */}
         <View style={styles.activitySection}>
           <View style={styles.activityHeaderRow}>
             <Text style={styles.activitySectionTitle}>Recent Activity & Inquiries</Text>
@@ -566,15 +1182,15 @@ export default function DashboardScreen() {
         <View style={{ height: 40 }} />
       </ScrollView>
 
-      {/* 7. FLOATING ACTION BUTTON (Quick SOP Actions & Support) */}
+      {/* 6. FLOATING ACTION BUTTON (Role Adaptive) */}
       <Pressable
         style={styles.fabButton}
         onPress={() => setFabActionVisible(true)}
       >
-        <Ionicons name="chatbubble-ellipses" size={24} color="#FFFFFF" />
+        <Ionicons name="flash" size={24} color="#FFFFFF" />
       </Pressable>
 
-      {/* 8. STICKY BOTTOM FOOTER (4 Core Tabs: Home, Leads, Follow-ups, Settings) */}
+      {/* 7. STICKY BOTTOM FOOTER (Role-Adaptive Footer) */}
       <AppFooter active="home" />
 
       {/* MODAL: TIMEFRAME SELECTOR */}
@@ -621,7 +1237,7 @@ export default function DashboardScreen() {
         </Pressable>
       </Modal>
 
-      {/* MODAL: QUICK ACTIONS FAB */}
+      {/* MODAL: QUICK ACTIONS FAB (Role Adaptive) */}
       <Modal
         visible={fabActionVisible}
         transparent
@@ -635,60 +1251,170 @@ export default function DashboardScreen() {
           <View style={styles.fabActionSheet}>
             <Text style={styles.fabSheetTitle}>Quick Actions</Text>
 
-            <Pressable
-              style={styles.fabSheetItem}
-              onPress={() => {
-                setFabActionVisible(false);
-                router.push('/(protected)/leads');
-              }}
-            >
-              <Ionicons name="people" size={20} color="#002FA7" />
-              <Text style={styles.fabSheetItemText}>New Vehicle Lead</Text>
-            </Pressable>
+            {isAccountant ? (
+              <>
+                <Pressable
+                  style={styles.fabSheetItem}
+                  onPress={() => {
+                    setFabActionVisible(false);
+                    router.push('/(protected)/cheques');
+                  }}
+                >
+                  <Ionicons name="card" size={20} color="#D97706" />
+                  <Text style={styles.fabSheetItemText}>Inward / Deposit Cheque</Text>
+                </Pressable>
 
-            <Pressable
-              style={styles.fabSheetItem}
-              onPress={() => {
-                setFabActionVisible(false);
-                router.push('/(protected)/claims');
-              }}
-            >
-              <Ionicons name="document-text" size={20} color="#DC2626" />
-              <Text style={styles.fabSheetItemText}>File Claim Intimation</Text>
-            </Pressable>
+                <Pressable
+                  style={styles.fabSheetItem}
+                  onPress={() => {
+                    setFabActionVisible(false);
+                    router.push('/(protected)/ughrani');
+                  }}
+                >
+                  <Ionicons name="wallet" size={20} color="#DC2626" />
+                  <Text style={styles.fabSheetItemText}>Log Ughrani Collection</Text>
+                </Pressable>
 
-            <Pressable
-              style={styles.fabSheetItem}
-              onPress={() => {
-                setFabActionVisible(false);
-                router.push('/(protected)/loan-inquiries' as any);
-              }}
-            >
-              <Ionicons name="cash" size={20} color="#16A34A" />
-              <Text style={styles.fabSheetItemText}>New Loan Inquiry</Text>
-            </Pressable>
+                <Pressable
+                  style={styles.fabSheetItem}
+                  onPress={() => {
+                    setFabActionVisible(false);
+                    router.push('/(protected)/finance');
+                  }}
+                >
+                  <Ionicons name="cash" size={20} color="#16A34A" />
+                  <Text style={styles.fabSheetItemText}>Open Finance Ledger</Text>
+                </Pressable>
+              </>
+            ) : isHrManager ? (
+              <>
+                <Pressable
+                  style={styles.fabSheetItem}
+                  onPress={() => {
+                    setFabActionVisible(false);
+                    router.push('/(protected)/users');
+                  }}
+                >
+                  <Ionicons name="person-add" size={20} color="#2563EB" />
+                  <Text style={styles.fabSheetItemText}>Add Staff Member</Text>
+                </Pressable>
 
-            <Pressable
-              style={styles.fabSheetItem}
-              onPress={() => {
-                setFabActionVisible(false);
-                router.push('/(protected)/rto');
-              }}
-            >
-              <Ionicons name="car" size={20} color="#D97706" />
-              <Text style={styles.fabSheetItemText}>Submit RTO / Fitness Work</Text>
-            </Pressable>
+                <Pressable
+                  style={styles.fabSheetItem}
+                  onPress={() => {
+                    setFabActionVisible(false);
+                    router.push('/(protected)/onboarding-approvals');
+                  }}
+                >
+                  <Ionicons name="checkmark-circle" size={20} color="#7E22CE" />
+                  <Text style={styles.fabSheetItemText}>Review Onboardings</Text>
+                </Pressable>
 
-            <Pressable
-              style={styles.fabSheetItem}
-              onPress={() => {
-                setFabActionVisible(false);
-                router.push('/(protected)/follow-ups');
-              }}
-            >
-              <Ionicons name="calendar" size={20} color="#6366F1" />
-              <Text style={styles.fabSheetItemText}>Schedule Customer Follow-up</Text>
-            </Pressable>
+                <Pressable
+                  style={styles.fabSheetItem}
+                  onPress={() => {
+                    setFabActionVisible(false);
+                    router.push('/(protected)/payroll');
+                  }}
+                >
+                  <Ionicons name="cash" size={20} color="#16A34A" />
+                  <Text style={styles.fabSheetItemText}>View Payroll Slips</Text>
+                </Pressable>
+              </>
+            ) : isSales ? (
+              <>
+                <Pressable
+                  style={styles.fabSheetItem}
+                  onPress={() => {
+                    setFabActionVisible(false);
+                    router.push('/(protected)/leads');
+                  }}
+                >
+                  <Ionicons name="people" size={20} color="#002FA7" />
+                  <Text style={styles.fabSheetItemText}>New Vehicle Lead</Text>
+                </Pressable>
+
+                <Pressable
+                  style={styles.fabSheetItem}
+                  onPress={() => {
+                    setFabActionVisible(false);
+                    router.push('/(protected)/follow-ups');
+                  }}
+                >
+                  <Ionicons name="calendar" size={20} color="#6366F1" />
+                  <Text style={styles.fabSheetItemText}>Schedule Customer Follow-up</Text>
+                </Pressable>
+
+                <Pressable
+                  style={styles.fabSheetItem}
+                  onPress={() => {
+                    setFabActionVisible(false);
+                    router.push('/(protected)/rate-calculator');
+                  }}
+                >
+                  <Ionicons name="calculator" size={20} color="#059669" />
+                  <Text style={styles.fabSheetItemText}>Rate Calculator & Quotes</Text>
+                </Pressable>
+
+                <Pressable
+                  style={styles.fabSheetItem}
+                  onPress={() => {
+                    setFabActionVisible(false);
+                    router.push('/(protected)/claims');
+                  }}
+                >
+                  <Ionicons name="document-text" size={20} color="#DC2626" />
+                  <Text style={styles.fabSheetItemText}>File Claim Intimation</Text>
+                </Pressable>
+              </>
+            ) : (
+              // Admin & Manager
+              <>
+                <Pressable
+                  style={styles.fabSheetItem}
+                  onPress={() => {
+                    setFabActionVisible(false);
+                    router.push('/(protected)/leads');
+                  }}
+                >
+                  <Ionicons name="people" size={20} color="#002FA7" />
+                  <Text style={styles.fabSheetItemText}>New Vehicle Lead</Text>
+                </Pressable>
+
+                <Pressable
+                  style={styles.fabSheetItem}
+                  onPress={() => {
+                    setFabActionVisible(false);
+                    router.push('/(protected)/policy-approvals');
+                  }}
+                >
+                  <Ionicons name="shield-checkmark" size={20} color="#DC2626" />
+                  <Text style={styles.fabSheetItemText}>Review Policy Approvals</Text>
+                </Pressable>
+
+                <Pressable
+                  style={styles.fabSheetItem}
+                  onPress={() => {
+                    setFabActionVisible(false);
+                    router.push('/(protected)/renewals');
+                  }}
+                >
+                  <Ionicons name="repeat" size={20} color="#16A34A" />
+                  <Text style={styles.fabSheetItemText}>Renewals Pipeline</Text>
+                </Pressable>
+
+                <Pressable
+                  style={styles.fabSheetItem}
+                  onPress={() => {
+                    setFabActionVisible(false);
+                    router.push('/(protected)/cheques');
+                  }}
+                >
+                  <Ionicons name="card" size={20} color="#D97706" />
+                  <Text style={styles.fabSheetItemText}>Cheques Clearing Desk</Text>
+                </Pressable>
+              </>
+            )}
 
             <Pressable
               style={styles.fabSheetItem}
@@ -698,7 +1424,7 @@ export default function DashboardScreen() {
               }}
             >
               <Ionicons name="call" size={20} color="#2563EB" />
-              <Text style={styles.fabSheetItemText}>Call Admin Desk</Text>
+              <Text style={styles.fabSheetItemText}>Call Support Desk</Text>
             </Pressable>
           </View>
         </Pressable>
@@ -744,8 +1470,26 @@ const styles = StyleSheet.create({
     borderColor: '#FFFFFF',
   },
   headerCenter: { flex: 1, marginLeft: 10 },
+  headerGreeting: { fontSize: 11, fontWeight: '600', color: '#64748B' },
+  advisorName: { fontSize: 15, fontWeight: '800', color: '#0F172A', marginTop: 1 },
+  headerRolePill: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+    borderWidth: 1,
+    marginTop: 3,
+  },
+  headerRolePillText: {
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  avatarInitials: {
+    fontSize: 14,
+    fontWeight: '800',
+  },
   brandTitle: { fontSize: 11, fontWeight: '700', color: '#64748B', letterSpacing: 0.5, textTransform: 'uppercase' },
-  advisorName: { fontSize: 15, fontWeight: '800', color: '#0F172A' },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   headerIconBtn: {
     width: 36,
