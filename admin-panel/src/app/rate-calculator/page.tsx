@@ -596,10 +596,10 @@ export default function RateCalculatorPage() {
                 <div className="flex-1">
                   <input
                     type="text"
+                    readOnly
                     value={currentSubCalc.remarks}
-                    onChange={e => updateSubCalc(activeTab, { remarks: e.target.value })}
-                    placeholder={`Custom remarks or notes for Calculator ${activeTab}`}
-                    className="w-full bg-white border border-slate-200 rounded-xl py-2.5 px-3.5 text-xs font-medium text-slate-800 outline-none focus:ring-2 focus:ring-blue-500/20"
+                    placeholder="Remarks"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-3.5 text-xs font-medium text-slate-600 outline-none cursor-not-allowed"
                   />
                 </div>
               </div>

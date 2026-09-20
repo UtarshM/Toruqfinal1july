@@ -429,20 +429,17 @@ export default function RateCalculatorScreen() {
                 loading={loadingConfig && companies.length === 0}
               />
 
-              {/* 3. Remarks Text Input (Clean standard field, NO yellow alert/banner!) */}
+              {/* 3. Remarks (Read-only, auto-populated from company rule, NOT editable) */}
               <View style={styles.formGroup}>
                 <Text style={styles.fieldLabel}>Remarks</Text>
-                <TextInput
-                  style={[styles.inputBox, styles.remarksInput]}
-                  placeholder="Remarks"
-                  placeholderTextColor="#94A3B8"
-                  value={calcState.remarks}
-                  onChangeText={(val) => {
-                    setCalcState(prev => ({ ...prev, remarks: val }));
-                  }}
-                  multiline={true}
-                  numberOfLines={2}
-                />
+                <View style={[styles.inputBox, styles.readOnlyBox, styles.remarksBox]}>
+                  <Text
+                    style={[styles.inputText, !calcState.remarks && styles.placeholderText]}
+                    numberOfLines={3}
+                  >
+                    {calcState.remarks || 'Remarks'}
+                  </Text>
+                </View>
               </View>
 
               {/* Profit & Percentage Rule: ADMIN ONLY */}
@@ -614,12 +611,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#F8FAFC',
     borderColor: '#E2E8F0'
   },
-  remarksInput: {
-    height: 56,
-    textAlignVertical: 'top',
-    paddingTop: 8,
-    paddingBottom: 8,
-    lineHeight: 18
+  remarksBox: {
+    minHeight: 44,
+    height: 'auto',
+    paddingVertical: 10,
+    justifyContent: 'center'
   },
   inputText: {
     fontSize: 14,
