@@ -24,6 +24,7 @@ const MENU_GROUPS = [
       { name: 'Quotations', href: '/quotations' },
       { name: 'Rate Calculator', href: '/rate-calculator' },
       { name: 'Policies', href: '/policies' },
+      { name: 'Renewals', href: '/renewals' },
       { name: 'Follow-ups', href: '/follow-ups' },
       { name: 'Trashed List', href: '/leads/trash' },
     ]
@@ -48,6 +49,8 @@ const MENU_GROUPS = [
       { name: 'Roles & Permissions', href: '/roles' },
       { name: 'Data Approvals', href: '/data' },
       { name: 'Finance', href: '/finance' },
+      { name: 'Cheques', href: '/cheques' },
+      { name: 'Ughrani (Recovery)', href: '/ughrani' },
       { name: 'HR', href: '/hr' },
       { name: 'Lead Responses', href: '/settings/responses' },
       { name: 'Quotation Rates', href: '/settings/rates' },
@@ -110,7 +113,7 @@ export default function Sidebar() {
         items = items.filter(i => ['List', 'Leads', 'CRM', 'Quotations', 'Rate Calculator', 'Policies', 'Renewals', 'Follow-ups'].includes(i.name))
       }
       if (group.label === 'MANAGEMENT') {
-        items = items.filter(i => ['Policy Approvals', 'Onboarding Approvals', 'Users', 'Settings'].includes(i.name))
+        items = items.filter(i => ['Policy Approvals', 'Onboarding Approvals', 'Users', 'Finance', 'Cheques', 'Ughrani (Recovery)', 'Settings'].includes(i.name))
       }
     }
 

@@ -41,17 +41,20 @@ export async function GET(req: NextRequest) {
       where.importName = importName
     }
     
+    const dateType = searchParams.get('dateType') || 'createdAt'
+    const targetDateField = dateType === 'expiryDate' ? 'expiryDate' : (dateType === 'registrationDate' ? 'registrationDate' : 'createdAt')
+
     if (fromParam || toParam) {
-      where.createdAt = {}
+      where[targetDateField] = {}
       if (fromParam) {
         const d = new Date(fromParam)
         d.setHours(0, 0, 0, 0)
-        if (!isNaN(d.getTime())) where.createdAt.gte = d
+        if (!isNaN(d.getTime())) where[targetDateField].gte = d
       }
       if (toParam) {
         const d = new Date(toParam)
         d.setHours(23, 59, 59, 999)
-        if (!isNaN(d.getTime())) where.createdAt.lte = d
+        if (!isNaN(d.getTime())) where[targetDateField].lte = d
       }
     }
 

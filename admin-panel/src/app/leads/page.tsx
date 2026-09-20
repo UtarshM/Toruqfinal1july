@@ -97,6 +97,7 @@ export default function LeadsPage() {
   // Date Range State
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
+  const [dateType, setDateType] = useState<'createdAt' | 'expiryDate' | 'registrationDate'>('createdAt')
 
   // Sorting Config (Default: Expiry Date Ascending - Earlier expiry first!)
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({
@@ -204,6 +205,7 @@ export default function LeadsPage() {
       const params = new URLSearchParams()
       if (startDate) params.append('startDate', startDate)
       if (endDate) params.append('endDate', endDate)
+      if (startDate || endDate) params.append('dateType', dateType)
       if (statusFilter && statusFilter !== 'all') params.append('status', statusFilter)
       if (debouncedSearch && debouncedSearch.trim()) params.append('search', debouncedSearch.trim())
       params.append('limit', String(Math.min(pageSize, 100)))
@@ -238,7 +240,7 @@ export default function LeadsPage() {
 
   useEffect(() => {
     fetchData()
-  }, [statusFilter, debouncedSearch, startDate, endDate, currentPage, pageSize, sortConfig])
+  }, [statusFilter, debouncedSearch, startDate, endDate, dateType, currentPage, pageSize, sortConfig])
 
   const fetchEmployees = async () => {
     try {
@@ -977,6 +979,15 @@ export default function LeadsPage() {
         {/* Date Range Picker */}
         <div className="flex items-center gap-2 bg-slate-50 border border-slate-100 rounded-xl px-3 py-2">
           <Calendar size={14} className="text-slate-400" />
+          <select 
+            value={dateType} 
+            onChange={e => setDateType(e.target.value as any)}
+            className="text-[10px] font-bold text-slate-700 bg-transparent border-r border-slate-200 pr-1 mr-1 outline-hidden cursor-pointer"
+          >
+            <option value="createdAt">Created</option>
+            <option value="expiryDate">Expiry</option>
+            <option value="registrationDate">Registration</option>
+          </select>
           <input 
             type="date" 
             value={startDate} 

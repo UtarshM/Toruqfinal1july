@@ -15,6 +15,14 @@ export async function getDB(): Promise<SQLite.SQLiteDatabase> {
   if (dbInstance) return dbInstance;
   try {
     dbInstance = await SQLite.openDatabaseAsync('torque.db');
+    // High-performance SQLite engine tuning (WAL mode, 64MB RAM cache, mmap)
+    await dbInstance.execAsync(`
+      PRAGMA journal_mode = WAL;
+      PRAGMA synchronous = NORMAL;
+      PRAGMA cache_size = -64000;
+      PRAGMA temp_store = MEMORY;
+      PRAGMA mmap_size = 268435456;
+    `);
     return dbInstance;
   } catch (error) {
     console.error('[SQLite] Failed to open database:', error);
@@ -85,6 +93,11 @@ export async function initDB(): Promise<void> {
       CREATE INDEX IF NOT EXISTS idx_local_leads_status ON local_leads(status);
       CREATE INDEX IF NOT EXISTS idx_local_leads_veh_norm ON local_leads(vehicle_no_normalized);
       CREATE INDEX IF NOT EXISTS idx_local_leads_expiry ON local_leads(expiry_date);
+      CREATE INDEX IF NOT EXISTS idx_local_leads_status_expiry ON local_leads(status, expiry_date);
+      CREATE INDEX IF NOT EXISTS idx_local_leads_assigned_status ON local_leads(assigned_to, status);
+      CREATE INDEX IF NOT EXISTS idx_local_leads_assigned_expiry ON local_leads(assigned_to, expiry_date);
+      CREATE INDEX IF NOT EXISTS idx_local_leads_phone ON local_leads(client_phone);
+      CREATE INDEX IF NOT EXISTS idx_local_leads_updated ON local_leads(updated_at);
     `);
 
     // 5. Local Calls
@@ -100,6 +113,7 @@ export async function initDB(): Promise<void> {
         created_at TEXT NOT NULL
       );
       CREATE INDEX IF NOT EXISTS idx_local_calls_lead ON local_calls(lead_id);
+      CREATE INDEX IF NOT EXISTS idx_local_calls_user_created ON local_calls(user_id, created_at);
     `);
 
     // 6. Local Follow-ups
@@ -117,6 +131,7 @@ export async function initDB(): Promise<void> {
       );
       CREATE INDEX IF NOT EXISTS idx_local_followups_scheduled ON local_followups(scheduled_at);
       CREATE INDEX IF NOT EXISTS idx_local_followups_status ON local_followups(status);
+      CREATE INDEX IF NOT EXISTS idx_local_followups_assigned_status ON local_followups(assigned_to, status);
     `);
 
     // 7. Master Predefined Responses (36 master responses)
@@ -143,6 +158,7 @@ export async function initDB(): Promise<void> {
         data TEXT,
         created_at TEXT NOT NULL
       );
+      CREATE INDEX IF NOT EXISTS idx_local_notif_read_created ON local_notifications(is_read, created_at);
     `);
 
     // 9. Legacy Bookkeeping Tables
@@ -161,11 +177,17 @@ export async function initDB(): Promise<void> {
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       );
+      CREATE INDEX IF NOT EXISTS idx_cheques_status ON cheques(status);
+      CREATE INDEX IF NOT EXISTS idx_cheques_created ON cheques(created_at);
+      CREATE INDEX IF NOT EXISTS idx_cheques_cheque_no ON cheques(cheque_no);
+      CREATE INDEX IF NOT EXISTS idx_cheques_customer ON cheques(customer_id);
+
       CREATE TABLE IF NOT EXISTS ughrani_books (
         id TEXT PRIMARY KEY,
         book_name TEXT NOT NULL,
         created_at TEXT NOT NULL
       );
+
       CREATE TABLE IF NOT EXISTS ughrani_assignments (
         id TEXT PRIMARY KEY,
         book_id TEXT NOT NULL,
@@ -177,6 +199,10 @@ export async function initDB(): Promise<void> {
         collected_date TEXT,
         created_at TEXT NOT NULL
       );
+      CREATE INDEX IF NOT EXISTS idx_ughrani_asg_book ON ughrani_assignments(book_id);
+      CREATE INDEX IF NOT EXISTS idx_ughrani_asg_agent ON ughrani_assignments(agent_id);
+      CREATE INDEX IF NOT EXISTS idx_ughrani_asg_status ON ughrani_assignments(status);
+      CREATE INDEX IF NOT EXISTS idx_ughrani_asg_created ON ughrani_assignments(created_at);
       CREATE TABLE IF NOT EXISTS taken_cases (
         id TEXT PRIMARY KEY,
         client_name TEXT NOT NULL,

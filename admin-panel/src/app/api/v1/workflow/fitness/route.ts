@@ -40,13 +40,16 @@ export async function POST(req: NextRequest) {
     const data = await req.json()
     const fitness = await prisma.fitnessWork.create({
       data: {
-        leadId: data.lead_id,
-        assignedTo: data.assigned_to,
-        customerName: data.customer_name,
-        vehicleNumber: data.vehicle_number,
+        leadId: data.lead_id || data.leadId || null,
+        assignedTo: data.assigned_to || data.assignedTo || null,
+        customerName: data.customer_name || data.customerName || 'Customer',
+        vehicleNumber: data.vehicle_number || data.vehicleNumber || '',
         status: data.status || 'pending',
-        testDate: data.test_date ? new Date(data.test_date) : null,
-        fees: data.fees
+        testDate: (data.test_date || data.testDate) ? new Date(data.test_date || data.testDate) : null,
+        expiryDate: (data.expiry_date || data.expiryDate) ? new Date(data.expiry_date || data.expiryDate) : null,
+        fees: data.fees !== undefined && data.fees !== '' ? Number(data.fees) : null,
+        documentUrl: data.document_url || data.documentUrl || null,
+        permitUrl: data.permit_url || data.permitUrl || null,
       }
     })
     return NextResponse.json(fitness)

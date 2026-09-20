@@ -7,9 +7,10 @@ import { useAuth } from '@/context/AuthContext'
 import {
   Wallet, ArrowUpCircle, ArrowDownCircle, Search, Filter, Plus, X,
   Download, Calendar, RefreshCw, CheckCircle2, Clock, AlertCircle,
-  FileText, Shield, User, Phone, Car, DollarSign, CreditCard, ChevronRight
+  FileText, Shield, User, Phone, Car, DollarSign, CreditCard, ChevronRight, Printer
 } from 'lucide-react'
 import { formatDateDMY, getISTDateString } from '@/lib/date-format'
+import MoneyReceiptModal, { ReceiptData } from '@/components/pdf/MoneyReceiptModal'
 
 interface PolicyReceivableItem {
   id: string
@@ -40,6 +41,8 @@ export default function FinancePage() {
   const isManagerOrAdmin = roleName.includes('MANAGER') || roleName.includes('ADMIN') || roleName.includes('SUPER') || roleName.includes('ACCOUNTANT')
 
   const [activeTab, setActiveTab] = useState<'receivables' | 'ledger'>('receivables')
+  const [receiptData, setReceiptData] = useState<ReceiptData | null>(null)
+  const [isReceiptOpen, setIsReceiptOpen] = useState(false)
 
   // Tab 1: Receivables State
   const [receivables, setReceivables] = useState<PolicyReceivableItem[]>([])
@@ -173,10 +176,26 @@ export default function FinancePage() {
         })
       })
 
+      const collectedAmt = parseFloat(paymentForm.amount)
+      const targetPolicy = paymentModalPolicy
       setPaymentModalPolicy(null)
       fetchReceivables()
       fetchLedger()
-      alert('Payment collected and ledger entry updated successfully!')
+
+      // Prompt official receipt voucher for customer
+      setReceiptData({
+        receiptNo: `REC-${targetPolicy.policyNumber.slice(-6)}`,
+        date: paymentForm.date,
+        clientName: targetPolicy.clientName,
+        clientPhone: targetPolicy.clientPhone,
+        vehicleNo: targetPolicy.vehicleNo,
+        amount: collectedAmt,
+        paymentMethod: paymentForm.paymentMethod,
+        referenceNumber: paymentForm.referenceNumber,
+        policyNumber: targetPolicy.policyNumber,
+        description: `Installment for Policy ${targetPolicy.policyNumber} (${targetPolicy.provider} - ${targetPolicy.type})`,
+      })
+      setIsReceiptOpen(true)
     } catch (err: any) {
       alert(err.message || 'Failed to record payment.')
     } finally {
@@ -539,6 +558,30 @@ export default function FinancePage() {
                               </button>
                             )}
 
+                            {/* Print Receipt Voucher */}
+                            {item.paidAmount > 0 && (
+                              <button
+                                onClick={() => {
+                                  setReceiptData({
+                                    receiptNo: `REC-${item.policyNumber.slice(-6)}`,
+                                    date: item.issueDate || new Date().toISOString(),
+                                    clientName: item.clientName,
+                                    clientPhone: item.clientPhone,
+                                    vehicleNo: item.vehicleNo,
+                                    amount: item.paidAmount,
+                                    paymentMethod: item.paymentMode || 'ONLINE',
+                                    policyNumber: item.policyNumber,
+                                    description: `Insurance Premium Receipt for ${item.provider} ${item.type}`,
+                                  })
+                                  setIsReceiptOpen(true)
+                                }}
+                                className="p-2 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-xl transition-all border border-emerald-200 cursor-pointer"
+                                title="Print Customer Money Receipt Voucher"
+                              >
+                                <Printer size={14} />
+                              </button>
+                            )}
+
                             {/* Download 7-Doc Merged PDF Bundle */}
                             {item.compiledPdfUrl && (
                               <a
@@ -872,6 +915,13 @@ export default function FinancePage() {
           </div>
         </div>
       )}
+
+      {/* Money Receipt Modal */}
+      <MoneyReceiptModal
+        isOpen={isReceiptOpen}
+        data={receiptData}
+        onClose={() => setIsReceiptOpen(false)}
+      />
     </AdminLayout>
   )
 }
