@@ -107,7 +107,7 @@ export default function Sidebar() {
         items = items.filter(i => ['Loans', 'Loan Inquiries', 'Claims', 'RTO Work', 'DL Work', 'Fitness'].includes(i.name))
       }
       if (group.label === 'SALES') {
-        items = items.filter(i => ['List', 'Leads', 'CRM', 'Quotations', 'Policies', 'Renewals', 'Follow-ups'].includes(i.name))
+        items = items.filter(i => ['List', 'Leads', 'CRM', 'Quotations', 'Rate Calculator', 'Policies', 'Renewals', 'Follow-ups'].includes(i.name))
       }
       if (group.label === 'MANAGEMENT') {
         items = items.filter(i => ['Policy Approvals', 'Onboarding Approvals', 'Users', 'Settings'].includes(i.name))

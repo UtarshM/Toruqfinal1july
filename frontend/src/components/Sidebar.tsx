@@ -58,7 +58,7 @@ export default function Sidebar({ visible, onClose }: SidebarProps) {
         { name: 'Imported Spreadsheets', icon: 'grid-outline', route: '/(protected)/sheets', visible: isAdmin },
         { name: 'CRM', icon: 'person-add-outline', route: '/(protected)/crm', visible: !['ACCOUNTANT'].includes(roleUpper) && !isHrManager },
         { name: 'Quotations', icon: 'clipboard-outline', route: '/(protected)/quotations', visible: isAdmin || isManager },
-        { name: 'Rate Calculator', icon: 'calculator-outline', route: '/(protected)/rate-calculator', visible: isAdmin },
+        { name: 'Rate Calculator', icon: 'calculator-outline', route: '/(protected)/rate-calculator', visible: !isHrManager },
         { name: 'Policies', icon: 'shield-checkmark-outline', route: '/(protected)/policies', visible: isAdmin || isManager },
         { name: 'Follow-ups', icon: 'calendar-outline', route: '/(protected)/follow-ups', visible: !['ACCOUNTANT'].includes(roleUpper) && !isHrManager },
       ]
@@ -73,7 +73,6 @@ export default function Sidebar({ visible, onClose }: SidebarProps) {
         { name: 'Fitness', icon: 'fitness-outline', route: '/(protected)/fitness', visible: !isHrManager && (isAdmin || isManager || roleUpper.includes('FITNESS')) },
         { name: 'Cheques', icon: 'card-outline', route: '/(protected)/cheques', visible: !isHrManager && (isAdmin || isManager || roleUpper === 'ACCOUNTANT') },
         { name: 'Ughrani (Collections)', icon: 'list-outline', route: '/(protected)/ughrani', visible: !['ACCOUNTANT'].includes(roleUpper) && !isHrManager },
-        { name: 'Taken Documents', icon: 'folder-open-outline', route: '/(protected)/taken', visible: !['ACCOUNTANT'].includes(roleUpper) && !isHrManager },
       ]
     },
     {
