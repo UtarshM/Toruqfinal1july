@@ -25,6 +25,8 @@ import {
   upsertLocalFollowup,
   updateLocalLeadOutcome,
   getDB,
+  getCacheItem,
+  setCacheItem,
   OfflineMutation
 } from './db';
 
@@ -219,6 +221,10 @@ export async function syncAll(): Promise<SyncStats> {
     const pulledCount = await pullSync();
     const cursor = (await getSyncMetadata(SYNC_CURSOR_KEY)) || '0';
 
+    // Opportunistically refresh rate master data and quotations cache in the background
+    syncMasterRateData().catch(e => console.warn('[SyncEngine] Rate master sync warning:', e.message));
+    syncQuotationsCache().catch(e => console.warn('[SyncEngine] Quotations cache sync warning:', e.message));
+
     const hasFailed = pushRes.failedCount > 0;
     const pending = await getPendingMutations();
 
@@ -256,6 +262,44 @@ export async function retryFailedMutations(): Promise<void> {
   const db = await getDB();
   await db.runAsync("UPDATE local_sync_queue SET status = 'pending' WHERE status = 'failed'");
   await syncAll();
+}
+
+/**
+ * Opportunistically fetches and caches rate master data into SQLite general_cache
+ */
+export async function syncMasterRateData(): Promise<void> {
+  try {
+    const [compRes, catRes, relRes] = await Promise.all([
+      api.get('/rates/companies'),
+      api.get('/rates/categories'),
+      api.get('/rates/relationships')
+    ]);
+
+    const compData = Array.isArray(compRes?.data ?? compRes) ? (compRes?.data ?? compRes) : ((compRes?.data ?? compRes)?.companies || []);
+    const catData = Array.isArray(catRes?.data ?? catRes) ? (catRes?.data ?? catRes) : ((catRes?.data ?? catRes)?.categories || []);
+    const relData = Array.isArray(relRes?.data ?? relRes) ? (relRes?.data ?? relRes) : [];
+
+    if (compData.length > 0) await setCacheItem('rate_companies', compData);
+    if (catData.length > 0) await setCacheItem('rate_categories', catData);
+    if (relData.length > 0) await setCacheItem('rate_relationships', relData);
+  } catch (err: any) {
+    console.warn('[SyncEngine] syncMasterRateData error:', err.message);
+  }
+}
+
+/**
+ * Opportunistically fetches and caches quotations list into SQLite general_cache
+ */
+export async function syncQuotationsCache(): Promise<void> {
+  try {
+    const res = await api.get('/quotations?limit=100');
+    const data = res?.data ?? res;
+    if (Array.isArray(data)) {
+      await setCacheItem('quotations_list', data);
+    }
+  } catch (err: any) {
+    console.warn('[SyncEngine] syncQuotationsCache error:', err.message);
+  }
 }
 
 /**

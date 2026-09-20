@@ -12,6 +12,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { useAuth } from '../../src/context/AuthContext';
 import { saveFileToDevice } from '../../src/utils/fileSaver';
+import { getCacheItem, setCacheItem } from '../../src/lib/db';
 
 export default function QuotationsScreen() {
   const router = useRouter();
@@ -23,14 +24,22 @@ export default function QuotationsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  const roleUpper = currentUser?.role?.toUpperCase() || '';
-  const isAdmin = roleUpper === 'SUPER ADMIN' || roleUpper === 'ADMIN';
+  const roleUpper = (typeof (currentUser?.role as any) === 'object' ? (currentUser?.role as any)?.name : currentUser?.role)?.toUpperCase() || '';
+  const isSuperAdminEmail = currentUser?.email?.toLowerCase() === 'torqueautoadvisor@gmail.com';
+  const isAdmin = roleUpper === 'SUPER ADMIN' || roleUpper === 'ADMIN' || roleUpper.includes('ADMIN') || isSuperAdminEmail;
 
-  // Load cache on mount
+  // 1. Instant local SQLite cache read on mount (0ms delay)
   useEffect(() => {
+    getCacheItem('quotations_list').then((cached) => {
+      if (cached && Array.isArray(cached) && cached.length > 0) {
+        setItems(cached);
+        setTotal(cached.length);
+      }
+    });
+
     loadCache().then(() => {
       const cached = cache['/quotations'];
-      if (cached && cached.items) {
+      if (cached && cached.items && items.length === 0) {
         setItems(cached.items);
         setTotal(cached.items.length);
       }
@@ -40,9 +49,13 @@ export default function QuotationsScreen() {
   const load = useCallback(async () => {
     try {
       const data = await quotationsService.list({ limit: 100 });
-      setItems(data);
-      setTotal(data.length);
-      setCache('/quotations', { items: data });
+      if (Array.isArray(data)) {
+        setItems(data);
+        setTotal(data.length);
+        setCache('/quotations', { items: data });
+        // Sync to SQLite local cache
+        await setCacheItem('quotations_list', data);
+      }
     } catch (e) {
       console.error('[QuotationsScreen] Failed to load quotations', e);
     }

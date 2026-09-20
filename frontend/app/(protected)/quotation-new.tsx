@@ -6,6 +6,7 @@ import { api } from '../../src/utils/api';
 import { Colors, Spacing, FontSize, BorderRadius } from '../../src/utils/theme';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../src/context/AuthContext';
+import { getCacheItem, setCacheItem, getDB } from '../../src/lib/db';
 
 interface DropdownProps {
   label: string;
@@ -124,6 +125,7 @@ export default function QuotationNewScreen() {
   // Rate calculator lists
   const [companies, setCompanies] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
+  const [relationships, setRelationships] = useState<any[]>([]);
   const [loadingConfig, setLoadingConfig] = useState(false);
 
   const roleUpper = (typeof (currentUser?.role as any) === 'object' ? (currentUser?.role as any)?.name : currentUser?.role)?.toUpperCase() || '';
@@ -143,66 +145,122 @@ export default function QuotationNewScreen() {
 
   const update = (k: string, v: string) => setForm(p => ({ ...p, [k]: v }));
 
-  // Fetch Leads list
+  // Fetch Leads list (SQLite first, then API)
   useEffect(() => {
+    let isMounted = true;
     const fetchLeads = async () => {
+      // 1. Try local SQLite leads table first (0ms)
+      try {
+        const db = await getDB();
+        const localRows = await db.getAllAsync<any>('SELECT id, client_name as clientName, vehicle_no as vehicleNo, client_phone as clientPhone FROM local_leads LIMIT 100');
+        if (isMounted && localRows && localRows.length > 0) {
+          setLeads(localRows);
+        }
+      } catch (err) {}
+
+      // 2. Fetch from API
       setLoadingLeads(true);
       try {
         const res = await api.get<any>('/leads');
-        setLeads(res.leads || res || []);
+        const apiLeads = res.leads || res || [];
+        if (isMounted && Array.isArray(apiLeads) && apiLeads.length > 0) {
+          setLeads(apiLeads);
+        }
       } catch (err) {
         console.error('Failed to fetch leads:', err);
       } finally {
-        setLoadingLeads(false);
+        if (isMounted) setLoadingLeads(false);
       }
     };
     fetchLeads();
+    return () => { isMounted = false; };
   }, []);
 
-  // Fetch Companies & Categories lists
+  // Fetch Companies & Categories lists (SQLite first, then API)
   useEffect(() => {
+    let isMounted = true;
+    // 1. Instant SQLite read (0ms)
+    getCacheItem('rate_companies').then(d => { if (isMounted && d?.length) setCompanies(d); });
+    getCacheItem('rate_categories').then(d => { if (isMounted && d?.length) setCategories(d); });
+    getCacheItem('rate_relationships').then(d => { if (isMounted && d?.length) setRelationships(d); });
+
     const fetchConfig = async () => {
       setLoadingConfig(true);
       try {
-        const [compRes, catRes] = await Promise.all([
+        const [compRes, catRes, relRes] = await Promise.all([
           api.get('/rates/companies'),
-          api.get('/rates/categories')
+          api.get('/rates/categories'),
+          api.get('/rates/relationships')
         ]);
-        setCompanies(compRes || []);
-        setCategories(catRes || []);
+        const compData = Array.isArray(compRes?.data ?? compRes) ? (compRes?.data ?? compRes) : ((compRes?.data ?? compRes)?.companies || []);
+        const catData = Array.isArray(catRes?.data ?? catRes) ? (catRes?.data ?? catRes) : ((catRes?.data ?? catRes)?.categories || []);
+        const relData = Array.isArray(relRes?.data ?? relRes) ? (relRes?.data ?? relRes) : [];
+
+        if (isMounted) {
+          if (compData.length > 0) {
+            setCompanies(compData);
+            setCacheItem('rate_companies', compData);
+          }
+          if (catData.length > 0) {
+            setCategories(catData);
+            setCacheItem('rate_categories', catData);
+          }
+          if (relData.length > 0) {
+            setRelationships(relData);
+            setCacheItem('rate_relationships', relData);
+          }
+        }
       } catch (err) {
         console.error('Failed to load companies/categories:', err);
       } finally {
-        setLoadingConfig(false);
+        if (isMounted) setLoadingConfig(false);
       }
     };
     fetchConfig();
+    return () => { isMounted = false; };
   }, []);
 
-  // Lookup rule details
+  // Instant Local Lookup rule details (0ms)
   useEffect(() => {
-    const lookupRelation = async () => {
-      if (calcData.companyId && calcData.categoryId) {
+    if (calcData.companyId) {
+      // 1. Check local relationships cache first (0ms)
+      const compRel = relationships.find(
+        r => r.companyId === calcData.companyId && (!calcData.categoryId || r.categoryId === calcData.categoryId)
+      ) || relationships.find(r => r.companyId === calcData.companyId);
+
+      if (compRel) {
+        setCalcData(prev => ({
+          ...prev,
+          percentage: compRel.percentage ? parseFloat(String(compRel.percentage)) : 0,
+          profit: compRel.profit ? parseFloat(String(compRel.profit)) : 0
+        }));
+        return;
+      }
+
+      // 2. Fallback to API lookup
+      const lookupRelation = async () => {
         try {
-          const res = await api.get(`/rates/relationships/lookup?companyId=${calcData.companyId}&categoryId=${calcData.categoryId}`);
+          const catParam = calcData.categoryId ? `&categoryId=${calcData.categoryId}` : '';
+          const res = await api.get(`/rates/relationships/lookup?companyId=${calcData.companyId}${catParam}`);
+          const data = res?.data ?? res;
           setCalcData(prev => ({
             ...prev,
-            percentage: res.qtr_percentage || 0,
-            profit: res.qtr_profit || 0
+            percentage: data.qtr_percentage || 0,
+            profit: data.qtr_profit || 0
           }));
         } catch (err) {
           console.error('Failed to lookup rate rules:', err);
         }
-      } else {
-        setCalcData(prev => ({
-          ...prev,
-          percentage: 0,
-          profit: 0
-        }));
-      }
-    };
-    lookupRelation();
-  }, [calcData.companyId, calcData.categoryId]);
+      };
+      lookupRelation();
+    } else {
+      setCalcData(prev => ({
+        ...prev,
+        percentage: 0,
+        profit: 0
+      }));
+    }
+  }, [calcData.companyId, calcData.categoryId, relationships]);
 
   // Live calculator calculation logic matching the backend / PHP formulas
   useEffect(() => {
