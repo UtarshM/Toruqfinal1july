@@ -319,8 +319,10 @@ export default function LeadDetailScreen() {
 
     // 2. Fetch fresh remote data if online
     try {
-      const leadData = await api.get<any>(`/leads/${id}`);
-      if (leadData) {
+      const res = await api.get<any>(`/leads/${id}`);
+      const body = res?.data ?? res;
+      const leadData = body?.lead || body?.data || body;
+      if (leadData && (leadData.id || leadData.clientName || leadData.client_name)) {
         // Map DB field names to what the UI expects
         const mappedLead = {
           ...leadData,

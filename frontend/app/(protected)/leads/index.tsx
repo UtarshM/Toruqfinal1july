@@ -43,8 +43,9 @@ export default function LeadsScreen() {
 
   const fetchImports = async () => {
     try {
-      const list = await api.get<string[]>('/leads/imports');
-      setImportNames(list || []);
+      const res = await api.get<any>('/leads/imports');
+      const data = res?.data ?? res;
+      setImportNames(Array.isArray(data) ? data : (data?.imports || []));
     } catch (err) {
       console.warn('Failed to load import sheet names', err);
     }
@@ -92,8 +93,9 @@ export default function LeadsScreen() {
       // Background delta refresh
       const query = importNameFilter ? `?importName=${encodeURIComponent(importNameFilter)}` : '';
       const res = await api.get<any>(`/leads${query}`);
-      const leads = Array.isArray(res) ? res : (res?.leads || res?.data || []);
-      if (leads && leads.length > 0) {
+      const body = res?.data ?? res;
+      const leads = Array.isArray(body) ? body : (body?.leads || body?.data || []);
+      if (Array.isArray(leads) && leads.length > 0) {
         setItems(leads);
         setCache(`/leads${query}`, { leads, timestamp: Date.now() });
         // Automatically cache to local SQLite so offline mode has all leads immediately

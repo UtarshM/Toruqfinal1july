@@ -27,19 +27,6 @@ const { width } = Dimensions.get('window');
 // Banners for Hero Carousel matching partner reference design
 const HERO_BANNERS = [
   {
-    id: 'malamaal',
-    badge: 'EVERY MONDAY TO SUNDAY | Motor & Health Policies',
-    title: 'MALAMAAL Weekly',
-    subtitle: 'Torque Partner Rewards & Incentives',
-    leftTag: 'GUARANTEED INSTANT REWARD',
-    leftValue: '50-1,000 COINS',
-    rightTag: 'GRAND WEEKLY LOTTERY',
-    rightValue: 'UP TO 20,000 COINS',
-    btnText: 'Spin Lucky Wheel',
-    type: 'reward',
-    gradientBg: '#1E3A8A',
-  },
-  {
     id: 'insurance',
     badge: '20+ TOP INSURERS ONBOARD',
     title: 'Motor & Commercial Hub',
@@ -54,14 +41,14 @@ const HERO_BANNERS = [
   },
   {
     id: 'claims',
-    badge: 'FAST-TRACK CLAIMS SOP',
+    badge: 'FAST-TRACK CLAIMS',
     title: 'Zero-Hassle Claim Intimation',
-    subtitle: 'Spot Survey, Video & Recording SOP',
+    subtitle: 'Spot Survey & Quick Desk Processing',
     leftTag: 'OD & TP CLAIMS',
     leftValue: 'DIRECT DESK',
     rightTag: 'SURVEYOR SUPPORT',
     rightValue: '24/7 HELPLINE',
-    btnText: 'File New Claim (SOP)',
+    btnText: 'File New Claim',
     type: 'claim',
     gradientBg: '#831843',
   },
@@ -109,19 +96,12 @@ export default function DashboardScreen() {
   const [timeframeModalVisible, setTimeframeModalVisible] = useState(false);
 
   // Modals
-  const [sopModalVisible, setSopModalVisible] = useState(false);
-  const [rewardsModalVisible, setRewardsModalVisible] = useState(false);
-  const [brandModalVisible, setBrandModalVisible] = useState(false);
   const [fabActionVisible, setFabActionVisible] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState<'all' | 'motor' | 'commercial'>('all');
 
   // Carousel Active Index
   const [activeBannerIndex, setActiveBannerIndex] = useState(0);
   const carouselScrollRef = useRef<ScrollView>(null);
-
-  // Lucky Wheel Spin Simulation State
-  const [spinning, setSpinning] = useState(false);
-  const [wonCoins, setWonCoins] = useState<number | null>(null);
 
   // Hydrate cache on mount
   useEffect(() => {
@@ -136,10 +116,13 @@ export default function DashboardScreen() {
 
   const loadData = useCallback(async () => {
     try {
-      const [sData, nData] = await Promise.all([
+      const [sRes, nRes] = await Promise.all([
         api.get(`/dashboard/stats?timeframe=${timeframe}`).catch(() => null),
         api.get('/notifications?limit=6').catch(() => null),
       ]);
+
+      const sData = sRes?.data || sRes;
+      const nData = nRes?.data || nRes;
 
       let leads = 0;
       let revenue = 0;
@@ -183,11 +166,11 @@ export default function DashboardScreen() {
         pending_rto,
         pending_fitness,
       };
-      const newItems = nData?.notifications || [];
+      const newItems = nData?.notifications || nData || [];
 
       setStats(newStats);
-      setItems(newItems);
-      setCache('/dashboard/stats', { stats: newStats, items: newItems, timestamp: Date.now() });
+      setItems(Array.isArray(newItems) ? newItems : []);
+      setCache('/dashboard/stats', { stats: newStats, items: Array.isArray(newItems) ? newItems : [], timestamp: Date.now() });
     } catch (e) {
       console.warn('Dashboard load error:', e);
     }
@@ -228,9 +211,7 @@ export default function DashboardScreen() {
   };
 
   const handleBannerAction = (banner: (typeof HERO_BANNERS)[0]) => {
-    if (banner.type === 'reward') {
-      setRewardsModalVisible(true);
-    } else if (banner.type === 'quote') {
+    if (banner.type === 'quote') {
       router.push('/(protected)/quotations' as any);
     } else if (banner.type === 'claim') {
       router.push('/(protected)/claims' as any);
@@ -246,18 +227,6 @@ export default function DashboardScreen() {
     } as any);
   };
 
-  const handleSpinWheel = () => {
-    if (spinning) return;
-    setSpinning(true);
-    setWonCoins(null);
-    setTimeout(() => {
-      const prizes = [50, 100, 150, 200, 500, 1000];
-      const selected = prizes[Math.floor(Math.random() * prizes.length)];
-      setWonCoins(selected);
-      setSpinning(false);
-    }, 1800);
-  };
-
   const userName = user?.full_name || user?.name || 'Torque Advisor';
 
   return (
@@ -267,7 +236,7 @@ export default function DashboardScreen() {
       {/* Drawer Sidebar */}
       <Sidebar visible={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
-      {/* 1. TOP HEADER (Matching reference screenshot) */}
+      {/* 1. TOP HEADER (Clean, Professional Torque CRM) */}
       <View style={styles.header}>
         {/* Left: User Profile Avatar */}
         <Pressable onPress={() => setSidebarOpen(true)} style={styles.avatarButton}>
@@ -285,7 +254,7 @@ export default function DashboardScreen() {
           </Text>
         </View>
 
-        {/* Right Action Icons: Notification Bell (with badge), SOP/Tickets pill, Gift icon */}
+        {/* Right Action Icons */}
         <View style={styles.headerActions}>
           {/* Notification Bell */}
           <Pressable
@@ -298,17 +267,6 @@ export default function DashboardScreen() {
                 {items.length > 0 ? (items.length > 9 ? '9+' : items.length) : '4'}
               </Text>
             </View>
-          </Pressable>
-
-          {/* ? SOPs / Help Pill */}
-          <Pressable onPress={() => setSopModalVisible(true)} style={styles.sopPillBtn}>
-            <Ionicons name="help-circle-outline" size={16} color="#002FA7" />
-            <Text style={styles.sopPillText}>SOPs</Text>
-          </Pressable>
-
-          {/* Gift / Rewards Icon */}
-          <Pressable onPress={() => setRewardsModalVisible(true)} style={styles.headerIconBtn}>
-            <Ionicons name="gift-outline" size={21} color="#002FA7" />
           </Pressable>
         </View>
       </View>
@@ -521,15 +479,15 @@ export default function DashboardScreen() {
               <Text style={styles.recItemTitle}>RTO Work</Text>
             </Pressable>
 
-            {/* 4. My Brand */}
+            {/* 4. Renewals */}
             <Pressable
               style={styles.recommendedItem}
-              onPress={() => setBrandModalVisible(true)}
+              onPress={() => router.push('/(protected)/renewals')}
             >
               <View style={[styles.recIconWrap, { backgroundColor: '#E0F2FE' }]}>
-                <Ionicons name="newspaper" size={24} color="#0284C7" />
+                <Ionicons name="repeat-outline" size={24} color="#0284C7" />
               </View>
-              <Text style={styles.recItemTitle}>My Brand</Text>
+              <Text style={styles.recItemTitle}>Renewals</Text>
             </Pressable>
           </View>
 
@@ -663,188 +621,7 @@ export default function DashboardScreen() {
         </Pressable>
       </Modal>
 
-      {/* MODAL: TORQUE SOPS & HELP DESK */}
-      <Modal
-        visible={sopModalVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setSopModalVisible(false)}
-      >
-        <View style={styles.sopModalContainer}>
-          <View style={styles.sopModalHeader}>
-            <Text style={styles.sopModalHeading}>Torque Operational SOPs</Text>
-            <Pressable onPress={() => setSopModalVisible(false)}>
-              <Ionicons name="close-circle" size={24} color="#94A3B8" />
-            </Pressable>
-          </View>
-
-          <ScrollView style={{ padding: 16 }}>
-            {/* 1. Claims SOP */}
-            <View style={styles.sopSectionCard}>
-              <View style={styles.sopTitleRow}>
-                <Ionicons name="document-text" size={18} color="#2563EB" />
-                <Text style={styles.sopCardTitle}>1. Claims Intimation SOP</Text>
-              </View>
-              <Text style={styles.sopCardDesc}>
-                • Collect: Vehicle Reg Number, Category, Insurance Co, Policy PDF.{'\n'}
-                • Customer details: Contact Person Name, Mobile, Accident Date/Time/Location.{'\n'}
-                • Upload: OD/TP claim declaration, Spot photos, Intimation call recording.
-              </Text>
-              <Pressable
-                style={styles.sopActionBtn}
-                onPress={() => {
-                  setSopModalVisible(false);
-                  router.push('/(protected)/claims');
-                }}
-              >
-                <Text style={styles.sopActionBtnText}>Open Claims Desk</Text>
-              </Pressable>
-            </View>
-
-            {/* 2. Loan Inquiries SOP */}
-            <View style={styles.sopSectionCard}>
-              <View style={styles.sopTitleRow}>
-                <Ionicons name="cash" size={18} color="#16A34A" />
-                <Text style={styles.sopCardTitle}>2. Loan Inquiries SOP</Text>
-              </View>
-              <Text style={styles.sopCardDesc}>
-                • Inward logging: Inward Date, Customer Name, Mobile, Vehicle No, Category.{'\n'}
-                • Finance details: Required Amount, Sanctioned Amount, Disbursed Date.{'\n'}
-                • Partner NBFC/Bank name, Payout %, Payout Amount, Reason if not done.
-              </Text>
-              <Pressable
-                style={styles.sopActionBtn}
-                onPress={() => {
-                  setSopModalVisible(false);
-                  router.push('/(protected)/loan-inquiries' as any);
-                }}
-              >
-                <Text style={styles.sopActionBtnText}>Open Loan Inquiries Desk</Text>
-              </Pressable>
-            </View>
-
-            {/* 3. RTO & Fitness SOP */}
-            <View style={styles.sopSectionCard}>
-              <View style={styles.sopTitleRow}>
-                <Ionicons name="car-sport" size={18} color="#D97706" />
-                <Text style={styles.sopCardTitle}>3. RTO Work & Fitness SOP</Text>
-              </View>
-              <Text style={styles.sopCardDesc}>
-                • Work types: New DL, Faceless Renewal, Heavy License, Truck CF, TO Permit.{'\n'}
-                • Financials: Work Amount, Jama, Baki, Mobile No, Remarks & Receipts.
-              </Text>
-              <Pressable
-                style={styles.sopActionBtn}
-                onPress={() => {
-                  setSopModalVisible(false);
-                  router.push('/(protected)/rto');
-                }}
-              >
-                <Text style={styles.sopActionBtnText}>Open RTO Desk</Text>
-              </Pressable>
-            </View>
-          </ScrollView>
-        </View>
-      </Modal>
-
-      {/* MODAL: MALAMAAL REWARDS & LUCKY WHEEL */}
-      <Modal
-        visible={rewardsModalVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setRewardsModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.rewardsModalCard}>
-            <View style={styles.rewardsHeader}>
-              <Text style={styles.rewardsTitle}>MALAMAAL Weekly Rewards</Text>
-              <Pressable onPress={() => setRewardsModalVisible(false)}>
-                <Ionicons name="close" size={22} color="#64748B" />
-              </Pressable>
-            </View>
-
-            <Text style={styles.rewardsSub}>
-              Spin the lucky wheel for policy bookings & claim timely payouts!
-            </Text>
-
-            {/* Lucky Wheel Graphic Simulation */}
-            <View style={styles.wheelContainer}>
-              <View
-                style={[
-                  styles.wheelGraphic,
-                  spinning && { transform: [{ rotate: '720deg' }] },
-                ]}
-              >
-                <Ionicons name="trophy" size={54} color="#F59E0B" />
-              </View>
-            </View>
-
-            {wonCoins !== null ? (
-              <View style={styles.wonBanner}>
-                <Text style={styles.wonBannerTitle}>Congratulations!</Text>
-                <Text style={styles.wonBannerText}>
-                  You won <Text style={{ fontWeight: '900', color: '#10B981' }}>{wonCoins} Torque Coins</Text>!
-                </Text>
-              </View>
-            ) : null}
-
-            <Pressable
-              onPress={handleSpinWheel}
-              disabled={spinning}
-              style={[styles.spinBtn, spinning && { opacity: 0.7 }]}
-            >
-              <Text style={styles.spinBtnText}>
-                {spinning ? 'Spinning the Wheel...' : 'Spin Wheel (Free)'}
-              </Text>
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
-
-      {/* MODAL: MY BRAND (Digital Visiting Card & Marketing Poster) */}
-      <Modal
-        visible={brandModalVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setBrandModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.brandModalCard}>
-            <View style={styles.rewardsHeader}>
-              <Text style={styles.rewardsTitle}>My Digital Brand</Text>
-              <Pressable onPress={() => setBrandModalVisible(false)}>
-                <Ionicons name="close" size={22} color="#64748B" />
-              </Pressable>
-            </View>
-
-            {/* Visiting Card Preview */}
-            <View style={styles.visitingCard}>
-              <Text style={styles.vcCompany}>TORQUE AUTO ADVISOR</Text>
-              <Text style={styles.vcName}>{userName}</Text>
-              <Text style={styles.vcRole}>Authorized Insurance & Finance Partner</Text>
-              <View style={styles.vcDivider} />
-              <Text style={styles.vcDetail}>📞 {user?.email || 'torqueautoadvisor@gmail.com'}</Text>
-              <Text style={styles.vcDetail}>🛡️ Motor · Commercial · Health · Loans · RTO</Text>
-            </View>
-
-            <Pressable
-              onPress={() => {
-                Alert.alert(
-                  'Share Brand',
-                  `Sharing visiting card for ${userName} via WhatsApp...`
-                );
-                setBrandModalVisible(false);
-              }}
-              style={styles.shareBrandBtn}
-            >
-              <Ionicons name="share-social" size={16} color="#FFFFFF" />
-              <Text style={styles.shareBrandBtnText}>Share Digital Visiting Card</Text>
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
-
-      {/* MODAL: QUICK SOP FAB ACTIONS */}
+      {/* MODAL: QUICK ACTIONS FAB */}
       <Modal
         visible={fabActionVisible}
         transparent
@@ -856,7 +633,7 @@ export default function DashboardScreen() {
           onPress={() => setFabActionVisible(false)}
         >
           <View style={styles.fabActionSheet}>
-            <Text style={styles.fabSheetTitle}>Quick Actions & SOPs</Text>
+            <Text style={styles.fabSheetTitle}>Quick Actions</Text>
 
             <Pressable
               style={styles.fabSheetItem}
@@ -877,7 +654,7 @@ export default function DashboardScreen() {
               }}
             >
               <Ionicons name="document-text" size={20} color="#DC2626" />
-              <Text style={styles.fabSheetItemText}>File Claim Intimation (SOP)</Text>
+              <Text style={styles.fabSheetItemText}>File Claim Intimation</Text>
             </Pressable>
 
             <Pressable
@@ -888,7 +665,7 @@ export default function DashboardScreen() {
               }}
             >
               <Ionicons name="cash" size={20} color="#16A34A" />
-              <Text style={styles.fabSheetItemText}>New Loan Inquiry (SOP)</Text>
+              <Text style={styles.fabSheetItemText}>New Loan Inquiry</Text>
             </Pressable>
 
             <Pressable

@@ -83,16 +83,22 @@ export const leadsService = {
     if (params.search) qs.set('search', params.search);
     if (params.status) qs.set('status', params.status);
     const query = qs.toString() ? `?${qs}` : '';
-    return api.get<Lead[]>(`${BASE}${query}`).then(res => {
+    return api.get<any>(`${BASE}${query}`).then(res => {
       // Background save to local SQLite
-      const leads = Array.isArray(res) ? res : (res as any)?.data || [];
-      leads.forEach((l: any) => upsertLocalLead(l).catch(() => {}));
+      const body = res?.data ?? res;
+      const leads = Array.isArray(body) ? body : (body?.leads || body?.data || []);
+      if (Array.isArray(leads)) {
+        leads.forEach((l: any) => upsertLocalLead(l).catch(() => {}));
+      }
       return leads;
     });
   },
 
   getById: (id: string): Promise<Lead> =>
-    api.get<Lead>(`${BASE}/${id}`),
+    api.get<any>(`${BASE}/${id}`).then(res => {
+      const body = res?.data ?? res;
+      return body?.lead || body?.data || body;
+    }),
 
   create: (data: LeadCreate): Promise<Lead> =>
     api.post<Lead>(`${BASE}/`, data),

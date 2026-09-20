@@ -491,7 +491,8 @@ export default function FollowUpsScreen() {
     setLoadingLeads(true);
     try {
       const res = await api.get<any>('/leads');
-      const leadsArr = res.leads || [];
+      const body = res?.data ?? res;
+      const leadsArr = Array.isArray(body) ? body : (body?.leads || body?.data || []);
       setLeads(leadsArr);
     } catch (err) {
       console.error('Error fetching leads:', err);
@@ -539,9 +540,10 @@ export default function FollowUpsScreen() {
       }
 
       // 2. Fetch fresh remote data
-      const data = await api.get<any[]>('/follow-ups?status=all');
-      const arr = Array.isArray(data) ? data : [];
-      if (arr.length > 0) {
+      const res = await api.get<any>('/follow-ups?status=all');
+      const body = res?.data ?? res;
+      const arr = Array.isArray(body) ? body : (body?.items || body?.followUps || body?.data || []);
+      if (Array.isArray(arr) && arr.length > 0) {
         setItems(arr);
         setCache('/follow-ups', { items: arr, timestamp: Date.now() });
         // Automatically save to local SQLite for offline access
