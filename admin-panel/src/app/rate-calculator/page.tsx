@@ -474,22 +474,24 @@ export default function RateCalculatorPage() {
               />
             </div>
 
-            {/* Percentage (%) */}
-            <div className="flex items-center gap-2 bg-blue-50/60 border border-blue-200/70 px-3 py-1.5 rounded-xl">
-              <label className="text-xs font-black text-blue-900 flex items-center gap-1">
-                <TrendingUp size={13} className="text-blue-600" /> {isAdmin ? 'Shared Percentage (%):' : 'Percentage (%):'}
-              </label>
-              <input
-                type="number"
-                value={recordPercentage}
-                onChange={e => setRecordPercentage(e.target.value)}
-                placeholder="e.g. 50"
-                min="0"
-                max="100"
-                step="0.01"
-                className="w-20 bg-white border border-blue-300 rounded-lg px-2 py-1 text-xs font-black text-blue-950 text-center outline-none focus:ring-2 focus:ring-blue-500/30"
-              />
-            </div>
+            {/* Percentage (%) - Admin Only */}
+            {isAdmin && (
+              <div className="flex items-center gap-2 bg-blue-50/60 border border-blue-200/70 px-3 py-1.5 rounded-xl">
+                <label className="text-xs font-black text-blue-900 flex items-center gap-1">
+                  <TrendingUp size={13} className="text-blue-600" /> Shared Percentage (%):
+                </label>
+                <input
+                  type="number"
+                  value={recordPercentage}
+                  onChange={e => setRecordPercentage(e.target.value)}
+                  placeholder="e.g. 50"
+                  min="0"
+                  max="100"
+                  step="0.01"
+                  className="w-20 bg-white border border-blue-300 rounded-lg px-2 py-1 text-xs font-black text-blue-950 text-center outline-none focus:ring-2 focus:ring-blue-500/30"
+                />
+              </div>
+            )}
           </div>
         </div>
 
@@ -505,11 +507,11 @@ export default function RateCalculatorPage() {
               <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-emerald-50 text-emerald-700 rounded-full text-[11px] font-bold border border-emerald-200">
                 <CheckCircle2 size={12} /> {isAdmin 
                   ? `Preset Rule Applied (${recordPercentage}% + ₹${currentSubCalc.profit || 0})`
-                  : `Preset Rule Applied (${recordPercentage}%)`}
+                  : 'Policy Rule Applied'}
               </span>
             ) : (
               <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-slate-100 text-slate-600 rounded-full text-[11px] font-semibold">
-                <Info size={12} /> Custom Company Values
+                <Info size={12} /> Standard Company Values
               </span>
             )
           )}
@@ -544,6 +546,26 @@ export default function RateCalculatorPage() {
               </div>
             </div>
 
+            {/* Conditions & Policy Rules Banner (Same Conditions from Database) */}
+            {currentSubCalc.companyId && (
+              <div className="p-4 bg-amber-50/90 border border-amber-200 rounded-2xl flex items-start gap-3 text-amber-950 shadow-xs animate-in fade-in">
+                <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <h4 className="text-xs font-black uppercase tracking-wider text-amber-900">
+                      Conditions & Policy Rules
+                    </h4>
+                    <span className="text-[10px] font-bold px-2 py-0.5 bg-amber-200/60 text-amber-800 rounded-full">
+                      Underwriting Guideline
+                    </span>
+                  </div>
+                  <p className="text-xs font-bold text-amber-900 leading-relaxed">
+                    {currentSubCalc.remarks ? currentSubCalc.remarks : 'Standard broker policy rules apply. No special restrictions.'}
+                  </p>
+                </div>
+              </div>
+            )}
+
             {/* 2. Profit Box — Separate per calculator: Profit 1, Profit 2, Profit 3 (ADMIN ONLY) */}
             {isAdmin && (
               <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 bg-emerald-50/40 p-3.5 rounded-2xl border border-emerald-200/60">
@@ -565,21 +587,23 @@ export default function RateCalculatorPage() {
               </div>
             )}
 
-            {/* 3. Remarks */}
-            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
-              <label className="w-44 text-xs font-black uppercase tracking-wider text-slate-500 shrink-0">
-                Remarks
-              </label>
-              <div className="flex-1">
-                <input
-                  type="text"
-                  value={currentSubCalc.remarks}
-                  onChange={e => updateSubCalc(activeTab, { remarks: e.target.value })}
-                  placeholder={`Remarks or notes for Calculator ${activeTab}`}
-                  className="w-full bg-white border border-slate-200 rounded-xl py-2.5 px-3.5 text-xs font-medium text-slate-800 outline-none focus:ring-2 focus:ring-blue-500/20"
-                />
+            {/* 3. Remarks (Admin Notes / Conditions) */}
+            {isAdmin && (
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+                <label className="w-44 text-xs font-black uppercase tracking-wider text-slate-500 shrink-0">
+                  Remarks / Notes
+                </label>
+                <div className="flex-1">
+                  <input
+                    type="text"
+                    value={currentSubCalc.remarks}
+                    onChange={e => updateSubCalc(activeTab, { remarks: e.target.value })}
+                    placeholder={`Custom remarks or notes for Calculator ${activeTab}`}
+                    className="w-full bg-white border border-slate-200 rounded-xl py-2.5 px-3.5 text-xs font-medium text-slate-800 outline-none focus:ring-2 focus:ring-blue-500/20"
+                  />
+                </div>
               </div>
-            </div>
+            )}
 
             {/* 4. Net Premium */}
             <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
@@ -634,24 +658,26 @@ export default function RateCalculatorPage() {
               </div>
             </div>
 
-            {/* 7. Benefit (Customer Savings) */}
-            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
-              <div className="w-44 shrink-0">
-                <label className="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
-                  Benefit
-                </label>
-                <span className="text-[10px] text-slate-400 font-semibold block">Total customer discount</span>
+            {/* 7. Benefit (Customer Savings) - ADMIN ONLY */}
+            {isAdmin && (
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+                <div className="w-44 shrink-0">
+                  <label className="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                    Benefit
+                  </label>
+                  <span className="text-[10px] text-slate-400 font-semibold block">Total customer discount</span>
+                </div>
+                <div className="flex-1">
+                  <input
+                    type="number"
+                    value={currentCalc.canCalc ? currentCalc.benefit : ''}
+                    readOnly
+                    placeholder={currentCalc.canCalc ? '' : 'Enter Net Premium & Total Premium'}
+                    className="w-full bg-blue-50/70 border-2 border-blue-300 rounded-xl py-2.5 px-3.5 text-xs font-black text-blue-900 outline-none"
+                  />
+                </div>
               </div>
-              <div className="flex-1">
-                <input
-                  type="number"
-                  value={currentCalc.canCalc ? currentCalc.benefit : ''}
-                  readOnly
-                  placeholder={currentCalc.canCalc ? '' : 'Enter Net Premium & Total Premium'}
-                  className="w-full bg-blue-50/70 border-2 border-blue-300 rounded-xl py-2.5 px-3.5 text-xs font-black text-blue-900 outline-none"
-                />
-              </div>
-            </div>
+            )}
 
           </div>
         )}
@@ -660,10 +686,14 @@ export default function RateCalculatorPage() {
         <div className="bg-slate-50 border-t border-slate-200/80 px-6 py-4 flex flex-wrap items-center justify-between gap-4 text-xs">
           <div className="flex items-center gap-3">
             <span className="text-slate-500 font-medium">Summary:</span>
-            <span className="font-bold text-slate-700">
-              {isAdmin ? 'Shared %:' : 'Percentage:'} <strong>{recordPercentage || '0'}%</strong>
-            </span>
-            <span className="text-slate-300">•</span>
+            {isAdmin && (
+              <>
+                <span className="font-bold text-slate-700">
+                  Shared %: <strong>{recordPercentage || '0'}%</strong>
+                </span>
+                <span className="text-slate-300">•</span>
+              </>
+            )}
             <span className="font-bold text-slate-700">
               {isAdmin ? `Calc ${activeTab} Net:` : 'Net Premium:'} <strong>₹{currentCalc.numNet.toLocaleString()}</strong>
             </span>
@@ -671,7 +701,15 @@ export default function RateCalculatorPage() {
             <span className="font-bold text-slate-700">
               {isAdmin ? `Calc ${activeTab} Total:` : 'Total Premium:'} <strong>₹{currentCalc.numTotal.toLocaleString()}</strong>
             </span>
-            {isAdmin && (
+            {currentCalc.canCalc && (
+              <>
+                <span className="text-slate-300">•</span>
+                <span className="font-black text-emerald-700">
+                  Rate: <strong>₹{currentCalc.rate.toLocaleString()}</strong>
+                </span>
+              </>
+            )}
+            {isAdmin && currentCalc.numProf > 0 && (
               <>
                 <span className="text-slate-300">•</span>
                 <span className="font-bold text-emerald-700">
@@ -768,7 +806,7 @@ export default function RateCalculatorPage() {
               <table className="w-full text-left text-xs border-collapse">
                 <thead className="bg-slate-50/80 border-b border-slate-200/80 text-[11px] font-black uppercase tracking-wider text-slate-500">
                   <tr>
-                    <th className="py-3.5 px-4">Date / %</th>
+                    <th className="py-3.5 px-4">{isAdmin ? 'Date / %' : 'Date'}</th>
                     <th className="py-3.5 px-4">Rate Calculator 1</th>
                     {isAdmin && <th className="py-3.5 px-4">Rate Calculator 2</th>}
                     {isAdmin && <th className="py-3.5 px-4">Rate Calculator 3</th>}
@@ -794,9 +832,11 @@ export default function RateCalculatorPage() {
                               <Calendar size={12} className="text-slate-400" />
                               {rec.date ? formatDateDMY(rec.date) : '—'}
                             </span>
-                            <span className="inline-flex items-center px-2 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-md font-mono font-black text-[10px]">
-                              {rec.percentage || 0}% {isAdmin ? 'Shared' : ''}
-                            </span>
+                            {isAdmin && (
+                              <span className="inline-flex items-center px-2 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-md font-mono font-black text-[10px]">
+                                {rec.percentage || 0}% Shared
+                              </span>
+                            )}
                             {isCurrentlyEditing && (
                               <span className="block text-[10px] font-black text-amber-700 uppercase tracking-wider mt-1">
                                 ● {isAdmin ? 'Editing now' : 'Loaded'}
@@ -808,14 +848,14 @@ export default function RateCalculatorPage() {
                         {/* Calculator 1 Summary */}
                         <td className="py-4 px-4 align-top">
                           {c1.companyId || c1.netPremium ? (
-                            <div className="space-y-1 max-w-[240px]">
+                            <div className="space-y-1 max-w-[260px]">
                               <span className="font-bold text-slate-900 block truncate">
                                 {c1.companyName || 'Company 1'}
                               </span>
                               <div className="text-[11px] text-slate-600 font-mono space-y-0.5">
                                 <div>Net: ₹{Number(c1.netPremium || 0).toLocaleString()}</div>
                                 <div>Total: ₹{Number(c1.totalPremium || 0).toLocaleString()}</div>
-                                <div className="font-bold text-emerald-700">Rate: ₹{Number(c1.rate || 0).toLocaleString()}</div>
+                                <div className="font-black text-emerald-700">Rate: ₹{Number(c1.rate || 0).toLocaleString()}</div>
                                 {isAdmin && c1.profit !== undefined && (
                                   <div className="font-bold text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 text-[10px] inline-block">
                                     Profit 1: ₹{Number(c1.profit || 0).toLocaleString()}
@@ -823,9 +863,10 @@ export default function RateCalculatorPage() {
                                 )}
                               </div>
                               {c1.remarks && (
-                                <p className="text-[10px] text-slate-400 italic truncate" title={c1.remarks}>
-                                  &quot;{c1.remarks}&quot;
-                                </p>
+                                <div className="mt-1 p-1.5 bg-amber-50/80 border border-amber-200/70 rounded-lg text-[10px] font-medium text-amber-950">
+                                  <span className="font-black text-amber-900 uppercase tracking-wider text-[9px] block">Conditions:</span>
+                                  <span>{c1.remarks}</span>
+                                </div>
                               )}
                             </div>
                           ) : (

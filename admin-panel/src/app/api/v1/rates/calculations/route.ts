@@ -26,8 +26,45 @@ export async function GET(req: NextRequest) {
 
     const rawRecords: any[] = Array.isArray(setting?.value) ? (setting.value as any[]) : []
 
-    // Allow all authenticated users to view calculation records
+    // Allow all authenticated users to view calculation records, but redact profit margins for non-admins
     const sanitized = rawRecords.map(rec => {
+      if (!isAdmin) {
+        return {
+          id: rec.id,
+          date: rec.date,
+          // Percentage is hidden from non-admin users
+          percentage: undefined,
+          calculator1: {
+            companyId: rec.calculator1?.companyId,
+            companyName: rec.calculator1?.companyName,
+            netPremium: rec.calculator1?.netPremium,
+            totalPremium: rec.calculator1?.totalPremium,
+            rate: rec.calculator1?.rate,
+            remarks: rec.calculator1?.remarks
+            // profit and benefit redacted
+          },
+          calculator2: {
+            companyId: rec.calculator2?.companyId,
+            companyName: rec.calculator2?.companyName,
+            netPremium: rec.calculator2?.netPremium,
+            totalPremium: rec.calculator2?.totalPremium,
+            rate: rec.calculator2?.rate,
+            remarks: rec.calculator2?.remarks
+          },
+          calculator3: {
+            companyId: rec.calculator3?.companyId,
+            companyName: rec.calculator3?.companyName,
+            netPremium: rec.calculator3?.netPremium,
+            totalPremium: rec.calculator3?.totalPremium,
+            rate: rec.calculator3?.rate,
+            remarks: rec.calculator3?.remarks
+          },
+          createdBy: rec.createdBy,
+          creatorName: rec.creatorName,
+          createdAt: rec.createdAt,
+          updatedAt: rec.updatedAt
+        }
+      }
       return {
         id: rec.id,
         date: rec.date,

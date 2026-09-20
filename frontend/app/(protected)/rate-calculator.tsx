@@ -117,7 +117,8 @@ export default function RateCalculatorScreen() {
   const router = useRouter();
   const { user } = useAuth();
   const roleUpper = user?.role?.toUpperCase() || '';
-  const isAdmin = roleUpper === 'SUPER ADMIN' || roleUpper === 'ADMIN';
+  const isSuperAdminEmail = user?.email?.toLowerCase() === 'torqueautoadvisor@gmail.com';
+  const isAdmin = roleUpper === 'SUPER ADMIN' || roleUpper === 'ADMIN' || roleUpper.includes('ADMIN') || isSuperAdminEmail;
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [companies, setCompanies] = useState<any[]>([]);
@@ -132,7 +133,8 @@ export default function RateCalculatorScreen() {
     percentage: 0,
     profit: 0,
     rate: '',
-    benefit: ''
+    benefit: '',
+    remarks: ''
   });
 
   // Fetch Companies list
@@ -162,7 +164,8 @@ export default function RateCalculatorScreen() {
           setCalcData(prev => ({
             ...prev,
             percentage: data.qtr_percentage || 0,
-            profit: data.qtr_profit || 0
+            profit: data.qtr_profit || 0,
+            remarks: data.qtr_remarks || ''
           }));
         } catch (err) {
           console.error('Failed to lookup rate rules:', err);
@@ -171,7 +174,8 @@ export default function RateCalculatorScreen() {
         setCalcData(prev => ({
           ...prev,
           percentage: 0,
-          profit: 0
+          profit: 0,
+          remarks: ''
         }));
       }
     };
@@ -225,7 +229,8 @@ export default function RateCalculatorScreen() {
           totalPremium: calcData.totalPremium,
           profit: calcData.profit,
           rate: calcData.rate,
-          benefit: calcData.benefit
+          benefit: calcData.benefit,
+          remarks: calcData.remarks
         }
       });
       const data = res?.data ?? res;
@@ -249,7 +254,8 @@ export default function RateCalculatorScreen() {
       percentage: 0,
       profit: 0,
       rate: '',
-      benefit: ''
+      benefit: '',
+      remarks: ''
     });
   };
 
@@ -281,25 +287,32 @@ export default function RateCalculatorScreen() {
             loading={loadingConfig}
           />
 
-          {calcData.companyId && calcData.percentage === 0 && calcData.profit === 0 && (
-            <View style={styles.alertBox}>
-              <Ionicons name="alert-circle-outline" size={16} color="#B45309" />
-              <Text style={styles.alertText}>
-                No custom rate rule found for this company. Standard rate rules apply.
+          {/* Conditions & Policy Rules Banner (Same Conditions from Database) */}
+          {calcData.companyId ? (
+            <View style={styles.conditionsBox}>
+              <View style={styles.conditionsHeader}>
+                <Ionicons name="shield-checkmark" size={16} color="#B45309" />
+                <Text style={styles.conditionsTitle}>Conditions & Policy Rules</Text>
+              </View>
+              <Text style={styles.conditionsText}>
+                {calcData.remarks ? calcData.remarks : 'Standard broker policy rules apply. No special restrictions.'}
               </Text>
             </View>
-          )}
+          ) : null}
 
-          <View style={styles.ruleContainer}>
-            <View style={styles.ruleCol}>
-              <Text style={styles.ruleLabel}>Percentage Rule</Text>
-              <Text style={styles.ruleVal}>{calcData.percentage}%</Text>
+          {/* Profit & Percentage Rule - ADMIN ONLY */}
+          {isAdmin && (
+            <View style={styles.ruleContainer}>
+              <View style={styles.ruleCol}>
+                <Text style={styles.ruleLabel}>Percentage Rule</Text>
+                <Text style={styles.ruleVal}>{calcData.percentage}%</Text>
+              </View>
+              <View style={styles.ruleCol}>
+                <Text style={styles.ruleLabel}>Profit Rule</Text>
+                <Text style={styles.ruleVal}>₹{calcData.profit}</Text>
+              </View>
             </View>
-            <View style={styles.ruleCol}>
-              <Text style={styles.ruleLabel}>Profit Rule</Text>
-              <Text style={styles.ruleVal}>₹{calcData.profit}</Text>
-            </View>
-          </View>
+          )}
 
           <Text style={styles.label}>NET PREMIUM (₹) *</Text>
           <TextInput
@@ -321,19 +334,22 @@ export default function RateCalculatorScreen() {
             keyboardType="numeric"
           />
 
+          {/* Calculation Results Container: All users see Computed Rate, Only Admins see Agent Benefit */}
           <View style={styles.calcResultContainer}>
             <View style={styles.calcResultCol}>
-              <Text style={styles.calcResultLabel}>Computed Rate</Text>
+              <Text style={styles.calcResultLabel}>Computed Rate (Payable)</Text>
               <Text style={[styles.calcResultVal, styles.rateBg]}>
                 {calcData.rate ? `₹${Number(calcData.rate).toLocaleString()}` : '--'}
               </Text>
             </View>
-            <View style={styles.calcResultCol}>
-              <Text style={styles.calcResultLabel}>Agent Benefit</Text>
-              <Text style={[styles.calcResultVal, styles.benefitBg]}>
-                {calcData.benefit ? `₹${Number(calcData.benefit).toLocaleString()}` : '--'}
-              </Text>
-            </View>
+            {isAdmin && (
+              <View style={styles.calcResultCol}>
+                <Text style={styles.calcResultLabel}>Agent Benefit</Text>
+                <Text style={[styles.calcResultVal, styles.benefitBg]}>
+                  {calcData.benefit ? `₹${Number(calcData.benefit).toLocaleString()}` : '--'}
+                </Text>
+              </View>
+            )}
           </View>
 
           {/* Action Buttons: Save Calculation & Clear */}
@@ -383,6 +399,33 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#B45309',
     flex: 1,
+  },
+  conditionsBox: {
+    backgroundColor: '#FFFBEB',
+    borderWidth: 1.5,
+    borderColor: '#F59E0B',
+    borderRadius: BorderRadius.md,
+    padding: Spacing.md,
+    marginVertical: Spacing.sm,
+  },
+  conditionsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 4,
+  },
+  conditionsTitle: {
+    fontSize: FontSize.xs,
+    fontWeight: '800',
+    color: '#B45309',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  conditionsText: {
+    fontSize: FontSize.sm - 1,
+    fontWeight: '700',
+    color: '#92400E',
+    lineHeight: 18,
   },
   ruleContainer: {
     flexDirection: 'row',
