@@ -54,13 +54,13 @@ export default function Sidebar({ visible, onClose }: SidebarProps) {
     {
       label: 'SALES & CRM',
       items: [
-        { name: 'My Leads', icon: 'people-outline', route: '/(protected)/leads', visible: !isHrManager && !isAccountant },
+        { name: isAdmin || isManager ? 'List Management' : 'My List', icon: 'list-outline', route: '/(protected)/leads', visible: !isHrManager && !isAccountant },
         { name: 'Today Follow-ups', icon: 'calendar-outline', route: '/(protected)/follow-ups', visible: !isHrManager && !isAccountant },
         { name: 'Renewals Pipeline', icon: 'sync-outline', route: '/(protected)/renewals', visible: !isHrManager && !isAccountant },
         { name: 'Rate Calculator', icon: 'calculator-outline', route: '/(protected)/rate-calculator', visible: !isHrManager && !isAccountant },
         { name: 'Quotations', icon: 'clipboard-outline', route: '/(protected)/quotations', visible: isAdmin || isManager || !isHrManager },
         { name: 'Policies', icon: 'shield-checkmark-outline', route: '/(protected)/policies', visible: isAdmin || isManager },
-        { name: 'Import Leads', icon: 'cloud-upload-outline', route: '/(protected)/leads/import', visible: isAdmin },
+        { name: 'Import List', icon: 'cloud-upload-outline', route: '/(protected)/leads/import', visible: isAdmin },
         { name: 'Spreadsheets', icon: 'grid-outline', route: '/(protected)/sheets', visible: isAdmin },
         { name: 'CRM Pipeline', icon: 'person-add-outline', route: '/(protected)/crm', visible: !isAccountant && !isHrManager },
       ]

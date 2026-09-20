@@ -9,7 +9,7 @@ import {
   AlertCircle, Users, Calendar, RefreshCw, Phone, MessageCircle, 
   X, Check, Clipboard, ChevronRight, Trash2, ArrowUpDown, ArrowUp, ArrowDown,
   ChevronDown, FileSpreadsheet, FileText, Shield, Download, ChevronLeft, ChevronsLeft, ChevronsRight,
-  UserX
+  UserX, UserCheck
 } from 'lucide-react'
 import LeadPolicySubmissionModal from '@/components/leads/LeadPolicySubmissionModal'
 
@@ -144,6 +144,9 @@ export default function LeadsPage() {
   const [showDeassignConfirm, setShowDeassignConfirm] = useState(false)
   const [showDeassignAllConfirm, setShowDeassignAllConfirm] = useState(false)
   const [isDeassigning, setIsDeassigning] = useState(false)
+  const [showAllotModal, setShowAllotModal] = useState(false)
+  const [targetAssigneeId, setTargetAssigneeId] = useState('')
+  const [isAllotting, setIsAllotting] = useState(false)
 
   // Only selected leads that are ACTUALLY assigned to an advisor
   const selectedAssignedIds = useMemo(() => {
@@ -543,6 +546,31 @@ export default function LeadsPage() {
     }
   }
 
+  // Bulk allot handler for selected leads
+  const handleBulkAllot = async () => {
+    if (selectedIds.size === 0 || !targetAssigneeId) return
+    setIsAllotting(true)
+    try {
+      const res = await fetchApi('/api/v1/leads/assign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          leadIds: Array.from(selectedIds),
+          assigneeId: targetAssigneeId
+        })
+      })
+      alert(res.message || `Successfully allotted ${selectedIds.size} leads.`)
+      setSelectedIds(new Set())
+      setShowAllotModal(false)
+      setTargetAssigneeId('')
+      fetchData()
+    } catch (err: any) {
+      alert(err.message || 'Failed to allot leads')
+    } finally {
+      setIsAllotting(false)
+    }
+  }
+
   // Bulk de-assign handler for selected leads
   const handleBulkDeassign = async () => {
     if (selectedAssignedIds.length === 0) return
@@ -807,6 +835,17 @@ export default function LeadsPage() {
           <p className="text-sm text-slate-500 mt-1">Track monthly renewals and employee performance.</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
+          {/* Bulk Allot to Staff Button */}
+          {isAdmin && selectedIds.size > 0 && (
+            <button 
+              onClick={() => { setTargetAssigneeId(''); setShowAllotModal(true); }}
+              className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-md cursor-pointer"
+              title="Allot selected leads to a staff member"
+            >
+              <UserCheck size={14} />
+              Allot to Staff ({selectedIds.size})
+            </button>
+          )}
           {/* Bulk De-allot Button — Only shown when at least one SELECTED lead is actually assigned */}
           {isAdmin && selectedAssignedIds.length > 0 && (
             <button 
@@ -2097,6 +2136,79 @@ export default function LeadsPage() {
                   {isDeleting
                     ? 'Deleting...'
                     : (deletePermanently ? 'Delete Forever' : 'Move to Trash')}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Allot to Staff Modal */}
+      {showAllotModal && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-3xl w-full max-w-md p-8 shadow-2xl border border-slate-100 animate-in fade-in zoom-in-95 duration-200">
+            <div className="space-y-4">
+              <div className="w-14 h-14 bg-blue-50 rounded-full flex items-center justify-center mx-auto">
+                <UserCheck size={26} className="text-blue-600" />
+              </div>
+              <div className="text-center">
+                <h2 className="text-lg font-black text-slate-900">
+                  Allot Selected Leads
+                </h2>
+                <p className="text-xs text-slate-500 mt-1">
+                  Choose a staff member / executive to allot <strong>{selectedIds.size} selected lead{selectedIds.size > 1 ? 's' : ''}</strong>.
+                </p>
+              </div>
+
+              <div className="pt-2">
+                <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1.5">
+                  Select Staff Member / Advisor *
+                </label>
+                <select
+                  value={targetAssigneeId}
+                  onChange={e => setTargetAssigneeId(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all cursor-pointer"
+                >
+                  <option value="">-- Choose Employee / Advisor --</option>
+                  {employees.map(emp => (
+                    <option key={emp.id} value={emp.id}>
+                      {emp.fullName} ({emp.role?.name || 'Staff'})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 text-left">
+                <p className="text-[11px] text-blue-800 leading-relaxed font-medium">
+                  💡 Allotted leads will immediately appear in the employee&apos;s active list and mobile app.
+                </p>
+              </div>
+
+              <div className="flex gap-3 pt-3">
+                <button 
+                  type="button"
+                  onClick={() => { setShowAllotModal(false); setTargetAssigneeId(''); }} 
+                  className="flex-1 px-4 py-3 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-200 transition-all cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="button"
+                  onClick={handleBulkAllot}
+                  disabled={!targetAssigneeId || isAllotting}
+                  className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-xl text-xs font-bold shadow-lg hover:bg-blue-700 transition-all disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2"
+                >
+                  {isAllotting ? (
+                    <>
+                      <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      Allotting...
+                    </>
+                  ) : (
+                    <>
+                      <UserCheck size={14} />
+                      Allot {selectedIds.size} Leads
+                    </>
+                  )}
                 </button>
               </div>
             </div>

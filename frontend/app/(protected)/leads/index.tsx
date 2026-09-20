@@ -11,6 +11,7 @@ import Sidebar from '../../../src/components/Sidebar';
 import { exportToCSV } from '../../../src/utils/exportHelper';
 import { useAuth } from '../../../src/context/AuthContext';
 import { leadsService } from '../../../src/services/leads';
+import { usersService, User } from '../../../src/services/users';
 import { upsertLocalLeadsBatch } from '../../../src/lib/db';
 import { syncAll } from '../../../src/lib/sync-engine';
 
@@ -30,6 +31,13 @@ export default function LeadsScreen() {
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [deleting, setDeleting] = useState(false);
+
+  // Bulk Allotment state
+  const [allotModalVisible, setAllotModalVisible] = useState(false);
+  const [allotting, setAllotting] = useState(false);
+  const [selectedAssigneeId, setSelectedAssigneeId] = useState('');
+  const [staffList, setStaffList] = useState<User[]>([]);
+  const [loadingStaff, setLoadingStaff] = useState(false);
 
   // Month-wise filter
   const [selectedMonth, setSelectedMonth] = useState<number>(0); // 0 = All Months
@@ -286,6 +294,43 @@ export default function LeadsScreen() {
     );
   };
 
+  const openAllotModal = async () => {
+    if (selectedIds.size === 0) return;
+    setAllotModalVisible(true);
+    setSelectedAssigneeId('');
+    if (staffList.length === 0) {
+      setLoadingStaff(true);
+      try {
+        const users = await usersService.list({ limit: 100 });
+        const activeStaff = users.filter(u => u.isActive !== false);
+        setStaffList(activeStaff);
+      } catch (err) {
+        console.warn('Failed to load staff list for allotment', err);
+      } finally {
+        setLoadingStaff(false);
+      }
+    }
+  };
+
+  const handleConfirmAllot = async () => {
+    if (!selectedAssigneeId || selectedIds.size === 0) return;
+    setAllotting(true);
+    try {
+      const res: any = await api.post('/leads/assign', {
+        leadIds: Array.from(selectedIds),
+        assigneeId: selectedAssigneeId
+      });
+      Alert.alert('Success', res?.message || `Successfully allotted ${selectedIds.size} records.`);
+      cancelSelection();
+      setAllotModalVisible(false);
+      load(selectedImportName);
+    } catch (err: any) {
+      Alert.alert('Error', err.message || 'Failed to allot records');
+    } finally {
+      setAllotting(false);
+    }
+  };
+
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
@@ -310,7 +355,7 @@ export default function LeadsScreen() {
             <Pressable onPress={() => setSidebarOpen(true)} style={styles.menuBtn}>
               <Ionicons name="menu-outline" size={26} color={Colors.text} />
             </Pressable>
-            <Text style={styles.title}>My Leads</Text>
+            <Text style={styles.title}>{isAdminOrManager ? 'List Management' : 'My List'}</Text>
             <View style={styles.headerActions}>
               <Pressable style={styles.actionIconBtn} onPress={handleExport}>
                 <Ionicons name="cloud-download-outline" size={22} color={Colors.primary} />
@@ -406,9 +451,9 @@ export default function LeadsScreen() {
         ListEmptyComponent={
           <View style={styles.empty}>
             <Ionicons name="people-outline" size={52} color={Colors.textLight} />
-            <Text style={styles.emptyTitle}>No leads found</Text>
+            <Text style={styles.emptyTitle}>No records found</Text>
             <Text style={styles.emptyText}>
-              {search ? 'Try a different search term' : 'No leads assigned to you yet'}
+              {search ? 'Try a different search term' : 'No records allotted to you yet'}
             </Text>
           </View>
         }
@@ -504,7 +549,7 @@ export default function LeadsScreen() {
                 <View style={styles.metaRow}>
                   <Ionicons name="person-outline" size={13} color={Colors.textMuted} style={{ marginRight: 2 }} />
                   <Text style={styles.metaText} numberOfLines={1}>
-                    {item.assignee?.fullName || 'Unassigned'}
+                    {item.assignee?.fullName ? `Allotted: ${item.assignee.fullName}` : 'Unallotted'}
                   </Text>
                 </View>
                 <View style={styles.metaRow}>
@@ -559,6 +604,12 @@ export default function LeadsScreen() {
               <Ionicons name="close" size={18} color={Colors.textMuted} />
               <Text style={styles.cancelBtnText}>Cancel</Text>
             </Pressable>
+            {isAdminOrManager && (
+              <Pressable style={styles.allotBtn} onPress={openAllotModal}>
+                <Ionicons name="person-add" size={18} color="#FFFFFF" />
+                <Text style={styles.allotBtnText}>Allot</Text>
+              </Pressable>
+            )}
             <Pressable
               style={[styles.deleteBtn, deleting && { opacity: 0.5 }]}
               onPress={handleBulkDelete}
@@ -608,6 +659,75 @@ export default function LeadsScreen() {
               <Pressable style={styles.waModalSendBtn} onPress={sendWhatsAppFromModal}>
                 <Ionicons name="send" size={16} color="#FFFFFF" />
                 <Text style={styles.waModalSendText}>Send via WhatsApp</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Allot Records Modal */}
+      <Modal
+        visible={allotModalVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setAllotModalVisible(false)}
+      >
+        <View style={styles.waModalOverlay}>
+          <View style={[styles.waModalContent, { maxHeight: '80%' }]}>
+            <View style={styles.waModalHeader}>
+              <Ionicons name="person-add" size={22} color={Colors.primary} />
+              <Text style={styles.waModalTitle}>Allot {selectedIds.size} Records</Text>
+              <Pressable onPress={() => setAllotModalVisible(false)}>
+                <Ionicons name="close" size={22} color={Colors.textMuted} />
+              </Pressable>
+            </View>
+            <Text style={styles.waModalHint}>Select staff advisor to allot selected records to:</Text>
+            
+            {loadingStaff ? (
+              <View style={{ padding: 30, alignItems: 'center' }}>
+                <Text style={{ fontSize: 13, color: Colors.textMuted }}>Loading advisors...</Text>
+              </View>
+            ) : (
+              <ScrollView style={{ maxHeight: 280, marginVertical: 10 }}>
+                {staffList.map(emp => {
+                  const isSelected = selectedAssigneeId === emp.id;
+                  return (
+                    <Pressable
+                      key={emp.id}
+                      style={[
+                        styles.empRow,
+                        isSelected && styles.empRowSelected
+                      ]}
+                      onPress={() => setSelectedAssigneeId(emp.id)}
+                    >
+                      <View style={[styles.empRadio, isSelected && styles.empRadioSelected]}>
+                        {isSelected && <View style={styles.empRadioInner} />}
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.empName, isSelected && styles.empNameSelected]}>
+                          {emp.fullName || emp.full_name || emp.email}
+                        </Text>
+                        <Text style={styles.empRole}>{emp.role?.name || 'Staff'}</Text>
+                      </View>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+            )}
+
+            <View style={styles.waModalActions}>
+              <Pressable style={styles.waModalCancelBtn} onPress={() => setAllotModalVisible(false)}>
+                <Text style={styles.waModalCancelText}>Cancel</Text>
+              </Pressable>
+              <Pressable 
+                style={[styles.confirmAllotBtn, (!selectedAssigneeId || allotting) && { opacity: 0.5 }]} 
+                onPress={handleConfirmAllot}
+                disabled={!selectedAssigneeId || allotting}
+              >
+                <Ionicons name="checkmark-circle" size={16} color="#FFFFFF" />
+                <Text style={styles.confirmAllotBtnText}>
+                  {allotting ? 'Allotting...' : 'Confirm Allotment'}
+                </Text>
               </Pressable>
             </View>
           </View>
@@ -887,6 +1007,84 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   waModalSendText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  allotBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 12,
+    borderRadius: BorderRadius.lg,
+    backgroundColor: '#2563EB',
+  },
+  allotBtnText: {
+    fontSize: FontSize.md,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  empRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    marginBottom: 6,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  empRowSelected: {
+    backgroundColor: '#EFF6FF',
+    borderColor: '#3B82F6',
+  },
+  empRadio: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: '#94A3B8',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  empRadioSelected: {
+    borderColor: '#2563EB',
+  },
+  empRadioInner: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#2563EB',
+  },
+  empName: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1E293B',
+  },
+  empNameSelected: {
+    color: '#1D4ED8',
+  },
+  empRole: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#64748B',
+    marginTop: 1,
+  },
+  confirmAllotBtn: {
+    flex: 2,
+    flexDirection: 'row',
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: '#2563EB',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  confirmAllotBtnText: {
     fontSize: 14,
     fontWeight: '700',
     color: '#FFFFFF',

@@ -219,7 +219,7 @@ export default function AdminLayout({
                         href="/leads"
                         className="px-3.5 py-1.5 bg-white text-emerald-800 hover:bg-emerald-50 rounded-xl text-xs font-bold transition-all flex items-center gap-1 shadow-sm"
                       >
-                        <span>View Leads</span>
+                        <span>View List</span>
                         <ArrowRight size={13} />
                       </Link>
                     )}
@@ -256,7 +256,7 @@ export default function AdminLayout({
         </Link>
         <Link href="/leads" className={`flex flex-col items-center gap-1 flex-1 py-1 transition-all ${pathname === '/leads' ? 'text-red-600' : 'text-gray-400 hover:text-red-500'}`}>
           <Users size={18} />
-          <span className="text-[10px] font-bold tracking-wider">Leads</span>
+          <span className="text-[10px] font-bold tracking-wider">List</span>
         </Link>
         <Link href="/follow-ups" className={`flex flex-col items-center gap-1 flex-1 py-1 transition-all ${pathname === '/follow-ups' ? 'text-red-600' : 'text-gray-400 hover:text-red-500'}`}>
           <Calendar size={18} />

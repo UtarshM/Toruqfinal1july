@@ -712,7 +712,7 @@ export default function LeadDetailScreen() {
 
         <View style={styles.infoCard}>
           <Text style={styles.sectionLabel}>VEHICLE & INSURANCE</Text>
-          <InfoRow label="Assigned To" value={lead.assignee?.fullName || 'Unassigned'} />
+          <InfoRow label="Allotted To" value={lead.assignee?.fullName || 'Unallotted'} />
           <InfoRow label="Vehicle No" value={lead.vehicleNo || lead.vehicle_number} />
           <InfoRow label="Expiry Date" value={lead.expiryDate ? new Date(lead.expiryDate).toLocaleDateString() : '-'} />
           <InfoRow label="Registration" value={lead.registrationDate ? new Date(lead.registrationDate).toLocaleDateString() : '-'} />
@@ -976,10 +976,10 @@ export default function LeadDetailScreen() {
               />
 
               <DropdownSelector
-                label="Assign To"
-                placeholder="Choose assignee"
+                label="Allot To"
+                placeholder="Choose staff member"
                 options={[
-                  { label: 'Unassigned', value: '' },
+                  { label: 'Unallotted', value: '' },
                   ...usersList.map(u => ({ label: `${u.fullName || u.full_name || u.email} (${u.role?.name || 'Staff'})`, value: u.id }))
                 ]}
                 selectedValue={editAssignedTo}

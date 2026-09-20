@@ -51,7 +51,7 @@ export default function AppFooter({ active }: { active?: string }) {
   } else if (isAdmin || isManager) {
     tabs = [
       { label: 'Home', icon: 'home', iconOutline: 'home-outline', route: '/(protected)/dashboard' },
-      { label: 'Leads', icon: 'people', iconOutline: 'people-outline', route: '/(protected)/leads' },
+      { label: 'List', icon: 'list', iconOutline: 'list-outline', route: '/(protected)/leads' },
       { label: 'Approvals', icon: 'shield-checkmark', iconOutline: 'shield-checkmark-outline', route: '/(protected)/policy-approvals' },
       { label: 'Renewals', icon: 'sync', iconOutline: 'sync-outline', route: '/(protected)/renewals' },
       { label: 'Settings', icon: 'settings', iconOutline: 'settings-outline', route: '/(protected)/settings' },
@@ -60,7 +60,7 @@ export default function AppFooter({ active }: { active?: string }) {
     // Sales Executive / Telecaller
     tabs = [
       { label: 'Home', icon: 'home', iconOutline: 'home-outline', route: '/(protected)/dashboard' },
-      { label: 'My Leads', icon: 'people', iconOutline: 'people-outline', route: '/(protected)/leads' },
+      { label: 'My List', icon: 'list', iconOutline: 'list-outline', route: '/(protected)/leads' },
       { label: 'Follow-ups', icon: 'calendar', iconOutline: 'calendar-outline', route: '/(protected)/follow-ups' },
       { label: 'Renewals', icon: 'sync', iconOutline: 'sync-outline', route: '/(protected)/renewals' },
       { label: 'Settings', icon: 'settings', iconOutline: 'settings-outline', route: '/(protected)/settings' },

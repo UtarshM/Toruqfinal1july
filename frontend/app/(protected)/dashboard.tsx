@@ -659,14 +659,14 @@ export default function DashboardScreen() {
             </View>
           ) : isSales ? (
             <View style={styles.metricsRow}>
-              {/* My Assigned Leads */}
+              {/* My Assigned List */}
               <Pressable
                 style={styles.metricCard}
                 onPress={() => router.push('/(protected)/leads')}
               >
                 <View style={styles.metricTopRow}>
-                  <Ionicons name="people" size={16} color="#2563EB" />
-                  <Text style={styles.metricLabel}>My Leads</Text>
+                  <Ionicons name="list" size={16} color="#2563EB" />
+                  <Text style={styles.metricLabel}>My List</Text>
                 </View>
                 <Text style={styles.metricValue}>
                   {stats.my_leads ?? stats.leads ?? 0}
@@ -732,14 +732,14 @@ export default function DashboardScreen() {
                 </Text>
               </Pressable>
 
-              {/* Total Leads */}
+              {/* Total List */}
               <Pressable
                 style={styles.metricCard}
                 onPress={() => router.push('/(protected)/leads')}
               >
                 <View style={styles.metricTopRow}>
-                  <Ionicons name="people" size={16} color="#7C3AED" />
-                  <Text style={styles.metricLabel}>Leads Pipeline</Text>
+                  <Ionicons name="list" size={16} color="#7C3AED" />
+                  <Text style={styles.metricLabel}>Total List</Text>
                 </View>
                 <Text style={styles.metricValue}>
                   {stats.total_leads ?? stats.leads ?? 0}
@@ -985,9 +985,9 @@ export default function DashboardScreen() {
                   onPress={() => router.push('/(protected)/leads')}
                 >
                   <View style={[styles.recIconWrap, { backgroundColor: '#EFF6FF' }]}>
-                    <Ionicons name="people" size={24} color="#2563EB" />
+                    <Ionicons name="list" size={24} color="#2563EB" />
                   </View>
-                  <Text style={styles.recItemTitle}>My Leads</Text>
+                  <Text style={styles.recItemTitle}>My List</Text>
                 </Pressable>
 
                 <Pressable
@@ -1064,9 +1064,9 @@ export default function DashboardScreen() {
                   onPress={() => router.push('/(protected)/leads')}
                 >
                   <View style={[styles.recIconWrap, { backgroundColor: '#EFF6FF' }]}>
-                    <Ionicons name="people" size={24} color="#2563EB" />
+                    <Ionicons name="list" size={24} color="#2563EB" />
                   </View>
-                  <Text style={styles.recItemTitle}>Leads Hub</Text>
+                  <Text style={styles.recItemTitle}>List Management</Text>
                 </Pressable>
 
                 <Pressable
@@ -1330,8 +1330,8 @@ export default function DashboardScreen() {
                     router.push('/(protected)/leads');
                   }}
                 >
-                  <Ionicons name="people" size={20} color="#002FA7" />
-                  <Text style={styles.fabSheetItemText}>New Vehicle Lead</Text>
+                  <Ionicons name="list" size={20} color="#002FA7" />
+                  <Text style={styles.fabSheetItemText}>New List Entry</Text>
                 </Pressable>
 
                 <Pressable
@@ -1377,8 +1377,8 @@ export default function DashboardScreen() {
                     router.push('/(protected)/leads');
                   }}
                 >
-                  <Ionicons name="people" size={20} color="#002FA7" />
-                  <Text style={styles.fabSheetItemText}>New Vehicle Lead</Text>
+                  <Ionicons name="list" size={20} color="#002FA7" />
+                  <Text style={styles.fabSheetItemText}>New List Entry</Text>
                 </Pressable>
 
                 <Pressable
