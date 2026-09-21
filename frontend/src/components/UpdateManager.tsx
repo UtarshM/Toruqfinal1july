@@ -32,7 +32,13 @@ export async function checkAndApplyUpdate(interactive = true) {
       return true;
     } else {
       if (interactive) {
-        Alert.alert('Up to Date ✓', 'You are running the latest version of Torque Auto Advisor.');
+        const info = [
+          'You are running the latest version.',
+          `Channel: ${Updates.channel || 'preview'}`,
+          `Update ID: ${Updates.updateId ? Updates.updateId.slice(0, 8) + '...' : 'Embedded Build'}`,
+          `Runtime: ${Updates.runtimeVersion || '2.0.0'}`
+        ].join('\n');
+        Alert.alert('Up to Date ✓', info);
       }
       return false;
     }

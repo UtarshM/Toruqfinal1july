@@ -93,20 +93,25 @@ import { UpdateBanner } from '../src/components/UpdateManager';
 import * as ScreenCapture from 'expo-screen-capture';
 
 export default function RootLayout() {
-  // Enforce Screenshot & Screen Recording Restrictions across entire APK (FLAG_SECURE)
-  ScreenCapture.usePreventScreenCapture();
-
   useEffect(() => {
     initDB().then(() => {
       initSyncListeners();
     }).catch(err => console.error('[SQLite] Initialization failed:', err));
 
+    // Safe execution of Screenshot & Screen Recording Protection (FLAG_SECURE)
+    // Checks if the native module is compiled into the APK binary to prevent crash/rollback on older builds
     try {
-      ScreenCapture.preventScreenCaptureAsync?.().catch(err => {
-        console.log('[ScreenCapture] Screenshot restriction active:', err);
+      ScreenCapture.isAvailableAsync?.().then(available => {
+        if (available) {
+          ScreenCapture.preventScreenCaptureAsync?.('root_apk').catch(err => {
+            console.log('[ScreenCapture] Active with notice:', err);
+          });
+        }
+      }).catch(err => {
+        console.log('[ScreenCapture] Native module not available in this APK build:', err);
       });
     } catch (e) {
-      console.log('[ScreenCapture] Fallback:', e);
+      console.log('[ScreenCapture] Check error:', e);
     }
   }, []);
 
