@@ -66,8 +66,8 @@ export async function GET(req: NextRequest) {
           <img
             src={logoBase64}
             alt="Watermark"
-            width="650"
-            height="380"
+            width={650}
+            height={380}
             style={{ objectFit: 'contain' }}
           />
         </div>
@@ -105,8 +105,8 @@ export async function GET(req: NextRequest) {
             <img
               src={logoBase64}
               alt="Torque Logo"
-              width="180"
-              height="70"
+              width={180}
+              height={70}
               style={{ objectFit: 'contain' }}
             />
             <div style={{ display: 'flex', flexDirection: 'column' }}>
@@ -392,7 +392,7 @@ export async function GET(req: NextRequest) {
               color: '#475569',
             }}
           >
-            Official Quote ✓
+            Official Quote
           </div>
         </div>
       </div>
