@@ -1,7 +1,6 @@
 import { ImageResponse } from 'next/og'
 import { NextRequest } from 'next/server'
-import fs from 'fs'
-import path from 'path'
+import { TORQUE_LOGO_BASE64 } from './logo-base64'
 
 export const runtime = 'nodejs'
 
@@ -18,17 +17,7 @@ export async function GET(req: NextRequest) {
   const vehicleNo = searchParams.get('vehicleNo') || ''
   const advisorName = searchParams.get('advisor') || ''
 
-  // Load Torque Logo as Base64 Data URL
-  let logoBase64 = ''
-  try {
-    const logoPath = path.join(process.cwd(), 'public', 'logo.png')
-    if (fs.existsSync(logoPath)) {
-      const buffer = fs.readFileSync(logoPath)
-      logoBase64 = `data:image/png;base64,${buffer.toString('base64')}`
-    }
-  } catch (err) {
-    console.warn('[RateImage] Failed to read logo.png:', err)
-  }
+  const logoBase64 = TORQUE_LOGO_BASE64
 
   return new ImageResponse(
     (
@@ -59,25 +48,29 @@ export async function GET(req: NextRequest) {
         />
 
         {/* Diagonal Torque Watermark across entire card */}
-        {logoBase64 ? (
-          <div
-            style={{
-              position: 'absolute',
-              top: '0px',
-              left: '0px',
-              right: '0px',
-              bottom: '0px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              opacity: 0.05,
-              transform: 'rotate(-25deg)',
-            }}
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={logoBase64} alt="Watermark" width="550" height="550" style={{ objectFit: 'contain' }} />
-          </div>
-        ) : null}
+        <div
+          style={{
+            position: 'absolute',
+            top: '0px',
+            left: '0px',
+            right: '0px',
+            bottom: '0px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            opacity: 0.08,
+            transform: 'rotate(-25deg)',
+          }}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={logoBase64}
+            alt="Watermark"
+            width="650"
+            height="380"
+            style={{ objectFit: 'contain' }}
+          />
+        </div>
 
         {/* Watermark Pattern Texts */}
         <div
@@ -107,28 +100,15 @@ export async function GET(req: NextRequest) {
             paddingBottom: '24px',
           }}
         >
-          <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '16px' }}>
-            {logoBase64 ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={logoBase64} alt="Torque Logo" width="68" height="68" style={{ objectFit: 'contain' }} />
-            ) : (
-              <div
-                style={{
-                  width: '60px',
-                  height: '60px',
-                  backgroundColor: '#002FA7',
-                  borderRadius: '12px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: '#FFFFFF',
-                  fontWeight: 900,
-                  fontSize: '24px',
-                }}
-              >
-                T
-              </div>
-            )}
+          <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '18px' }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={logoBase64}
+              alt="Torque Logo"
+              width="180"
+              height="70"
+              style={{ objectFit: 'contain' }}
+            />
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               <div style={{ fontSize: '26px', fontWeight: 900, color: '#0F172A', letterSpacing: '-0.5px' }}>
                 TORQUE AUTO ADVISOR
