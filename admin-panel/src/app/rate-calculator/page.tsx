@@ -4,7 +4,7 @@ import AdminLayout from '@/components/layout/AdminLayout'
 import { fetchApi } from '@/lib/api'
 import { 
   Calculator, Calendar, Info, CheckCircle2, Save, RefreshCw, 
-  Edit2, Trash2, Plus, X, Search, Building, TrendingUp, AlertCircle
+  Edit2, Trash2, Plus, X, Search, Building, TrendingUp, AlertCircle, Download
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { getISTDateString, formatDateDMY } from '@/lib/date-format'
@@ -731,6 +731,28 @@ export default function RateCalculatorPage() {
               {isAdmin ? `Clear Tab ${activeTab}` : 'Clear Calculator'}
             </button>
 
+            <button
+              type="button"
+              disabled={!currentCalc.canCalc}
+              onClick={() => {
+                const params = new URLSearchParams({
+                  company: currentSubCalc.companyName || `Quote - Option ${activeTab}`,
+                  date: formatDateDMY(recordDate),
+                  netPremium: String(currentCalc.numNet),
+                  totalPremium: String(currentCalc.numTotal),
+                  rate: String(currentCalc.rate),
+                  benefit: String(currentCalc.benefit),
+                  remarks: currentSubCalc.remarks || '',
+                })
+                window.open(`/api/v1/rates/image?${params.toString()}`, '_blank')
+              }}
+              className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
+              title="Download or view watermarked quote card image"
+            >
+              <Download size={13} />
+              <span>Quote Image</span>
+            </button>
+
             {isAdmin && (
               <button
                 onClick={handleSaveRecord}
@@ -939,6 +961,28 @@ export default function RateCalculatorPage() {
                         {/* Actions (Edit Option for Every Entry) */}
                         <td className="py-4 px-4 text-right align-top whitespace-nowrap">
                           <div className="flex items-center justify-end gap-1.5">
+                            {/* Download Watermarked Image Button */}
+                            {c1.rate ? (
+                              <button
+                                onClick={() => {
+                                  const params = new URLSearchParams({
+                                    company: c1.companyName || 'Calculation',
+                                    date: rec.date ? formatDateDMY(rec.date) : '',
+                                    netPremium: String(c1.netPremium || ''),
+                                    totalPremium: String(c1.totalPremium || ''),
+                                    rate: String(c1.rate || ''),
+                                    benefit: String(c1.benefit || ''),
+                                    remarks: c1.remarks || '',
+                                  })
+                                  window.open(`/api/v1/rates/image?${params.toString()}`, '_blank')
+                                }}
+                                className="p-2 bg-white border border-slate-200 hover:bg-emerald-50 text-slate-500 hover:text-emerald-700 rounded-xl transition-all cursor-pointer shadow-2xs"
+                                title="Download watermarked quote image"
+                              >
+                                <Download size={13} />
+                              </button>
+                            ) : null}
+
                             {/* Edit Action Button */}
                             <button
                               onClick={() => handleEditRecord(rec)}

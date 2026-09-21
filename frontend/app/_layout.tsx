@@ -90,12 +90,24 @@ function RootLayoutNav() {
 import { initDB } from '../src/lib/db';
 import { initSyncListeners } from '../src/lib/sync-engine';
 import { UpdateBanner } from '../src/components/UpdateManager';
+import * as ScreenCapture from 'expo-screen-capture';
 
 export default function RootLayout() {
+  // Enforce Screenshot & Screen Recording Restrictions across entire APK (FLAG_SECURE)
+  ScreenCapture.usePreventScreenCapture();
+
   useEffect(() => {
     initDB().then(() => {
       initSyncListeners();
     }).catch(err => console.error('[SQLite] Initialization failed:', err));
+
+    try {
+      ScreenCapture.preventScreenCaptureAsync?.().catch(err => {
+        console.log('[ScreenCapture] Screenshot restriction active:', err);
+      });
+    } catch (e) {
+      console.log('[ScreenCapture] Fallback:', e);
+    }
   }, []);
 
   return (

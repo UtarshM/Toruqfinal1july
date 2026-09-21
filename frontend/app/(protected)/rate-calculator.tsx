@@ -16,12 +16,15 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../../src/context/AuthContext';
-import { api } from '../../src/utils/api';
+import { api, BASE_URL } from '../../src/utils/api';
 import { Colors, Spacing, FontSize, BorderRadius } from '../../src/utils/theme';
 import { Ionicons } from '@expo/vector-icons';
 import Sidebar from '../../src/components/Sidebar';
 import { getCacheItem, setCacheItem } from '../../src/lib/db';
 import { DEFAULT_RATE_COMPANIES, DEFAULT_RATE_RELATIONSHIPS } from '../../src/lib/rate-data-seed';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
+import * as Print from 'expo-print';
 
 interface DropdownProps {
   label: string;
@@ -182,6 +185,7 @@ export default function RateCalculatorScreen() {
   const [relationships, setRelationships] = useState<any[]>(DEFAULT_RATE_RELATIONSHIPS);
   const [loadingConfig, setLoadingConfig] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isDownloadingImage, setIsDownloadingImage] = useState(false);
 
   // Today formatted as DD/MM/YYYY matching legacy PHP screenshot
   const today = new Date();
@@ -382,6 +386,115 @@ export default function RateCalculatorScreen() {
     }
   };
 
+  // Download / Share Rate Calculator Image with Torque Logo Watermark
+  const handleDownloadImage = async () => {
+    if (!calcState.companyId) {
+      Alert.alert('Required', 'Please select an Insurance Company first.');
+      return;
+    }
+    if (!calcState.netPremium || !calcState.totalPremium || !calcState.rate) {
+      Alert.alert('Required', 'Please enter Net Premium & Total Premium to calculate the Rate before downloading.');
+      return;
+    }
+
+    const selectedCompany = companies.find(c => c.id === calcState.companyId);
+    const companyName = selectedCompany?.name || 'Insurance Company';
+
+    setIsDownloadingImage(true);
+    try {
+      const qs = new URLSearchParams({
+        company: companyName,
+        date: formattedToday,
+        netPremium: String(calcState.netPremium),
+        totalPremium: String(calcState.totalPremium),
+        rate: String(calcState.rate),
+        benefit: String(calcState.benefit || '0'),
+        remarks: String(calcState.remarks || ''),
+        advisor: String(user?.full_name || (user as any)?.name || '')
+      });
+
+      const downloadUrl = `${BASE_URL}/api/v1/rates/image?${qs.toString()}`;
+      const safeComp = companyName.replace(/[^a-zA-Z0-9]/g, '_');
+      const filename = `Torque_Rate_${safeComp}_${Date.now()}.png`;
+      const fileUri = `${FileSystem.documentDirectory}${filename}`;
+
+      const res = await FileSystem.downloadAsync(downloadUrl, fileUri);
+      if (res.status === 200) {
+        if (await Sharing.isAvailableAsync()) {
+          await Sharing.shareAsync(res.uri, {
+            mimeType: 'image/png',
+            dialogTitle: `Torque Quote - ${companyName}`,
+            UTI: 'public.png'
+          });
+        } else {
+          Alert.alert('Saved', `Quote card saved to: ${res.uri}`);
+        }
+      } else {
+        throw new Error(`Server returned status ${res.status}`);
+      }
+    } catch (err: any) {
+      console.warn('[RateImage] Online image download failed, using offline fallback:', err);
+      // Offline fallback using expo-print
+      try {
+        const offlineHtml = `
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <meta charset="utf-8">
+            <style>
+              body { font-family: -apple-system, sans-serif; padding: 24px; color: #0F172A; background: #FFF; position: relative; }
+              .card { border: 2px solid #E2E8F0; border-radius: 16px; padding: 24px; position: relative; overflow: hidden; }
+              .watermark { position: absolute; top: 40%; left: 8%; transform: rotate(-30deg); font-size: 36px; font-weight: 900; color: rgba(0, 47, 167, 0.08); letter-spacing: 3px; }
+              .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #F1F5F9; padding-bottom: 14px; }
+              .title { font-size: 20px; font-weight: 900; color: #0F172A; }
+              .sub { font-size: 11px; color: #002FA7; font-weight: 800; letter-spacing: 0.5px; }
+              .company { background: #002FA7; color: white; padding: 14px 18px; border-radius: 12px; margin-top: 18px; font-size: 18px; font-weight: 900; }
+              .grid { display: flex; gap: 14px; margin-top: 14px; }
+              .col { flex: 1; background: #F8FAFC; border: 1px solid #CBD5E1; border-radius: 10px; padding: 14px; }
+              .lbl { font-size: 10px; font-weight: 800; color: #64748B; text-transform: uppercase; }
+              .val { font-size: 20px; font-weight: 900; color: #1E293B; margin-top: 4px; }
+              .rate-box { background: #F0FDF4; border: 2px solid #86EFAC; color: #15803D; }
+              .benefit-box { background: #EFF6FF; border: 2px solid #93C5FD; color: #002FA7; }
+              .footer { margin-top: 24px; font-size: 10px; color: #94A3B8; border-top: 1px solid #F1F5F9; padding-top: 10px; text-align: center; }
+            </style>
+          </head>
+          <body>
+            <div class="card">
+              <div class="watermark">TORQUE AUTO ADVISOR</div>
+              <div class="header">
+                <div>
+                  <div class="title">TORQUE AUTO ADVISOR</div>
+                  <div class="sub">OFFICIAL RATE ESTIMATE</div>
+                </div>
+                <div style="font-size: 12px; font-weight: bold; color: #64748B;">Date: ${formattedToday}</div>
+              </div>
+              <div class="company">${companyName}</div>
+              ${calcState.remarks ? `<div style="margin-top: 10px; font-size: 12px; color: #475569;">${calcState.remarks}</div>` : ''}
+              <div class="grid">
+                <div class="col"><div class="lbl">Net Premium</div><div class="val">₹${Number(calcState.netPremium).toLocaleString()}</div></div>
+                <div class="col"><div class="lbl">Total Premium (with GST)</div><div class="val">₹${Number(calcState.totalPremium).toLocaleString()}</div></div>
+              </div>
+              <div class="grid">
+                <div class="col rate-box"><div class="lbl" style="color: #166534;">Payable Customer Rate</div><div class="val" style="color: #15803D; font-size: 26px;">₹${Number(calcState.rate).toLocaleString()}</div></div>
+                <div class="col benefit-box"><div class="lbl" style="color: #1E40AF;">Customer Benefit / Savings</div><div class="val" style="color: #002FA7; font-size: 26px;">₹${Number(calcState.benefit || 0).toLocaleString()}</div></div>
+              </div>
+              <div class="footer">Torque Auto Advisor • Licensed & Authorized Motor Insurance Partner</div>
+            </div>
+          </body>
+          </html>
+        `;
+        const { uri } = await Print.printToFileAsync({ html: offlineHtml });
+        if (await Sharing.isAvailableAsync()) {
+          await Sharing.shareAsync(uri, { mimeType: 'application/pdf', dialogTitle: 'Rate Quote Card' });
+        }
+      } catch (fallbackErr: any) {
+        Alert.alert('Error', fallbackErr.message || 'Failed to generate quote card');
+      }
+    } finally {
+      setIsDownloadingImage(false);
+    }
+  };
+
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
@@ -510,8 +623,23 @@ export default function RateCalculatorScreen() {
                 </View>
               </View>
 
-              {/* Action Buttons: Save Calculation & Clear */}
+              {/* Action Buttons: Download Quote Image, Save Calculation & Clear */}
               <View style={styles.actionContainer}>
+                <Pressable
+                  style={[styles.downloadImageBtn, isDownloadingImage && { opacity: 0.6 }]}
+                  onPress={handleDownloadImage}
+                  disabled={isDownloadingImage}
+                >
+                  {isDownloadingImage ? (
+                    <ActivityIndicator size="small" color="#002FA7" />
+                  ) : (
+                    <Ionicons name="image-outline" size={18} color="#002FA7" />
+                  )}
+                  <Text style={styles.downloadImageBtnText}>
+                    {isDownloadingImage ? 'Generating Image...' : 'Download Quote Image (Watermarked)'}
+                  </Text>
+                </Pressable>
+
                 <Pressable
                   style={[styles.saveButton, isSaving && { opacity: 0.6 }]}
                   onPress={handleSaveCalculation}
@@ -774,6 +902,22 @@ const styles = StyleSheet.create({
   actionContainer: {
     marginTop: 10,
     gap: 10
+  },
+  downloadImageBtn: {
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1.5,
+    borderColor: '#93C5FD',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 13,
+    borderRadius: 6,
+    gap: 8,
+  },
+  downloadImageBtnText: {
+    color: '#002FA7',
+    fontWeight: '800',
+    fontSize: 14,
   },
   saveButton: {
     backgroundColor: '#002FA7',
