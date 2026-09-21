@@ -90,32 +90,12 @@ function RootLayoutNav() {
 import { initDB } from '../src/lib/db';
 import { initSyncListeners } from '../src/lib/sync-engine';
 import { UpdateBanner } from '../src/components/UpdateManager';
-import { requireOptionalNativeModule } from 'expo-modules-core';
 
 export default function RootLayout() {
   useEffect(() => {
     initDB().then(() => {
       initSyncListeners();
     }).catch(err => console.error('[SQLite] Initialization failed:', err));
-
-    // Safe execution of Screenshot & Screen Recording Protection (FLAG_SECURE):
-    // Only dynamically loads if the native module was compiled into this APK binary.
-    // This completely prevents module evaluation crashes on older APK builds and ensures
-    // the modern UI and all new features run without rolling back to embedded builds.
-    try {
-      const hasNativeModule = requireOptionalNativeModule('ExpoScreenCapture');
-      if (hasNativeModule) {
-        import('expo-screen-capture').then(ScreenCapture => {
-          ScreenCapture.preventScreenCaptureAsync?.('root_apk').catch(err => {
-            console.log('[ScreenCapture] Protection active with notice:', err);
-          });
-        }).catch(e => {
-          console.log('[ScreenCapture] Failed to load module:', e);
-        });
-      }
-    } catch (e) {
-      console.log('[ScreenCapture] Optional check skipped:', e);
-    }
   }, []);
 
   return (

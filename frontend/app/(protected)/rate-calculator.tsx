@@ -13,7 +13,8 @@ import {
   StatusBar,
   Alert,
   Modal,
-  Linking
+  Linking,
+  Image
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../../src/context/AuthContext';
@@ -572,12 +573,18 @@ export default function RateCalculatorScreen() {
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
       <Sidebar visible={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
-      {/* Top Header */}
+      {/* Top Header with Left Logo */}
       <View style={styles.header}>
-        <Pressable onPress={() => setSidebarOpen(true)} style={styles.menuBtn}>
-          <Ionicons name="menu-outline" size={26} color="#1E293B" />
-        </Pressable>
-        <Text style={styles.headerTitle}>Rate Calculator</Text>
+        <View style={styles.headerLeft}>
+          <Pressable onPress={() => setSidebarOpen(true)} style={styles.menuBtn}>
+            <Ionicons name="menu-outline" size={26} color="#1E293B" />
+          </Pressable>
+          <Image
+            source={require('../../assets/images/logo.png')}
+            style={styles.headerLogo}
+            resizeMode="contain"
+          />
+        </View>
         <Pressable onPress={handleClearCurrent} style={styles.menuBtn}>
           <Ionicons name="refresh-outline" size={22} color="#002FA7" />
         </Pressable>
@@ -591,6 +598,15 @@ export default function RateCalculatorScreen() {
         >
           {/* Clean Card matching qutcalc_one.php - ONLY ONE CALCULATOR */}
           <View style={styles.calculatorCard}>
+            {/* Watermark Logo */}
+            <View style={styles.cardWatermarkContainer} pointerEvents="none">
+              <Image
+                source={require('../../assets/images/logo.png')}
+                style={styles.cardWatermarkLogo}
+                resizeMode="contain"
+              />
+            </View>
+
             <View style={styles.cardHeader}>
               <Text style={styles.cardTitle}>Rate Calculator</Text>
             </View>
@@ -814,10 +830,35 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingVertical: 10,
     borderBottomWidth: 1,
     borderBottomColor: '#E2E8F0',
     backgroundColor: '#FFFFFF'
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  headerLogo: {
+    width: 140,
+    height: 40,
+  },
+  cardWatermarkContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 0,
+  },
+  cardWatermarkLogo: {
+    width: 300,
+    height: 175,
+    opacity: 0.06,
+    transform: [{ rotate: '-22deg' }],
   },
   menuBtn: {
     padding: 6
