@@ -658,26 +658,24 @@ export default function RateCalculatorPage() {
               </div>
             </div>
 
-            {/* 7. Benefit (Customer Savings) - ADMIN ONLY */}
-            {isAdmin && (
-              <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
-                <div className="w-44 shrink-0">
-                  <label className="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
-                    Benefit
-                  </label>
-                  <span className="text-[10px] text-slate-400 font-semibold block">Total customer discount</span>
-                </div>
-                <div className="flex-1">
-                  <input
-                    type="number"
-                    value={currentCalc.canCalc ? currentCalc.benefit : ''}
-                    readOnly
-                    placeholder={currentCalc.canCalc ? '' : 'Enter Net Premium & Total Premium'}
-                    className="w-full bg-blue-50/70 border-2 border-blue-300 rounded-xl py-2.5 px-3.5 text-xs font-black text-blue-900 outline-none"
-                  />
-                </div>
+            {/* 7. Benefit (Customer Savings) */}
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+              <div className="w-44 shrink-0">
+                <label className="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                  Benefit
+                </label>
+                <span className="text-[10px] text-slate-400 font-semibold block">Total customer discount</span>
               </div>
-            )}
+              <div className="flex-1">
+                <input
+                  type="number"
+                  value={currentCalc.canCalc ? currentCalc.benefit : ''}
+                  readOnly
+                  placeholder={currentCalc.canCalc ? '' : 'Enter Net Premium & Total Premium'}
+                  className="w-full bg-blue-50/70 border-2 border-blue-300 rounded-xl py-2.5 px-3.5 text-xs font-black text-blue-900 outline-none"
+                />
+              </div>
+            </div>
 
           </div>
         )}
@@ -706,6 +704,10 @@ export default function RateCalculatorPage() {
                 <span className="text-slate-300">•</span>
                 <span className="font-black text-emerald-700">
                   Rate: <strong>₹{currentCalc.rate.toLocaleString()}</strong>
+                </span>
+                <span className="text-slate-300">•</span>
+                <span className="font-black text-blue-700">
+                  Benefit: <strong>₹{currentCalc.benefit.toLocaleString()}</strong>
                 </span>
               </>
             )}

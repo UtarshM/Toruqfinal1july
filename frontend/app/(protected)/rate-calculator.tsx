@@ -493,17 +493,22 @@ export default function RateCalculatorScreen() {
                 </View>
               </View>
 
-              {/* 8. Benefit Output: ADMIN ONLY */}
-              {isAdmin && (
-                <View style={styles.formGroup}>
+              {/* 8. Benefit Output: Visible to Sales Executives and Admins */}
+              <View style={styles.formGroup}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                   <Text style={styles.fieldLabel}>Benefit</Text>
-                  <View style={[styles.inputBox, styles.benefitBox]}>
-                    <Text style={styles.benefitValueText}>
-                      {calcState.benefit ? `₹${Number(calcState.benefit).toLocaleString()}` : ''}
+                  {calcState.benefit && Number(calcState.benefit) > 0 ? (
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#002FA7' }}>
+                      Customer Savings
                     </Text>
-                  </View>
+                  ) : null}
                 </View>
-              )}
+                <View style={[styles.inputBox, styles.benefitBox]}>
+                  <Text style={styles.benefitValueText}>
+                    {calcState.benefit ? `₹${Number(calcState.benefit).toLocaleString()}` : ''}
+                  </Text>
+                </View>
+              </View>
 
               {/* Action Buttons: Save Calculation & Clear */}
               <View style={styles.actionContainer}>
