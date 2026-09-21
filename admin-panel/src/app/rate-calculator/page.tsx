@@ -4,7 +4,7 @@ import AdminLayout from '@/components/layout/AdminLayout'
 import { fetchApi } from '@/lib/api'
 import { 
   Calculator, Calendar, Info, CheckCircle2, Save, RefreshCw, 
-  Edit2, Trash2, Plus, X, Search, Building, TrendingUp, AlertCircle, Download
+  Edit2, Trash2, Plus, X, Search, Building, TrendingUp, AlertCircle, Download, MessageCircle
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { getISTDateString, formatDateDMY } from '@/lib/date-format'
@@ -753,6 +753,33 @@ export default function RateCalculatorPage() {
               <span>Quote Image</span>
             </button>
 
+            <button
+              type="button"
+              disabled={!currentCalc.canCalc}
+              onClick={() => {
+                const compName = currentSubCalc.companyName || `Calculation ${activeTab}`
+                const msg = [
+                  `*TORQUE AUTO ADVISOR - OFFICIAL QUOTE* 🚗📋`,
+                  `----------------------------------------`,
+                  `*Company:* ${compName}`,
+                  `*Date:* ${formatDateDMY(recordDate)}`,
+                  `*Net Premium:* ₹${currentCalc.numNet.toLocaleString()}`,
+                  `*Total Premium (with GST):* ₹${currentCalc.numTotal.toLocaleString()}`,
+                  `*Payable Customer Rate:* ₹${currentCalc.rate.toLocaleString()}`,
+                  currentCalc.benefit > 0 ? `*Customer Savings / Benefit:* ₹${currentCalc.benefit.toLocaleString()} 🎉` : '',
+                  currentSubCalc.remarks ? `\n*Policy Conditions:*\n${currentSubCalc.remarks}` : '',
+                  `----------------------------------------`,
+                  `_For best motor insurance deals & instant policy issue, contact Torque Auto Advisor._`
+                ].filter(Boolean).join('\n')
+                window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, '_blank')
+              }}
+              className="px-3 py-2 bg-[#25D366] hover:bg-[#1EBE5D] text-white rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
+              title="Send Quote via WhatsApp"
+            >
+              <MessageCircle size={13} />
+              <span>WhatsApp</span>
+            </button>
+
             {isAdmin && (
               <button
                 onClick={handleSaveRecord}
@@ -980,6 +1007,33 @@ export default function RateCalculatorPage() {
                                 title="Download watermarked quote image"
                               >
                                 <Download size={13} />
+                              </button>
+                            ) : null}
+
+                            {/* Share on WhatsApp Button */}
+                            {c1.rate ? (
+                              <button
+                                onClick={() => {
+                                  const compName = c1.companyName || 'Calculation'
+                                  const msg = [
+                                    `*TORQUE AUTO ADVISOR - OFFICIAL QUOTE* 🚗📋`,
+                                    `----------------------------------------`,
+                                    `*Company:* ${compName}`,
+                                    rec.date ? `*Date:* ${formatDateDMY(rec.date)}` : '',
+                                    c1.netPremium ? `*Net Premium:* ₹${Number(c1.netPremium).toLocaleString()}` : '',
+                                    c1.totalPremium ? `*Total Premium (with GST):* ₹${Number(c1.totalPremium).toLocaleString()}` : '',
+                                    `*Payable Customer Rate:* ₹${Number(c1.rate).toLocaleString()}`,
+                                    c1.benefit && c1.benefit > 0 ? `*Customer Savings / Benefit:* ₹${Number(c1.benefit).toLocaleString()} 🎉` : '',
+                                    c1.remarks ? `\n*Policy Conditions:*\n${c1.remarks}` : '',
+                                    `----------------------------------------`,
+                                    `_For best motor insurance deals & instant policy issue, contact Torque Auto Advisor._`
+                                  ].filter(Boolean).join('\n')
+                                  window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, '_blank')
+                                }}
+                                className="p-2 bg-white border border-slate-200 hover:bg-emerald-50 text-emerald-600 hover:text-emerald-700 rounded-xl transition-all cursor-pointer shadow-2xs"
+                                title="Share quote on WhatsApp"
+                              >
+                                <MessageCircle size={13} />
                               </button>
                             ) : null}
 

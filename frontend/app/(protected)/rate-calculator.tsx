@@ -12,7 +12,8 @@ import {
   ActivityIndicator,
   StatusBar,
   Alert,
-  Modal
+  Modal,
+  Linking
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../../src/context/AuthContext';
@@ -186,6 +187,9 @@ export default function RateCalculatorScreen() {
   const [loadingConfig, setLoadingConfig] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isDownloadingImage, setIsDownloadingImage] = useState(false);
+  const [isWhatsAppModalVisible, setIsWhatsAppModalVisible] = useState(false);
+  const [whatsAppPhone, setWhatsAppPhone] = useState('');
+  const [whatsAppMessage, setWhatsAppMessage] = useState('');
 
   // Today formatted as DD/MM/YYYY matching legacy PHP screenshot
   const today = new Date();
@@ -495,6 +499,74 @@ export default function RateCalculatorScreen() {
     }
   };
 
+  // Open WhatsApp Modal with formatted quote message
+  const handleOpenWhatsAppModal = () => {
+    if (!calcState.companyId) {
+      Alert.alert('Required', 'Please select an Insurance Company first.');
+      return;
+    }
+    if (!calcState.netPremium || !calcState.totalPremium || !calcState.rate) {
+      Alert.alert('Required', 'Please enter Net Premium & Total Premium to calculate the Rate first.');
+      return;
+    }
+
+    const selectedCompany = companies.find(c => c.id === calcState.companyId);
+    const companyName = selectedCompany?.name || 'Insurance Company';
+    const advisorName = user?.full_name || (user as any)?.name || '';
+
+    const msg = [
+      `*TORQUE AUTO ADVISOR - OFFICIAL QUOTE* 🚗📋`,
+      `----------------------------------------`,
+      `*Company:* ${companyName}`,
+      `*Date:* ${formattedToday}`,
+      advisorName ? `*Advisor:* ${advisorName}` : '',
+      `*Net Premium:* ₹${Number(calcState.netPremium).toLocaleString()}`,
+      `*Total Premium (with GST):* ₹${Number(calcState.totalPremium).toLocaleString()}`,
+      `*Payable Customer Rate:* ₹${Number(calcState.rate).toLocaleString()}`,
+      Number(calcState.benefit || 0) > 0 ? `*Customer Savings / Benefit:* ₹${Number(calcState.benefit).toLocaleString()} 🎉` : '',
+      calcState.remarks ? `\n*Policy Conditions:*\n${calcState.remarks}` : '',
+      `----------------------------------------`,
+      `_For best motor insurance deals & instant policy issue, contact Torque Auto Advisor._`
+    ].filter(Boolean).join('\n');
+
+    setWhatsAppMessage(msg);
+    setIsWhatsAppModalVisible(true);
+  };
+
+  // Send text message directly via WhatsApp
+  const handleSendWhatsAppText = async () => {
+    const cleanPhone = whatsAppPhone.replace(/[^0-9]/g, '');
+    let phoneParam = '';
+    if (cleanPhone) {
+      phoneParam = cleanPhone.length === 10 ? `91${cleanPhone}` : cleanPhone;
+    }
+
+    const targetUrl = phoneParam
+      ? `whatsapp://send?phone=${phoneParam}&text=${encodeURIComponent(whatsAppMessage)}`
+      : `whatsapp://send?text=${encodeURIComponent(whatsAppMessage)}`;
+    const webFallback = phoneParam
+      ? `https://api.whatsapp.com/send?phone=${phoneParam}&text=${encodeURIComponent(whatsAppMessage)}`
+      : `https://api.whatsapp.com/send?text=${encodeURIComponent(whatsAppMessage)}`;
+
+    try {
+      const canOpen = await Linking.canOpenURL(targetUrl);
+      if (canOpen) {
+        await Linking.openURL(targetUrl);
+      } else {
+        await Linking.openURL(webFallback);
+      }
+      setIsWhatsAppModalVisible(false);
+    } catch (err: any) {
+      Alert.alert('Error', 'Could not launch WhatsApp. Please make sure WhatsApp is installed.');
+    }
+  };
+
+  // Download watermarked image and trigger native share (WhatsApp preview)
+  const handleShareImageAndWhatsApp = async () => {
+    setIsWhatsAppModalVisible(false);
+    await handleDownloadImage();
+  };
+
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
@@ -623,8 +695,16 @@ export default function RateCalculatorScreen() {
                 </View>
               </View>
 
-              {/* Action Buttons: Download Quote Image, Save Calculation & Clear */}
+              {/* Action Buttons: WhatsApp, Download Quote Image, Save Calculation & Clear */}
               <View style={styles.actionContainer}>
+                <Pressable
+                  style={styles.whatsappBtn}
+                  onPress={handleOpenWhatsAppModal}
+                >
+                  <Ionicons name="logo-whatsapp" size={18} color="#FFFFFF" />
+                  <Text style={styles.whatsappBtnText}>Send Quote via WhatsApp</Text>
+                </Pressable>
+
                 <Pressable
                   style={[styles.downloadImageBtn, isDownloadingImage && { opacity: 0.6 }]}
                   onPress={handleDownloadImage}
@@ -659,6 +739,67 @@ export default function RateCalculatorScreen() {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* WhatsApp Quote Sharing Modal */}
+      <Modal
+        visible={isWhatsAppModalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setIsWhatsAppModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <View style={styles.modalHeader}>
+              <View style={styles.modalIconBg}>
+                <Ionicons name="logo-whatsapp" size={22} color="#25D366" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.modalTitle}>Share on WhatsApp</Text>
+                <Text style={styles.modalSub}>Send quote directly to customer</Text>
+              </View>
+              <Pressable onPress={() => setIsWhatsAppModalVisible(false)} style={styles.modalCloseBtn}>
+                <Ionicons name="close" size={20} color="#64748B" />
+              </Pressable>
+            </View>
+
+            <Text style={styles.modalLabel}>CUSTOMER MOBILE NUMBER (OPTIONAL)</Text>
+            <TextInput
+              style={styles.phoneInput}
+              value={whatsAppPhone}
+              onChangeText={setWhatsAppPhone}
+              keyboardType="phone-pad"
+              maxLength={13}
+              placeholder="Enter 10-digit number or leave empty"
+              placeholderTextColor="#94A3B8"
+            />
+            <Text style={styles.helperText}>
+              Leave empty to select any contact directly in WhatsApp.
+            </Text>
+
+            <Text style={[styles.modalLabel, { marginTop: 12 }]}>QUOTE MESSAGE PREVIEW</Text>
+            <TextInput
+              style={styles.modalMsgInput}
+              value={whatsAppMessage}
+              onChangeText={setWhatsAppMessage}
+              multiline={true}
+              numberOfLines={6}
+              textAlignVertical="top"
+            />
+
+            <View style={styles.modalActionCol}>
+              <Pressable style={styles.sendWhatsAppMainBtn} onPress={handleSendWhatsAppText}>
+                <Ionicons name="logo-whatsapp" size={17} color="#FFFFFF" />
+                <Text style={styles.sendWhatsAppMainBtnText}>Open WhatsApp & Send Message</Text>
+              </Pressable>
+
+              <Pressable style={styles.shareImageAlsoBtn} onPress={handleShareImageAndWhatsApp}>
+                <Ionicons name="image-outline" size={17} color="#002FA7" />
+                <Text style={styles.shareImageAlsoBtnText}>Share Watermarked Card Image</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -944,5 +1085,133 @@ const styles = StyleSheet.create({
     color: '#64748B',
     fontWeight: '600',
     fontSize: 13
+  },
+  whatsappBtn: {
+    backgroundColor: '#25D366',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 13,
+    borderRadius: 6,
+    gap: 8,
+    shadowColor: '#25D366',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  whatsappBtnText: {
+    color: '#FFFFFF',
+    fontWeight: '800',
+    fontSize: 14,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+  },
+  modalContainer: {
+    width: '100%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    gap: 12,
+  },
+  modalIconBg: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#DCFCE7',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  modalSub: {
+    fontSize: 12,
+    color: '#64748B',
+  },
+  modalLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#475569',
+    marginBottom: 6,
+    letterSpacing: 0.5,
+  },
+  phoneInput: {
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: '#0F172A',
+    backgroundColor: '#F8FAFC',
+  },
+  helperText: {
+    fontSize: 11,
+    color: '#64748B',
+    marginTop: 4,
+  },
+  modalMsgInput: {
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 13,
+    color: '#0F172A',
+    backgroundColor: '#F8FAFC',
+    lineHeight: 18,
+    minHeight: 120,
+    maxHeight: 160,
+  },
+  modalActionCol: {
+    marginTop: 18,
+    gap: 10,
+  },
+  sendWhatsAppMainBtn: {
+    backgroundColor: '#25D366',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 13,
+    borderRadius: 8,
+    gap: 8,
+  },
+  sendWhatsAppMainBtnText: {
+    color: '#FFFFFF',
+    fontWeight: '800',
+    fontSize: 14,
+  },
+  shareImageAlsoBtn: {
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1.5,
+    borderColor: '#93C5FD',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    borderRadius: 8,
+    gap: 8,
+  },
+  shareImageAlsoBtnText: {
+    color: '#002FA7',
+    fontWeight: '700',
+    fontSize: 13,
   }
 });
