@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
   const benefit = searchParams.get('benefit') ? `₹${Number(searchParams.get('benefit')).toLocaleString()}` : '-'
   const remarks = searchParams.get('remarks') || ''
   const vehicleNo = searchParams.get('vehicleNo') || ''
-  const advisorName = searchParams.get('advisor') || ''
+  const advisorName = searchParams.get('advisor') || 'Sales 1'
 
   const logoBase64 = TORQUE_LOGO_BASE64
 
@@ -337,28 +337,26 @@ export async function GET(req: NextRequest) {
         </div>
 
         {/* Advisor & Verification Bar */}
-        {advisorName ? (
-          <div
-            style={{
-              marginTop: '18px',
-              display: 'flex',
-              flexDirection: 'row',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              backgroundColor: '#F8FAFC',
-              border: '1px solid #E2E8F0',
-              borderRadius: '12px',
-              padding: '10px 18px',
-            }}
-          >
-            <div style={{ fontSize: '12px', fontWeight: 700, color: '#64748B' }}>
-              Prepared by Sales Advisor:
-            </div>
-            <div style={{ fontSize: '13px', fontWeight: 800, color: '#0F172A' }}>
-              {advisorName}
-            </div>
+        <div
+          style={{
+            marginTop: '18px',
+            display: 'flex',
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            backgroundColor: '#F8FAFC',
+            border: '1px solid #E2E8F0',
+            borderRadius: '12px',
+            padding: '10px 18px',
+          }}
+        >
+          <div style={{ fontSize: '12px', fontWeight: 700, color: '#64748B' }}>
+            Prepared by Sales Advisor:
           </div>
-        ) : null}
+          <div style={{ fontSize: '13px', fontWeight: 800, color: '#0F172A' }}>
+            {advisorName}
+          </div>
+        </div>
 
         {/* Footer Disclaimer & Branding */}
         <div

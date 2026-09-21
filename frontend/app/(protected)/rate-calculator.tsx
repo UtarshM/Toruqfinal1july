@@ -414,10 +414,10 @@ export default function RateCalculatorScreen() {
         rate: String(calcState.rate),
         benefit: String(calcState.benefit || '0'),
         remarks: String(calcState.remarks || ''),
-        advisor: String(user?.full_name || (user as any)?.name || '')
+        advisor: String(user?.full_name || (user as any)?.name || 'Sales 1')
       });
 
-      const downloadUrl = `${BASE_URL}/api/v1/rates/image?${qs.toString()}`;
+      const downloadUrl = `${BASE_URL}/api/v1/rates/image?${qs.toString()}`.replace(/\+/g, '%20');
       const safeComp = companyName.replace(/[^a-zA-Z0-9]/g, '_');
       const filename = `Torque_Rate_${safeComp}_${Date.now()}.png`;
       const fileUri = `${FileSystem.documentDirectory}${filename}`;

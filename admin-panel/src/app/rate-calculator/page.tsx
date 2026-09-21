@@ -735,6 +735,7 @@ export default function RateCalculatorPage() {
               type="button"
               disabled={!currentCalc.canCalc}
               onClick={() => {
+                const advisorName = user?.fullName || (user as any)?.full_name || (user as any)?.name || 'Sales 1'
                 const params = new URLSearchParams({
                   company: currentSubCalc.companyName || `Quote - Option ${activeTab}`,
                   date: formatDateDMY(recordDate),
@@ -743,6 +744,7 @@ export default function RateCalculatorPage() {
                   rate: String(currentCalc.rate),
                   benefit: String(currentCalc.benefit),
                   remarks: currentSubCalc.remarks || '',
+                  advisor: advisorName,
                 })
                 window.open(`/api/v1/rates/image?${params.toString()}`, '_blank')
               }}
@@ -992,6 +994,7 @@ export default function RateCalculatorPage() {
                             {c1.rate ? (
                               <button
                                 onClick={() => {
+                                  const advisorName = user?.fullName || (user as any)?.full_name || (user as any)?.name || 'Sales 1'
                                   const params = new URLSearchParams({
                                     company: c1.companyName || 'Calculation',
                                     date: rec.date ? formatDateDMY(rec.date) : '',
@@ -1000,6 +1003,7 @@ export default function RateCalculatorPage() {
                                     rate: String(c1.rate || ''),
                                     benefit: String(c1.benefit || ''),
                                     remarks: c1.remarks || '',
+                                    advisor: advisorName,
                                   })
                                   window.open(`/api/v1/rates/image?${params.toString()}`, '_blank')
                                 }}
