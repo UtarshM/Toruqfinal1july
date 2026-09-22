@@ -2,6 +2,28 @@ import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { sendStaffOtpEmail } from '@/lib/mailer'
 
+export async function GET() {
+  try {
+    const users = await prisma.user.findMany({
+      select: { email: true, fullName: true, isActive: true },
+      take: 20,
+    })
+    const dbUrl = process.env.DATABASE_URL || ''
+    const sanitizedUrl = dbUrl ? dbUrl.replace(/:[^:@]+@/, ':***@') : 'not set'
+    return NextResponse.json({
+      status: 'ok',
+      userCount: users.length,
+      users,
+      db: sanitizedUrl,
+    })
+  } catch (error: any) {
+    return NextResponse.json({
+      status: 'error',
+      message: error.message,
+    }, { status: 500 })
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
