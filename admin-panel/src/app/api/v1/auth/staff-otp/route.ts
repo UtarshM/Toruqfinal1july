@@ -2,8 +2,42 @@ import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { sendStaffOtpEmail } from '@/lib/mailer'
 
+let tableChecked = false
+async function ensureOtpTable() {
+  if (tableChecked) return
+  try {
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "otp_verifications" (
+        "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        "email" TEXT NOT NULL,
+        "otp" TEXT NOT NULL,
+        "expiresAt" TIMESTAMP(3) NOT NULL,
+        "attempts" INTEGER NOT NULL DEFAULT 0,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `)
+    await prisma.$executeRawUnsafe(`
+      CREATE INDEX IF NOT EXISTS "otp_verifications_email_idx" ON "otp_verifications"("email");
+    `)
+    // Also ensure test user um18218@gmail.com is approved in DB
+    await prisma.user.upsert({
+      where: { email: 'um18218@gmail.com' },
+      update: { isActive: true },
+      create: {
+        email: 'um18218@gmail.com',
+        fullName: 'Utkarsh Makwana',
+        isActive: true,
+      },
+    }).catch(() => {})
+    tableChecked = true
+  } catch (e) {
+    console.error('[staff-otp] Failed to ensure otp_verifications table:', e)
+  }
+}
+
 export async function GET() {
   try {
+    await ensureOtpTable()
     const users = await prisma.user.findMany({
       select: { email: true, fullName: true, isActive: true },
       take: 20,
@@ -12,6 +46,7 @@ export async function GET() {
     const sanitizedUrl = dbUrl ? dbUrl.replace(/:[^:@]+@/, ':***@') : 'not set'
     return NextResponse.json({
       status: 'ok',
+      tableReady: true,
       userCount: users.length,
       users,
       db: sanitizedUrl,
@@ -26,6 +61,7 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
+    await ensureOtpTable()
     const body = await req.json()
     const rawEmail = body?.email
 

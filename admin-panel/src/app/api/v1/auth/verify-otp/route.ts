@@ -3,8 +3,32 @@ import prisma from '@/lib/prisma'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { logActivity } from '@/lib/activity-logger'
 
+let tableChecked = false
+async function ensureOtpTable() {
+  if (tableChecked) return
+  try {
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "otp_verifications" (
+        "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        "email" TEXT NOT NULL,
+        "otp" TEXT NOT NULL,
+        "expiresAt" TIMESTAMP(3) NOT NULL,
+        "attempts" INTEGER NOT NULL DEFAULT 0,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `)
+    await prisma.$executeRawUnsafe(`
+      CREATE INDEX IF NOT EXISTS "otp_verifications_email_idx" ON "otp_verifications"("email");
+    `)
+    tableChecked = true
+  } catch (e) {
+    console.error('[verify-otp] Failed to ensure otp_verifications table:', e)
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
+    await ensureOtpTable()
     const body = await req.json()
     const rawEmail = body?.email
     const rawOtp = body?.otp
@@ -82,34 +106,40 @@ export async function POST(req: NextRequest) {
     }
 
     // 7. Ensure user exists in Supabase Auth and generate session token
-    let linkData: any = null
-    const { data, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
-      type: 'magiclink',
-      email: user.email,
-    })
-
-    if (linkError || !data?.properties?.hashed_token) {
-      // If user doesn't exist in Supabase auth yet, create them with random password
-      const tempPassword = `T@rq${Math.random().toString(36).slice(2)}!${Date.now()}`
-      await supabaseAdmin.auth.admin.createUser({
-        email: user.email,
-        password: tempPassword,
-        email_confirm: true,
-        user_metadata: { full_name: user.fullName },
-      })
-
-      // Retry generateLink
-      const retry = await supabaseAdmin.auth.admin.generateLink({
+    let tokenHash: string | null = null
+    let actionLink: string | null = null
+    try {
+      let linkData: any = null
+      const { data, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
         type: 'magiclink',
         email: user.email,
       })
-      linkData = retry.data
-    } else {
-      linkData = data
-    }
 
-    const tokenHash = linkData?.properties?.hashed_token || null
-    const actionLink = linkData?.properties?.action_link || null
+      if (linkError || !data?.properties?.hashed_token) {
+        // If user doesn't exist in Supabase auth yet, create them with random password
+        const tempPassword = `T@rq${Math.random().toString(36).slice(2)}!${Date.now()}`
+        await supabaseAdmin.auth.admin.createUser({
+          email: user.email,
+          password: tempPassword,
+          email_confirm: true,
+          user_metadata: { full_name: user.fullName },
+        }).catch(() => {})
+
+        // Retry generateLink
+        const retry = await supabaseAdmin.auth.admin.generateLink({
+          type: 'magiclink',
+          email: user.email,
+        })
+        linkData = retry.data
+      } else {
+        linkData = data
+      }
+
+      tokenHash = linkData?.properties?.hashed_token || null
+      actionLink = linkData?.properties?.action_link || null
+    } catch (authErr) {
+      console.warn('[verify-otp] Supabase magiclink error (falling back to user session):', authErr)
+    }
 
     // 8. Log successful staff login activity
     logActivity(user.id, 'STAFF_OTP_LOGIN', 'AUTH', user.id, {
