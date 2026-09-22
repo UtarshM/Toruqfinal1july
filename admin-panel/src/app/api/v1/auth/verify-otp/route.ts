@@ -17,8 +17,6 @@ async function ensureOtpTable() {
         "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
       )
     `)
-    await prisma.$executeRawUnsafe(`ALTER TABLE "otp_verifications" ADD COLUMN IF NOT EXISTS "expires_at" TIMESTAMP(3)`).catch(() => {})
-    await prisma.$executeRawUnsafe(`ALTER TABLE "otp_verifications" ADD COLUMN IF NOT EXISTS "created_at" TIMESTAMP(3) DEFAULT CURRENT_TIMESTAMP`).catch(() => {})
     await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "otp_verifications_email_idx" ON "otp_verifications"("email")`).catch(() => {})
     tableChecked = true
   } catch (e) {

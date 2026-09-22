@@ -6,6 +6,7 @@ let tableChecked = false
 async function ensureOtpTable() {
   if (tableChecked) return
   try {
+    await prisma.$executeRawUnsafe(`DROP TABLE IF EXISTS "otp_verifications" CASCADE`).catch(() => {})
     await prisma.$executeRawUnsafe(`
       CREATE TABLE IF NOT EXISTS "otp_verifications" (
         "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -16,8 +17,6 @@ async function ensureOtpTable() {
         "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
       )
     `)
-    await prisma.$executeRawUnsafe(`ALTER TABLE "otp_verifications" ADD COLUMN IF NOT EXISTS "expires_at" TIMESTAMP(3)`).catch(() => {})
-    await prisma.$executeRawUnsafe(`ALTER TABLE "otp_verifications" ADD COLUMN IF NOT EXISTS "created_at" TIMESTAMP(3) DEFAULT CURRENT_TIMESTAMP`).catch(() => {})
     await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "otp_verifications_email_idx" ON "otp_verifications"("email")`).catch(() => {})
     // Also ensure test user um18218@gmail.com is approved in DB
     await prisma.user.upsert({
