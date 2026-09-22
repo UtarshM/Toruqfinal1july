@@ -11,12 +11,12 @@ async function ensureOtpTable() {
         "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         "email" TEXT NOT NULL,
         "otp" TEXT NOT NULL,
-        "expiresAt" TIMESTAMP(3) NOT NULL,
+        "expires_at" TIMESTAMP(3) NOT NULL,
         "attempts" INTEGER NOT NULL DEFAULT 0,
-        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+        "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
-    `)
-    await prisma.$executeRawUnsafe(`
+      ALTER TABLE "otp_verifications" ADD COLUMN IF NOT EXISTS "expires_at" TIMESTAMP(3);
+      ALTER TABLE "otp_verifications" ADD COLUMN IF NOT EXISTS "created_at" TIMESTAMP(3) DEFAULT CURRENT_TIMESTAMP;
       CREATE INDEX IF NOT EXISTS "otp_verifications_email_idx" ON "otp_verifications"("email");
     `)
     // Also ensure test user um18218@gmail.com is approved in DB
