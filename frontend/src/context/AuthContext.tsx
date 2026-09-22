@@ -1,11 +1,35 @@
 import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { AppState, AppStateStatus } from 'react-native';
+import { AppState, AppStateStatus, Alert } from 'react-native';
 import { supabase } from '../lib/supabase';
 import { useCacheStore } from '../store/cacheStore';
 
 const USER_PROFILE_CACHE_KEY = '@torque_user_profile';
 const EXPLICIT_LOGOUT_KEY = '@torque_explicit_logout';
+const SESSION_EXPIRY_KEY = '@torque_session_expiry';
+
+/**
+ * Calculates the upcoming 8:00 PM IST timestamp.
+ * IST is UTC + 5 hours 30 minutes.
+ * 8:00 PM IST corresponds to 20:00:00 IST = 14:30:00 UTC.
+ */
+export function getNext8PmIstTimestamp(fromTime = Date.now()): number {
+  const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+  const istDate = new Date(fromTime + IST_OFFSET_MS);
+
+  const year = istDate.getUTCFullYear();
+  const month = istDate.getUTCMonth();
+  const date = istDate.getUTCDate();
+
+  // 8:00 PM IST corresponds to 14:30:00 UTC on the same calendar day in IST
+  const target8PmUtc = Date.UTC(year, month, date, 14, 30, 0, 0);
+
+  if (fromTime >= target8PmUtc) {
+    // 8:00 PM IST has already passed for today, so next cutoff is tomorrow's 8:00 PM IST
+    return target8PmUtc + 24 * 60 * 60 * 1000;
+  }
+  return target8PmUtc;
+}
 
 interface User {
   id: string;
@@ -33,6 +57,8 @@ interface AuthContextType {
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
   login: (email: string, password: string) => Promise<User>;
+  requestStaffOtp: (email: string) => Promise<{ success: boolean; message: string; fullName: string }>;
+  verifyStaffOtp: (email: string, otp: string) => Promise<User>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -43,6 +69,8 @@ const AuthContext = createContext<AuthContextType>({
   logout: async () => {},
   refreshUser: async () => {},
   login: async () => ({} as User),
+  requestStaffOtp: async () => ({ success: false, message: '', fullName: '' }),
+  verifyStaffOtp: async () => ({} as User),
 });
 
 const LIVE_API_BASE = 'https://admin-panel-delta-steel.vercel.app';
@@ -52,6 +80,56 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [isPinAuthenticated, setIsPinAuthenticated] = useState(false);
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
+  const logoutTimerRef = useRef<any>(null);
+
+  function schedule8PmLogout(expiryMs: number) {
+    if (logoutTimerRef.current) {
+      clearTimeout(logoutTimerRef.current);
+      logoutTimerRef.current = null;
+    }
+    const msUntil8Pm = expiryMs - Date.now();
+    if (msUntil8Pm > 0) {
+      logoutTimerRef.current = setTimeout(async () => {
+        console.log('[auth] Active 8:00 PM IST cutoff timer fired. Logging out staff user...');
+        await logout();
+        Alert.alert(
+          'Daily Session Ended',
+          'Your shift ended at 8:00 PM IST. You have been automatically logged out. You can log in via OTP anytime to continue.'
+        );
+      }, msUntil8Pm);
+    }
+  }
+
+  async function checkDailySessionExpiry(currentUser: User | null): Promise<boolean> {
+    if (!currentUser) return false;
+    const isSuperAdmin = 
+      currentUser.role === 'Super Admin' || 
+      currentUser.email?.toLowerCase() === 'torqueautoadvisor@gmail.com';
+
+    // Super Admin is exempt from 8:00 PM IST auto-logout
+    if (isSuperAdmin) return false;
+
+    const expiryStr = await AsyncStorage.getItem(SESSION_EXPIRY_KEY).catch(() => null);
+    if (!expiryStr) {
+      console.log('[auth] No session expiry found for staff user. Expiring session...');
+      await logout();
+      return true;
+    }
+
+    const expiryMs = Number(expiryStr);
+    if (Date.now() >= expiryMs) {
+      console.log('[auth] Session has expired past 8:00 PM IST.');
+      await logout();
+      Alert.alert(
+        'Daily Session Ended',
+        'Your daily shift ended at 8:00 PM IST. Please sign in with OTP for today.'
+      );
+      return true;
+    }
+
+    schedule8PmLogout(expiryMs);
+    return false;
+  }
 
   useEffect(() => {
     let mounted = true;
@@ -59,22 +137,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Load cache globally on app startup
     useCacheStore.getState().loadCache().catch(() => {});
 
-    // Step 1: Instantly restore cached user profile if available
+    // Step 1: Check session expiry and restore cached user profile
     AsyncStorage.getItem(USER_PROFILE_CACHE_KEY)
-      .then((cached) => {
+      .then(async (cached) => {
         if (!mounted) return;
         if (cached) {
           try {
-            const parsed = JSON.parse(cached);
+            const parsed: User = JSON.parse(cached);
             if (parsed && parsed.id) {
-              if (parsed.email?.toLowerCase() === 'torqueautoadvisor@gmail.com' && (!parsed.role || parsed.role.toUpperCase() === 'EXECUTIVE')) {
-                parsed.role = 'Super Admin';
-                parsed.name = parsed.name || 'Admin';
-                parsed.full_name = parsed.full_name || 'Admin';
-                AsyncStorage.setItem(USER_PROFILE_CACHE_KEY, JSON.stringify(parsed)).catch(() => {});
+              const isExpired = await checkDailySessionExpiry(parsed);
+              if (!isExpired && mounted) {
+                if (parsed.email?.toLowerCase() === 'torqueautoadvisor@gmail.com' && (!parsed.role || parsed.role.toUpperCase() === 'EXECUTIVE')) {
+                  parsed.role = 'Super Admin';
+                  parsed.name = parsed.name || 'Admin';
+                  parsed.full_name = parsed.full_name || 'Admin';
+                  AsyncStorage.setItem(USER_PROFILE_CACHE_KEY, JSON.stringify(parsed)).catch(() => {});
+                }
+                setUser(parsed);
+                setIsLoading(false);
               }
-              setUser(parsed);
-              setIsLoading(false); // Dashboard shows immediately!
             }
           } catch (err) {
             console.warn('Failed to parse cached profile:', err);
@@ -90,14 +171,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // Step 2: In parallel, check Supabase session & fetch updated profile in background
     supabase.auth.getSession()
-      .then(({ data: { session } }) => {
+      .then(async ({ data: { session } }) => {
         if (!mounted) return;
         if (session) {
-          fetchProfile().finally(() => {
-            if (mounted) setIsLoading(false);
-          });
+          const profile = await fetchProfile();
+          if (profile && mounted) {
+            await checkDailySessionExpiry(profile);
+          }
+          if (mounted) setIsLoading(false);
         } else {
-          // Genuinely no session: only clear if nothing cached
           AsyncStorage.getItem(USER_PROFILE_CACHE_KEY).then(c => {
             if (!c && mounted) {
               setUser(null);
@@ -115,63 +197,55 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!mounted) return;
       if (event === 'SIGNED_OUT') {
-        // Check if this is an explicit logout
         const flag = await AsyncStorage.getItem(EXPLICIT_LOGOUT_KEY).catch(() => null);
         if (flag === 'true') {
-          // ====== EXPLICIT LOGOUT: Clear everything ======
           await AsyncStorage.removeItem(EXPLICIT_LOGOUT_KEY).catch(() => {});
-          await AsyncStorage.removeItem(USER_PROFILE_CACHE_KEY).catch(() => {});
+          await AsyncStorage.removeItem(SESSION_EXPIRY_KEY).catch(() => {});
           setUser(null);
-        } else {
-          // ====== UNEXPECTED SIGNED_OUT (app backgrounded, multi-device race, etc.) ======
-          // Do NOT clear user state immediately. Attempt recovery.
-          console.warn('[auth] Unexpected SIGNED_OUT — attempting silent recovery...');
-          
-          // Wait a moment for Supabase to settle
-          await new Promise(r => setTimeout(r, 2000));
-          
+          setIsLoading(false);
+          return;
+        }
+
+        const cached = await AsyncStorage.getItem(USER_PROFILE_CACHE_KEY).catch(() => null);
+        if (cached) {
           try {
-            const { data: { session: recoveredSession } } = await supabase.auth.getSession();
-            if (recoveredSession?.user) {
-              console.log('[auth] Session recovered after unexpected SIGNED_OUT');
-              fetchProfile().catch(() => {});
+            const { data: refreshed, error } = await supabase.auth.refreshSession();
+            if (refreshed?.session) {
+              console.log('[auth] Successfully refreshed session after spurious SIGNED_OUT');
               return;
             }
           } catch {}
-
-          // Try an active refresh as last resort
-          try {
-            const { data, error } = await supabase.auth.refreshSession();
-            if (data?.session?.user && !error) {
-              console.log('[auth] Session recovered via active refresh');
-              fetchProfile().catch(() => {});
-              return;
-            }
-          } catch {}
-
-          // Even if all recovery failed, keep the cached profile.
-          // The user won't be kicked out, but API calls may fail with 401.
           console.warn('[auth] Session recovery failed, keeping cached profile.');
         }
       } else if (session) {
-        fetchProfile().catch(() => {});
+        fetchProfile().then(p => {
+          if (p) checkDailySessionExpiry(p);
+        }).catch(() => {});
       }
     });
 
-    // Step 3: Handle app state changes (iOS/Android backgrounding)
+    // Step 3: Handle app state changes (iOS/Android foreground resume)
     const appStateSubscription = AppState.addEventListener('change', async (nextState: AppStateStatus) => {
       const prevState = appStateRef.current;
       appStateRef.current = nextState;
 
-      // App came back to foreground from background/inactive
       if (prevState.match(/inactive|background/) && nextState === 'active') {
-        console.log('[auth] App resumed from background, refreshing session...');
-        // Wait a moment for network to stabilize
-        await new Promise(r => setTimeout(r, 1500));
+        console.log('[auth] App resumed from background, checking 8:00 PM IST expiry & session...');
+        await new Promise(r => setTimeout(r, 1000));
+        
+        // Read current cached user
+        const cached = await AsyncStorage.getItem(USER_PROFILE_CACHE_KEY).catch(() => null);
+        if (cached) {
+          try {
+            const parsed = JSON.parse(cached);
+            const expired = await checkDailySessionExpiry(parsed);
+            if (expired) return;
+          } catch {}
+        }
+
         try {
           const { data: { session } } = await supabase.auth.getSession();
           if (session) {
-            // Check if token is expiring soon and refresh proactively
             const nowSec = Math.floor(Date.now() / 1000);
             if (session.expires_at && session.expires_at - nowSec < 120) {
               await supabase.auth.refreshSession();
@@ -187,6 +261,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       mounted = false;
       clearTimeout(safetyTimeout);
+      if (logoutTimerRef.current) clearTimeout(logoutTimerRef.current);
       subscription.unsubscribe();
       appStateSubscription.remove();
     };
@@ -207,7 +282,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return null;
       }
 
-      // Guarded fetch: 6-second timeout prevents mobile app from freezing on slow network
       let data: any = null;
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 6000);
@@ -227,7 +301,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           lastProfileFetchTime = Date.now();
         } else if (response.status === 401) {
           clearTimeout(timeoutId);
-          // Attempt to refresh token on 401
           const { data: { session: refreshedSession }, error: refreshError } = await supabase.auth.refreshSession();
           if (refreshedSession && !refreshError) {
             return await fetchProfile(true);
@@ -239,7 +312,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         clearTimeout(timeoutId);
       }
 
-      // Check onboarding form status with a 4-second timeout
       let requiresOnboardingForm = false;
       let onboardingRemark = null;
       const obController = new AbortController();
@@ -255,51 +327,47 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         });
         if (statusRes.ok) {
           const statusData = await statusRes.json();
-          requiresOnboardingForm = statusData.requiresForm;
-          onboardingRemark = statusData.onboardingRemark;
+          requiresOnboardingForm = statusData.requiresOnboardingForm === true;
+          onboardingRemark = statusData.remark || null;
         }
-      } catch (err) {
-        // Safe fallback - don't block login
+      } catch (err: any) {
+        console.warn('[auth] /check-form-status failed:', err.message);
       } finally {
         clearTimeout(obTimeoutId);
       }
 
       if (data && data.id) {
-        const resolvedRole = 
-          data.role?.name || 
-          session.user.user_metadata?.role || 
-          session.user.app_metadata?.role || 
-          (session.user.email?.toLowerCase() === 'torqueautoadvisor@gmail.com' ? 'Super Admin' : 'Executive');
+        const isSuperAdminEmail = (data.email || session.user.email || '').toLowerCase() === 'torqueautoadvisor@gmail.com';
+        const roleName = isSuperAdminEmail ? 'Super Admin' : (data.role?.name || data.role || 'Staff');
 
         const profileUser: User = {
           id: data.id,
-          email: data.email,
-          full_name: data.full_name || data.fullName || session.user.user_metadata?.full_name || 'Admin',
-          name: data.full_name || data.fullName || session.user.user_metadata?.name || 'Admin',
-          phone: data.phone || data.personalMobile || '',
-          role: resolvedRole,
-          role_id: data.roleId || data.role_id || null,
-          permissions: (data.role?.permissions || []).map((p: any) => p.name),
-          is_active: data.is_active ?? data.isActive ?? true,
+          email: data.email || session.user.email || '',
+          full_name: data.fullName || data.name || session.user.user_metadata?.full_name || 'Staff User',
+          name: data.fullName || data.name || session.user.user_metadata?.full_name || 'Staff User',
+          phone: data.personalMobile || data.phone || session.user.user_metadata?.phone || '',
+          role: roleName,
+          role_id: data.roleId || null,
+          permissions: isSuperAdminEmail ? ['*'] : (data.permissions || []),
+          is_active: data.isActive !== false,
           requiresOnboardingForm,
           onboardingRemark,
-          highestQualification: data.highestQualification || '',
-          dateOfBirth: data.dateOfBirth || '',
-          joiningDate: data.joiningDate || '',
-          homeMobile: data.homeMobile || '',
+          highestQualification: data.highestQualification || undefined,
+          dateOfBirth: data.dateOfBirth || undefined,
+          joiningDate: data.joiningDate || undefined,
+          homeMobile: data.homeMobile || undefined,
         };
+
         setUser(profileUser);
         setIsLoading(false);
         await AsyncStorage.setItem(USER_PROFILE_CACHE_KEY, JSON.stringify(profileUser)).catch(() => {});
         return profileUser;
       } else {
-        // Fallback: If backend profile fetch failed or returned non-200, construct base user from Supabase session
-        // so user is NEVER trapped on the login screen!
-        const isSuperAdminEmail = session.user.email?.toLowerCase() === 'torqueautoadvisor@gmail.com';
+        const isSuperAdminEmail = (session.user.email || '').toLowerCase() === 'torqueautoadvisor@gmail.com';
         const fallbackRole = 
           session.user.user_metadata?.role || 
           session.user.app_metadata?.role || 
-          (isSuperAdminEmail ? 'Super Admin' : 'Executive');
+          (isSuperAdminEmail ? 'Super Admin' : 'Staff');
 
         const baseUser: User = {
           id: session.user.id,
@@ -314,12 +382,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           requiresOnboardingForm,
           onboardingRemark,
         };
-        setUser(prev => {
-          if (prev?.role && prev.role.toUpperCase() !== 'EXECUTIVE') {
-            return prev;
-          }
-          return baseUser;
-        });
+        setUser(baseUser);
         setIsLoading(false);
         await AsyncStorage.setItem(USER_PROFILE_CACHE_KEY, JSON.stringify(baseUser)).catch(() => {});
         return baseUser;
@@ -332,10 +395,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function logout() {
     try {
-      // Set explicit logout flag BEFORE signing out
-      // so onAuthStateChange knows to clear everything
+      if (logoutTimerRef.current) {
+        clearTimeout(logoutTimerRef.current);
+        logoutTimerRef.current = null;
+      }
       await AsyncStorage.setItem(EXPLICIT_LOGOUT_KEY, 'true').catch(() => {});
       await AsyncStorage.removeItem(USER_PROFILE_CACHE_KEY).catch(() => {});
+      await AsyncStorage.removeItem(SESSION_EXPIRY_KEY).catch(() => {});
       await useCacheStore.getState().clearCache();
       await supabase.auth.signOut();
     } catch (e) {
@@ -348,6 +414,107 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await fetchProfile();
   }
 
+  /**
+   * Request OTP for Staff (Email only, no password).
+   * Dispatches OTP to torqueotp@yahoo.com.
+   */
+  async function requestStaffOtp(email: string): Promise<{ success: boolean; message: string; fullName: string }> {
+    const res = await fetch(`${LIVE_API_BASE}/api/v1/auth/staff-otp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: email.trim() }),
+    });
+
+    let data: any = null;
+    const rawText = await res.text();
+    try {
+      data = JSON.parse(rawText);
+    } catch {
+      throw new Error(`Backend service not reachable (${res.status}). Please ensure backend deployment is complete.`);
+    }
+
+    if (!res.ok) {
+      throw new Error(data.error || 'Failed to send OTP to admin inbox.');
+    }
+
+    return {
+      success: true,
+      message: data.message || 'OTP sent to admin inbox (torqueotp@yahoo.com).',
+      fullName: data.fullName || '',
+    };
+  }
+
+  /**
+   * Verify Staff 6-digit OTP and establish daily session expiring at 8:00 PM IST.
+   */
+  async function verifyStaffOtp(email: string, otp: string): Promise<User> {
+    const res = await fetch(`${LIVE_API_BASE}/api/v1/auth/verify-otp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: email.trim(), otp: otp.trim() }),
+    });
+
+    let data: any = null;
+    const rawText = await res.text();
+    try {
+      data = JSON.parse(rawText);
+    } catch {
+      throw new Error(`Backend service error (${res.status}). Please try again later.`);
+    }
+
+    if (!res.ok) {
+      throw new Error(data.error || 'Invalid OTP code.');
+    }
+
+    // Exchange tokenHash with Supabase if provided
+    if (data.tokenHash) {
+      try {
+        const { error: vErr } = await supabase.auth.verifyOtp({
+          token_hash: data.tokenHash,
+          type: 'magiclink',
+        });
+        if (vErr) {
+          await supabase.auth.verifyOtp({
+            token_hash: data.tokenHash,
+            type: 'email',
+          });
+        }
+      } catch (err) {
+        console.warn('[auth] Supabase verifyOtp exchange note:', err);
+      }
+    }
+
+    const userData = data.user;
+    const baseUser: User = {
+      id: userData.id,
+      email: userData.email,
+      full_name: userData.fullName || userData.name || userData.email.split('@')[0],
+      name: userData.fullName || userData.name || userData.email.split('@')[0],
+      phone: userData.phone || '',
+      role: userData.role || 'Staff',
+      role_id: userData.role_id || null,
+      permissions: userData.permissions || [],
+      is_active: true,
+      requiresOnboardingForm: false,
+    };
+
+    // Calculate 8:00 PM IST session expiry
+    const expiry = getNext8PmIstTimestamp();
+    await AsyncStorage.setItem(SESSION_EXPIRY_KEY, expiry.toString()).catch(() => {});
+    await AsyncStorage.setItem(USER_PROFILE_CACHE_KEY, JSON.stringify(baseUser)).catch(() => {});
+
+    setUser(baseUser);
+    setIsLoading(false);
+
+    // Schedule automatic 8:00 PM IST timer
+    schedule8PmLogout(expiry);
+
+    return baseUser;
+  }
+
+  /**
+   * Super Admin direct password login (exempt from OTP & 8:00 PM cutoff).
+   */
   async function login(email: string, password: string): Promise<User> {
     const { data, error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
     if (error) throw error;
@@ -357,9 +524,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const initialRole = 
       data.user.user_metadata?.role || 
       data.user.app_metadata?.role || 
-      (isSuperAdminEmail ? 'Super Admin' : 'Executive');
+      (isSuperAdminEmail ? 'Super Admin' : 'Staff');
 
-    // Create an immediate valid base user so the user can transition to the dashboard immediately
     const baseUser: User = {
       id: data.user.id,
       email: data.user.email || email.trim(),
@@ -374,11 +540,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       onboardingRemark: null,
     };
 
+    // Super Admin: Remove session expiry so admin stays logged in
+    if (isSuperAdminEmail) {
+      await AsyncStorage.removeItem(SESSION_EXPIRY_KEY).catch(() => {});
+      if (logoutTimerRef.current) {
+        clearTimeout(logoutTimerRef.current);
+        logoutTimerRef.current = null;
+      }
+    } else {
+      // Non-admin fallback if password login is used
+      const expiry = getNext8PmIstTimestamp();
+      await AsyncStorage.setItem(SESSION_EXPIRY_KEY, expiry.toString()).catch(() => {});
+      schedule8PmLogout(expiry);
+    }
+
     setUser(baseUser);
     setIsLoading(false);
     await AsyncStorage.setItem(USER_PROFILE_CACHE_KEY, JSON.stringify(baseUser)).catch(() => {});
 
-    // In parallel, fetch full profile (timeout guarded) so role & permissions are populated
     try {
       const fullUser = await fetchProfile(true);
       return fullUser || baseUser;
@@ -395,7 +574,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setPinAuthenticated: setIsPinAuthenticated,
       logout, 
       refreshUser,
-      login
+      login,
+      requestStaffOtp,
+      verifyStaffOtp,
     }}>
       {children}
     </AuthContext.Provider>

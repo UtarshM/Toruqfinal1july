@@ -979,3 +979,15 @@ model UghraniAssignment {
   @@map("ughrani_assignments")
 }
 
+model OtpVerification {
+  id        String   @id @default(uuid()) @db.Uuid
+  email     String
+  otp       String
+  expiresAt DateTime @map("expires_at")
+  attempts  Int      @default(0)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([email])
+  @@map("otp_verifications")
+}
+

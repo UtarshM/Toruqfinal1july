@@ -56,7 +56,7 @@ function RootLayoutNav() {
     if (!navigationState?.key || isLoading) return;
     const timer = setTimeout(() => {
       try {
-        const publicRoutes = ['/', '/login', '/signup', '/pin-auth'];
+        const publicRoutes = ['/', '/login', '/signup', '/pin-auth', '/verify-otp'];
         const currentPath = '/' + segments.join('/');
         const isPublicRoute = publicRoutes.some(route => currentPath === route || currentPath.startsWith(route + '/'));
         

