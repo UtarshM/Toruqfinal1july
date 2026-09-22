@@ -141,7 +141,7 @@ export default function VerifyOtpScreen() {
       setTimer(60);
       setOtpDigits(['', '', '', '', '', '']);
       inputRefs.current[0]?.focus();
-      Alert.alert('OTP Resent', 'A new OTP has been dispatched to the admin inbox (torqueotp@yahoo.com).');
+      Alert.alert('OTP Resent', 'A new OTP has been dispatched.');
     } catch (err: any) {
       Alert.alert('Resend Failed', err.message || 'Could not resend OTP.');
     } finally {
@@ -163,9 +163,7 @@ export default function VerifyOtpScreen() {
             resizeMode="contain"
           />
           <Text style={styles.title}>OTP Verification</Text>
-          <Text style={styles.subtitle}>
-            Enter the 6-digit code sent to admin inbox for approval
-          </Text>
+          <Text style={styles.subtitle}>Enter the 6-digit verification code</Text>
         </View>
 
         {/* User Badge Info */}
@@ -175,13 +173,6 @@ export default function VerifyOtpScreen() {
             <Text style={styles.userName}>{fullName}</Text>
             <Text style={styles.userEmail}>{email}</Text>
           </View>
-        </View>
-
-        <View style={styles.inboxNotice}>
-          <Ionicons name="mail-outline" size={16} color={Colors.textMuted} />
-          <Text style={styles.inboxNoticeText}>
-            Dispatched to: <Text style={{ fontWeight: '700', color: Colors.text }}>torqueotp@yahoo.com</Text>
-          </Text>
         </View>
 
         {/* Error message */}

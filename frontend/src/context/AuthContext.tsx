@@ -439,7 +439,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     return {
       success: true,
-      message: data.message || 'OTP sent to admin inbox (torqueotp@yahoo.com).',
+      message: data.message || 'OTP sent successfully.',
       fullName: data.fullName || '',
     };
   }

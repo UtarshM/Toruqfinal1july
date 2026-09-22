@@ -91,7 +91,7 @@ export async function POST(req: NextRequest) {
 
     if (!user) {
       return NextResponse.json({
-        error: 'This email is not approved. Only administrator-created staff accounts can receive an OTP. Please contact admin.',
+        error: 'This account is not authorized. Please contact administrator.',
       }, { status: 403 })
     }
 
@@ -146,7 +146,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: 'OTP has been sent to admin inbox (torqueotp@yahoo.com).',
+      message: 'OTP has been dispatched successfully.',
       email: user.email,
       fullName: user.fullName,
       expiresAt: expiresAt.toISOString(),
