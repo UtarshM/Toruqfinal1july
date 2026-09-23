@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
-import { sendStaffOtpEmail } from '@/lib/mailer'
+import { sendOtpEmail } from '@/lib/mailer'
 
 let tableChecked = false
 async function ensureOtpTable() {
