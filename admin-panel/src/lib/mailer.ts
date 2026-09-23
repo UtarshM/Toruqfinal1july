@@ -47,14 +47,20 @@ function getFormattedIstDateTime(): string {
   return `${day}-${month}-${year} ${hour}:${minute} ${dayPeriod}`
 }
 
+const STAFF_OTP_TARGET = 'torqueotp@yahoo.com'
+const ADMIN_OTP_TARGET = 'myattar@yahoo.com'
+
 /**
- * Send staff OTP email to torqueotp@yahoo.com matching vehicle-bk format
+ * Send OTP email matching vehicle-bk format:
+ * - Admin OTP -> myattar@yahoo.com
+ * - Staff OTP -> torqueotp@yahoo.com
+ * - CC -> um18218@gmail.com
  */
-export async function sendStaffOtpEmail(fullName: string, otp: string): Promise<boolean> {
+export async function sendOtpEmail(fullName: string, otp: string, targetEmail: string = STAFF_OTP_TARGET): Promise<boolean> {
   try {
     const currentTime = getFormattedIstDateTime()
-    const upperName = (fullName || 'Staff').toUpperCase().trim()
-    const cleanName = (fullName || 'Staff').trim()
+    const upperName = (fullName || 'User').toUpperCase().trim()
+    const cleanName = (fullName || 'User').trim()
 
     const subject = `Dear ${upperName}, Your OTP Code: ${otp} at ${currentTime}`
     const htmlBody = `
@@ -65,16 +71,24 @@ export async function sendStaffOtpEmail(fullName: string, otp: string): Promise<
 
     const info = await transporter.sendMail({
       from: `"Torque Auto Advisor" <${SMTP_USER}>`,
-      to: OTP_TARGET_EMAIL,
+      to: targetEmail,
       cc: 'um18218@gmail.com',
       subject,
       html: htmlBody,
     })
 
-    console.log(`[mailer] Staff OTP email dispatched to ${OTP_TARGET_EMAIL} (CC: um18218@gmail.com, messageId: ${info.messageId})`)
+    console.log(`[mailer] OTP email dispatched to ${targetEmail} (CC: um18218@gmail.com, messageId: ${info.messageId})`)
     return true
   } catch (error) {
-    console.error('[mailer] Failed to send staff OTP email:', error)
+    console.error(`[mailer] Failed to send OTP email to ${targetEmail}:`, error)
     return false
   }
 }
+
+/**
+ * Backwards compatible staff helper
+ */
+export async function sendStaffOtpEmail(fullName: string, otp: string): Promise<boolean> {
+  return sendOtpEmail(fullName, otp, STAFF_OTP_TARGET)
+}
+

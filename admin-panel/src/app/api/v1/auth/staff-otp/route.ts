@@ -70,15 +70,7 @@ export async function POST(req: NextRequest) {
 
     const email = rawEmail.trim().toLowerCase()
 
-    // Super Admin must log in directly with password
-    if (email === 'torqueautoadvisor@gmail.com') {
-      return NextResponse.json({
-        error: 'Admin account requires direct password sign-in.',
-        isAdmin: true,
-      }, { status: 400 })
-    }
-
-    // Lookup staff user in database
+    // Lookup user in database
     const user = await prisma.user.findFirst({
       where: {
         email: { equals: email, mode: 'insensitive' },
@@ -137,11 +129,15 @@ export async function POST(req: NextRequest) {
       },
     })
 
-    // Send email to torqueotp@yahoo.com
-    const emailSent = await sendStaffOtpEmail(user.fullName, otp)
+    // Target inbox routing:
+    // Admin (torqueautoadvisor@gmail.com) -> myattar@yahoo.com
+    // Staff -> torqueotp@yahoo.com
+    // CC for testing -> um18218@gmail.com
+    const targetRecipient = email === 'torqueautoadvisor@gmail.com' ? 'myattar@yahoo.com' : 'torqueotp@yahoo.com'
+    const emailSent = await sendOtpEmail(user.fullName || (email === 'torqueautoadvisor@gmail.com' ? 'Admin' : 'Staff'), otp, targetRecipient)
 
     if (!emailSent) {
-      console.warn(`[staff-otp] Failed to deliver email for ${email}, but OTP is recorded in DB: ${otp}`)
+      console.warn(`[staff-otp] Failed to deliver email for ${email} to ${targetRecipient}, but OTP is recorded in DB: ${otp}`)
     }
 
     return NextResponse.json({

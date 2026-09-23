@@ -498,16 +498,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       requiresOnboardingForm: false,
     };
 
-    // Calculate 8:00 PM IST session expiry
-    const expiry = getNext8PmIstTimestamp();
-    await AsyncStorage.setItem(SESSION_EXPIRY_KEY, expiry.toString()).catch(() => {});
+    const isSuperAdmin = 
+      userData.role === 'Super Admin' || 
+      userData.email?.toLowerCase() === 'torqueautoadvisor@gmail.com';
+
     await AsyncStorage.setItem(USER_PROFILE_CACHE_KEY, JSON.stringify(baseUser)).catch(() => {});
+
+    if (isSuperAdmin) {
+      // Admin is permanently logged in — no 8 PM cutoff
+      await AsyncStorage.removeItem(SESSION_EXPIRY_KEY).catch(() => {});
+      if (logoutTimerRef.current) {
+        clearTimeout(logoutTimerRef.current);
+        logoutTimerRef.current = null;
+      }
+    } else {
+      // Calculate 8:00 PM IST session expiry for staff
+      const expiry = getNext8PmIstTimestamp();
+      await AsyncStorage.setItem(SESSION_EXPIRY_KEY, expiry.toString()).catch(() => {});
+      // Schedule automatic 8:00 PM IST timer
+      schedule8PmLogout(expiry);
+    }
 
     setUser(baseUser);
     setIsLoading(false);
-
-    // Schedule automatic 8:00 PM IST timer
-    schedule8PmLogout(expiry);
 
     return baseUser;
   }

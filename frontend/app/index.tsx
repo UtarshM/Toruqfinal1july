@@ -18,17 +18,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 
 export default function LoginScreen() {
-  const { user, isLoading, login, requestStaffOtp } = useAuth();
+  const { user, isLoading, requestStaffOtp } = useAuth();
   const router = useRouter();
 
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
-
-  // Auto-detect Admin email: torqueautoadvisor@gmail.com
-  const isAdmin = email.trim().toLowerCase() === 'torqueautoadvisor@gmail.com';
 
   // Splash loader while determining initial session
   if (isLoading || user) {
@@ -46,12 +41,12 @@ export default function LoginScreen() {
     );
   }
 
-  // Handle Staff OTP Request
-  async function handleStaffOtpRequest() {
+  // Handle OTP Request (Unified for Staff & Admin)
+  async function handleOtpRequest() {
     if (loading) return;
     const cleanEmail = email.trim();
     if (!cleanEmail) {
-      setError('Please enter your email ID');
+      setError('Please enter your email address');
       return;
     }
 
@@ -73,33 +68,6 @@ export default function LoginScreen() {
       const msg = err.message || 'Failed to send OTP. Please check your email.';
       setError(msg);
       Alert.alert('Unable to Request OTP', msg);
-    }
-  }
-
-  // Handle Admin Direct Password Login
-  async function handleAdminLogin() {
-    if (loading) return;
-    const cleanEmail = email.trim();
-    if (!cleanEmail || !password.trim()) {
-      setError('Please enter email and password');
-      return;
-    }
-    setError('');
-    setLoading(true);
-
-    try {
-      const loggedUser = await login(cleanEmail, password);
-      setTimeout(() => {
-        if (loggedUser?.requiresOnboardingForm) {
-          router.replace('/onboarding');
-        } else {
-          router.replace('/(protected)/dashboard');
-        }
-      }, 50);
-    } catch (e: any) {
-      setLoading(false);
-      setError(e.message || 'Login failed');
-      Alert.alert('Login Failed', e.message || 'Please check your credentials.');
     }
   }
 
@@ -126,7 +94,7 @@ export default function LoginScreen() {
             </View>
           ) : null}
 
-          {/* Email field (Common) */}
+          {/* Email field */}
           <Text style={styles.label}>EMAIL ADDRESS</Text>
           <View style={styles.inputContainer}>
             <Ionicons name="mail-outline" size={20} color={Colors.textMuted} style={styles.inputIcon} />
@@ -142,67 +110,26 @@ export default function LoginScreen() {
               keyboardType="email-address"
               autoCapitalize="none"
               autoCorrect={false}
+              onSubmitEditing={handleOtpRequest}
+              returnKeyType="go"
             />
           </View>
 
-          {/* Password field automatically shown only for Admin */}
-          {isAdmin ? (
-            <>
-              <Text style={styles.label}>PASSWORD</Text>
-              <View style={styles.inputContainer}>
-                <Ionicons
-                  name="lock-closed-outline"
-                  size={20}
-                  color={Colors.textMuted}
-                  style={styles.inputIcon}
-                />
-                <TextInput
-                  style={styles.input}
-                  placeholder="Enter admin password"
-                  placeholderTextColor={Colors.textLight}
-                  value={password}
-                  onChangeText={setPassword}
-                  secureTextEntry={!showPassword}
-                  autoFocus={true}
-                />
-                <Pressable onPress={() => setShowPassword(!showPassword)} style={styles.eyeBtn}>
-                  <Ionicons
-                    name={showPassword ? 'eye-off-outline' : 'eye-outline'}
-                    size={20}
-                    color={Colors.textMuted}
-                  />
-                </Pressable>
+          {/* OTP Action Button */}
+          <Pressable
+            style={styles.loginBtn}
+            onPress={handleOtpRequest}
+            disabled={loading}
+          >
+            {loading ? (
+              <ActivityIndicator color={Colors.white} />
+            ) : (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Text style={styles.loginBtnText}>Get OTP Code</Text>
+                <Ionicons name="arrow-forward" size={18} color={Colors.white} />
               </View>
-
-              <Pressable
-                style={styles.loginBtn}
-                onPress={handleAdminLogin}
-                disabled={loading}
-              >
-                {loading ? (
-                  <ActivityIndicator color={Colors.white} />
-                ) : (
-                  <Text style={styles.loginBtnText}>Sign In as Admin</Text>
-                )}
-              </Pressable>
-            </>
-          ) : (
-            /* Staff OTP Action */
-            <Pressable
-              style={styles.loginBtn}
-              onPress={handleStaffOtpRequest}
-              disabled={loading}
-            >
-              {loading ? (
-                <ActivityIndicator color={Colors.white} />
-              ) : (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <Text style={styles.loginBtnText}>Get OTP Code</Text>
-                  <Ionicons name="arrow-forward" size={18} color={Colors.white} />
-                </View>
-              )}
-            </Pressable>
-          )}
+            )}
+          </Pressable>
         </View>
 
         <View style={styles.footer}>
@@ -237,7 +164,6 @@ const styles = StyleSheet.create({
   inputContainer: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: Colors.border, borderRadius: BorderRadius.md, backgroundColor: Colors.surfaceMuted, height: 50 },
   inputIcon: { paddingLeft: Spacing.lg },
   input: { flex: 1, paddingHorizontal: Spacing.md, fontSize: FontSize.md, color: Colors.text },
-  eyeBtn: { padding: Spacing.lg },
   loginBtn: {
     backgroundColor: Colors.primary,
     borderRadius: BorderRadius.md,

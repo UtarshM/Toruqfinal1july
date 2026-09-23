@@ -139,8 +139,10 @@ export async function POST(req: NextRequest) {
       console.warn('[verify-otp] Supabase magiclink error (falling back to user session):', authErr)
     }
 
-    // 8. Log successful staff login activity
-    logActivity(user.id, 'STAFF_OTP_LOGIN', 'AUTH', user.id, {
+    const isSuperAdmin = user.email.toLowerCase() === 'torqueautoadvisor@gmail.com'
+
+    // 8. Log successful login activity
+    logActivity(user.id, isSuperAdmin ? 'ADMIN_OTP_LOGIN' : 'STAFF_OTP_LOGIN', 'AUTH', user.id, {
       email: user.email,
       name: user.fullName,
       verifiedAt: new Date().toISOString(),
@@ -151,7 +153,7 @@ export async function POST(req: NextRequest) {
     // Permissions merge
     const rolePermissions = user.role?.permissions?.map((p: any) => p.name) || []
     const userPermissions = user.permissions?.map((p: any) => p.name) || []
-    const allPermissions = Array.from(new Set([...rolePermissions, ...userPermissions]))
+    const allPermissions = isSuperAdmin ? ['*'] : Array.from(new Set([...rolePermissions, ...userPermissions]))
 
     return NextResponse.json({
       success: true,
@@ -162,7 +164,7 @@ export async function POST(req: NextRequest) {
         email: user.email,
         fullName: user.fullName,
         name: user.fullName,
-        role: user.role?.name || 'Staff',
+        role: isSuperAdmin ? 'Super Admin' : (user.role?.name || 'Staff'),
         role_id: user.roleId,
         permissions: allPermissions,
         is_active: user.isActive,
