@@ -9,8 +9,11 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "lint": "expo lint",
-    "ota:publish": "eas update --channel preview --message \"OTA Update\" --non-interactive",
-    "ota:status": "eas update:list --branch preview --limit 3 --non-interactive"
+    "ota:publish": "node ../scripts/publish-ota.js",
+    "ota:publish:preview": "node ../scripts/publish-ota.js --channel preview",
+    "ota:publish:prod": "node ../scripts/publish-ota.js --channel production",
+    "ota:status": "eas update:list --branch preview --limit 3 --non-interactive",
+    "ota:status:prod": "eas update:list --branch production --limit 3 --non-interactive"
   },
   "dependencies": {
     "@babel/runtime": "^7.20.6",

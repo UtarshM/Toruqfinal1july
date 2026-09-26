@@ -1,4 +1,4 @@
-import { validateAuth } from '@/lib/auth-guard'
+import { validateAuth, invalidateAuthCache } from '@/lib/auth-guard'
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { supabaseAdmin } from '@/lib/supabase-admin'
@@ -79,7 +79,8 @@ export async function PATCH(
   if (error || !context) return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   try {
-    const { id } = await params;
+    const { id: rawId } = await params;
+    const id = rawId === 'me' ? context.userId : rawId;
     const body = await req.json()
     const { roleId, managerId, isActive, extraPermissionIds } = body
 
@@ -95,10 +96,13 @@ export async function PATCH(
       return NextResponse.json({ error: 'Forbidden: Missing users.edit permission' }, { status: 403 })
     }
 
+    const rawFullName = body.fullName !== undefined ? body.fullName : body.name;
+    const resolvedFullName = rawFullName !== undefined ? (typeof rawFullName === 'string' ? rawFullName.trim() : rawFullName) : undefined;
+
     const user = await prisma.user.update({
       where: { id },
       data: {
-        ...(body.fullName !== undefined && { fullName: body.fullName }),
+        ...(resolvedFullName !== undefined && { fullName: resolvedFullName }),
         ...(body.email !== undefined && { email: body.email }),
         ...(body.personalMobile !== undefined && { personalMobile: body.personalMobile }),
         ...(body.homeMobile !== undefined && { homeMobile: body.homeMobile }),
@@ -124,6 +128,9 @@ export async function PATCH(
       }
     })
 
+    // Invalidate auth cache so the updated name appears immediately across all requests
+    invalidateAuthCache();
+
     // Sync updated user metadata, role, password, and active status to Supabase Auth
     try {
       const authUpdates: any = {}
@@ -141,7 +148,11 @@ export async function PATCH(
         authUpdates.ban_duration = 'none'
       }
       if (Object.keys(authUpdates).length > 0) {
-        await supabaseAdmin.auth.admin.updateUserById(id, authUpdates)
+        await supabaseAdmin.auth.admin.updateUserById(id, authUpdates).catch(async () => {
+          if (context.userId && context.userId !== id) {
+            await supabaseAdmin.auth.admin.updateUserById(context.userId, authUpdates).catch(() => {})
+          }
+        })
       }
     } catch (authErr) {
       console.warn('[users PATCH] Failed to sync user with Supabase Auth:', authErr)

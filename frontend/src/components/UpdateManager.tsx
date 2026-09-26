@@ -5,9 +5,20 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, FontSize, BorderRadius } from '../utils/theme';
 
 export async function checkAndApplyUpdate(interactive = true) {
-  if (__DEV__) {
+  if (__DEV__ || !Updates.isEnabled) {
     if (interactive) {
-      Alert.alert('Development Mode', 'On-Air (OTA) updates are disabled in Expo development mode.');
+      const mode = __DEV__ ? 'Expo Development' : (!Updates.isEnabled ? 'Expo Go / Native Client' : 'Standalone Build');
+      Alert.alert(
+        'OTA Update Status',
+        [
+          'Over-The-Air (OTA) updates are configured and active in standalone production and preview APK builds.',
+          '',
+          `App Version: 2.0.0`,
+          `Channel: ${Updates.channel || 'preview'}`,
+          `Runtime Version: ${Updates.runtimeVersion || '2.0.0'}`,
+          `Environment: ${mode}`
+        ].join('\n')
+      );
     }
     return false;
   }
@@ -16,13 +27,13 @@ export async function checkAndApplyUpdate(interactive = true) {
     const update = await Updates.checkForUpdateAsync();
     if (update.isAvailable) {
       if (interactive) {
-        Alert.alert('Update Available', 'Downloading the latest version of Torque Auto Advisor...');
+        Alert.alert('Update Found 🚀', 'Downloading the latest version of Torque Auto Advisor over-the-air...');
       }
       await Updates.fetchUpdateAsync();
       if (interactive) {
         Alert.alert(
           'Update Ready 🎉',
-          'The latest update has been downloaded. Restart now to apply changes?',
+          'The latest update has been downloaded over-the-air. Restart now to apply changes?',
           [
             { text: 'Later', style: 'cancel' },
             { text: 'Restart Now', onPress: async () => await Updates.reloadAsync() }
@@ -56,7 +67,7 @@ export function UpdateBanner() {
   const slideAnim = useState(new Animated.Value(-100))[0];
 
   useEffect(() => {
-    if (__DEV__) return;
+    if (__DEV__ || !Updates.isEnabled) return;
 
     const checkBackgroundUpdate = async () => {
       try {

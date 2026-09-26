@@ -7,6 +7,8 @@ interface UserProfile {
   id: string
   email: string
   fullName: string
+  name?: string
+  personalMobile?: string
   isActive?: boolean
   role?: {
     name: string
@@ -20,13 +22,17 @@ interface AuthContextType {
   isLoading: boolean
   permissions: string[]
   token: string | null
+  updateUser: (updatedUser: Partial<UserProfile>) => void
+  refreshProfile: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
   isLoading: true,
   permissions: [],
-  token: null
+  token: null,
+  updateUser: () => {},
+  refreshProfile: async () => {},
 })
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -222,12 +228,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => subscription.unsubscribe()
   }, [])
 
+  const updateUser = (updated: Partial<UserProfile>) => {
+    setUser(prev => {
+      if (!prev) return null
+      const next = { ...prev, ...updated }
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem('toque_user_profile', JSON.stringify(next))
+        } catch {}
+      }
+      return next
+    })
+  }
+
+  const refreshProfile = async () => {
+    lastProfileFetchRef.current = 0
+    const { data: { session } } = await supabase.auth.getSession()
+    if (session) {
+      await fetchProfile(session, true)
+    }
+  }
+
   return (
     <AuthContext.Provider value={{
       user,
       isLoading,
       permissions: user?.permissions || [],
-      token
+      token,
+      updateUser,
+      refreshProfile
     }}>
       {children}
     </AuthContext.Provider>

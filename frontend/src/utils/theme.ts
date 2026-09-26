@@ -18,6 +18,7 @@ export const Colors = {
   warningBg: '#FFFBEB',
   error: '#E11D48',
   errorBg: '#FFF1F2',
+  errorLight: '#FEE2E2',
   info: '#0284C7',
   infoBg: '#F0F9FF',
 };
@@ -48,6 +49,7 @@ export const BorderRadius = {
   md: 8,
   lg: 12,
   xl: 16,
+  xxl: 24,
   full: 999,
 };
 

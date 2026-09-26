@@ -195,7 +195,14 @@ export default function Sidebar({ visible, onClose }: SidebarProps) {
 
             return (
               <View style={styles.footer}>
-                <View style={styles.userProfileCard}>
+                <Pressable
+                  style={styles.userProfileCard}
+                  onPress={() => {
+                    onClose();
+                    router.push('/(protected)/settings?editName=true' as any);
+                  }}
+                  accessibilityLabel="Edit your profile name"
+                >
                   <View style={[styles.avatarCircle, { backgroundColor: roleTheme.bg, borderColor: roleTheme.border }]}>
                     <Text style={[styles.avatarText, { color: roleTheme.text }]}>{initials}</Text>
                   </View>
@@ -209,7 +216,11 @@ export default function Sidebar({ visible, onClose }: SidebarProps) {
                       </Text>
                     </View>
                   </View>
-                </View>
+                  <View style={styles.editProfileChip}>
+                    <Ionicons name="pencil" size={13} color={Colors.primary} />
+                    <Text style={styles.editProfileText}>Edit</Text>
+                  </View>
+                </Pressable>
 
                 <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
                   <Pressable
@@ -343,5 +354,21 @@ const styles = StyleSheet.create({
   actionBtnText: {
     fontSize: FontSize.xs,
     fontWeight: '700',
+  },
+  editProfileChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: BorderRadius.md,
+  },
+  editProfileText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: Colors.primary,
   },
 });

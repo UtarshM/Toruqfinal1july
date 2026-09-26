@@ -99,7 +99,9 @@ export default function Sidebar() {
       }
     } else if (isExecutive) {
       // Operations are accessible to all roles including executives
-      if (group.label === 'MANAGEMENT') return null
+      if (group.label === 'MANAGEMENT') {
+        items = items.filter(i => i.name === 'Settings')
+      }
       if (group.label === 'OPERATIONS') {
         items = items.filter(i => ['Claims', 'Loans', 'Loan Inquiries', 'RTO Work', 'DL Work'].includes(i.name))
       }

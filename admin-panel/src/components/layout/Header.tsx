@@ -308,11 +308,15 @@ export default function Header() {
               ⏳ Pending Approval
             </span>
           )}
-          <button className="flex items-center gap-2 p-1 pr-3 hover:bg-gray-100 rounded-full transition-colors">
-            <div className="w-8 h-8 rounded-full bg-red-600 flex items-center justify-center text-white">
+          <button 
+            onClick={() => router.push('/settings')}
+            title="Edit Profile & Settings"
+            className="flex items-center gap-2 p-1 pr-3 hover:bg-gray-100 rounded-full transition-colors cursor-pointer"
+          >
+            <div className="w-8 h-8 rounded-full bg-red-600 flex items-center justify-center text-white font-bold text-sm shadow-sm">
               {user?.fullName?.charAt(0) || '👤'}
             </div>
-            <span className="text-sm font-medium text-gray-700 hidden sm:inline">{user?.fullName || 'User'}</span>
+            <span className="text-sm font-semibold text-gray-700 hidden sm:inline hover:text-blue-600 transition-colors">{user?.fullName || 'User'}</span>
           </button>
           <button 
             onClick={handleLogout}

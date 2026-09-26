@@ -56,6 +56,7 @@ interface AuthContextType {
   setPinAuthenticated: (val: boolean) => void;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
+  updateUser: (updatedFields: Partial<User>) => Promise<void>;
   login: (email: string, password: string) => Promise<User>;
   requestStaffOtp: (email: string) => Promise<{ success: boolean; message: string; fullName: string }>;
   verifyStaffOtp: (email: string, otp: string) => Promise<User>;
@@ -68,6 +69,7 @@ const AuthContext = createContext<AuthContextType>({
   setPinAuthenticated: () => {},
   logout: async () => {},
   refreshUser: async () => {},
+  updateUser: async () => {},
   login: async () => ({} as User),
   requestStaffOtp: async () => ({ success: false, message: '', fullName: '' }),
   verifyStaffOtp: async () => ({} as User),
@@ -411,7 +413,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   async function refreshUser() {
-    await fetchProfile();
+    await fetchProfile(true);
+  }
+
+  async function updateUser(updatedFields: Partial<User>) {
+    setUser(prev => {
+      if (!prev) return null;
+      const nextName = updatedFields.name || updatedFields.full_name || prev.name || prev.full_name;
+      const updated: User = {
+        ...prev,
+        ...updatedFields,
+        full_name: nextName,
+        name: nextName,
+      };
+      AsyncStorage.setItem(USER_PROFILE_CACHE_KEY, JSON.stringify(updated)).catch(() => {});
+      return updated;
+    });
   }
 
   /**
@@ -587,6 +604,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setPinAuthenticated: setIsPinAuthenticated,
       logout, 
       refreshUser,
+      updateUser,
       login,
       requestStaffOtp,
       verifyStaffOtp,
