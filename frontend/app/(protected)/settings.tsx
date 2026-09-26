@@ -69,57 +69,33 @@ export default function SettingsScreen() {
     setIsSaving(true);
     const trimmedPhone = editPhone.trim();
 
+    // 1. Instant Optimistic UI update
+    await updateUser({
+      name: trimmedName,
+      full_name: trimmedName,
+      phone: trimmedPhone || user?.phone || '',
+    }).catch(() => {});
+
+    setModalVisible(false);
+    Alert.alert('Success 🎉', `Your name has been updated to "${trimmedName}".`);
+
+    // 2. Sync to Backend in background
     try {
-      // 1. Try PATCH /api/v1/auth/me
-      let apiSucceeded = false;
       try {
         await api.patch('/auth/me', {
           fullName: trimmedName,
           personalMobile: trimmedPhone || undefined,
         });
-        apiSucceeded = true;
       } catch (err: any) {
-        // Fallback to /users/${user.id}
         if (user?.id) {
-          try {
-            await api.patch(`/users/${user.id}`, {
-              fullName: trimmedName,
-              personalMobile: trimmedPhone || undefined,
-            });
-            apiSucceeded = true;
-          } catch (innerErr) {
-            console.warn('[settings] /users PATCH fallback note:', innerErr);
-          }
+          await api.patch(`/users/${user.id}`, {
+            fullName: trimmedName,
+            personalMobile: trimmedPhone || undefined,
+          }).catch(() => {});
         }
       }
-
-      // 2. Sync to Supabase Auth metadata
-      try {
-        await supabase.auth.updateUser({
-          data: {
-            full_name: trimmedName,
-            name: trimmedName,
-            phone: trimmedPhone || undefined,
-          }
-        });
-      } catch (sbErr) {
-        console.warn('[settings] Supabase updateUser note:', sbErr);
-      }
-
-      // 3. Update local auth context and storage
-      await updateUser({
-        name: trimmedName,
-        full_name: trimmedName,
-        phone: trimmedPhone || user?.phone || '',
-      });
-
-      setModalVisible(false);
-      Alert.alert('Success 🎉', `Your name has been updated to "${trimmedName}".`);
-      
-      // Background refresh to ensure fresh state
-      refreshUser().catch(() => {});
     } catch (err: any) {
-      Alert.alert('Update Failed', err?.message || 'Could not update name. Please check your network connection.');
+      console.warn('[settings] Background sync error:', err);
     } finally {
       setIsSaving(false);
     }

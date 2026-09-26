@@ -563,20 +563,29 @@ export default function UsersPage() {
   const handleEditSave = async () => {
     if (!editUser) return
     setSaving(true)
+    const targetId = editUser.id
+    const formUpdates = { ...editForm }
     try {
-      const res = await apiFetch(`/api/v1/users/${editUser.id}`, {
+      const res = await apiFetch(`/api/v1/users/${targetId}`, {
         method: 'PATCH',
-        body: JSON.stringify(editForm)
+        body: JSON.stringify(formUpdates)
       })
       if (res.ok) {
+        const updated = await res.json()
         setEditUser(null)
-        fetchData(true)
-        if (selectedUserProfile?.id === editUser.id) {
-          handleOpenProfile(editUser)
+        // Optimistically update local state immediately without blocking full re-fetch
+        setUsers(prev => prev.map(u => u.id === targetId ? { ...u, ...updated, ...formUpdates } : u))
+        if (selectedUserProfile?.id === targetId) {
+          setSelectedUserProfile((prev: any) => prev ? { ...prev, ...updated, ...formUpdates } : null)
         }
+        setNotification({ type: 'success', message: 'User details updated successfully!' })
+      } else {
+        const errData = await res.json().catch(() => ({}))
+        setNotification({ type: 'error', message: errData.error || 'Failed to update user' })
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err)
+      setNotification({ type: 'error', message: err?.message || 'Failed to update user' })
     } finally {
       setSaving(false)
     }

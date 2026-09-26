@@ -71,14 +71,14 @@ export async function GET(req: NextRequest) {
         role: { select: { id: true, name: true } },
         manager: { select: { id: true, fullName: true } },
         permissions: { select: { id: true, name: true } },
-        documents: true
+        ...(isOnboarding ? { documents: true } : {})
       }
     }
 
     const users = await prisma.user.findMany(queryArgs)
 
     let serializedUsers = users
-    if (!isMinimized && users.length > 0) {
+    if (isOnboarding && users.length > 0) {
       const userIds = users.map(u => u.id)
       const allUserDocs = await prisma.document.findMany({
         where: {
@@ -228,7 +228,7 @@ export async function POST(req: NextRequest) {
       }
     })
 
-    invalidateAuthCache()
+    invalidateAuthCache(user.id)
 
     return NextResponse.json(user)
   } catch (error: any) {

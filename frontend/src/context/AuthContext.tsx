@@ -269,12 +269,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  let lastProfileFetchTime = 0;
+  const lastProfileFetchTimeRef = useRef<number>(0);
 
   async function fetchProfile(force = false): Promise<User | null> {
     try {
       const now = Date.now();
-      if (!force && lastProfileFetchTime && (now - lastProfileFetchTime < 45000)) {
+      if (!force && lastProfileFetchTimeRef.current && (now - lastProfileFetchTimeRef.current < 45000)) {
         return user;
       }
 
@@ -300,7 +300,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         if (response.ok) {
           data = await response.json();
-          lastProfileFetchTime = Date.now();
+          lastProfileFetchTimeRef.current = Date.now();
         } else if (response.status === 401) {
           clearTimeout(timeoutId);
           const { data: { session: refreshedSession }, error: refreshError } = await supabase.auth.refreshSession();

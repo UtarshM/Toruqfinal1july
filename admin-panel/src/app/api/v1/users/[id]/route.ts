@@ -128,10 +128,10 @@ export async function PATCH(
       }
     })
 
-    // Invalidate auth cache so the updated name appears immediately across all requests
-    invalidateAuthCache();
+    // Invalidate auth cache specifically for this user so they get fresh claims without wiping others
+    invalidateAuthCache(id);
 
-    // Sync updated user metadata, role, password, and active status to Supabase Auth
+    // Sync updated user metadata, role, password, and active status to Supabase Auth in background (non-blocking)
     try {
       const authUpdates: any = {}
       if (body.email) authUpdates.email = body.email
@@ -148,14 +148,20 @@ export async function PATCH(
         authUpdates.ban_duration = 'none'
       }
       if (Object.keys(authUpdates).length > 0) {
-        await supabaseAdmin.auth.admin.updateUserById(id, authUpdates).catch(async () => {
-          if (context.userId && context.userId !== id) {
-            await supabaseAdmin.auth.admin.updateUserById(context.userId, authUpdates).catch(() => {})
+        void (async () => {
+          try {
+            await supabaseAdmin.auth.admin.updateUserById(id, authUpdates).catch(async () => {
+              if (context.userId && context.userId !== id) {
+                await supabaseAdmin.auth.admin.updateUserById(context.userId, authUpdates).catch(() => {})
+              }
+            })
+          } catch (e) {
+            console.warn('[users PATCH] Background auth sync note:', e)
           }
-        })
+        })()
       }
     } catch (authErr) {
-      console.warn('[users PATCH] Failed to sync user with Supabase Auth:', authErr)
+      console.warn('[users PATCH] Failed to schedule sync user with Supabase Auth:', authErr)
     }
 
     // Notify employee of revision or approval

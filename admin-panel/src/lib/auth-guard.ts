@@ -21,11 +21,25 @@ interface CachedAuthContext {
 const authCache = new Map<string, CachedAuthContext>()
 const AUTH_CACHE_TTL_MS = 60000
 
-export function invalidateAuthCache(token?: string) {
-  if (token) {
-    authCache.delete(token)
-  } else {
+export function invalidateAuthCache(identifier?: string) {
+  if (!identifier) {
     authCache.clear()
+    return
+  }
+  if (authCache.has(identifier)) {
+    authCache.delete(identifier)
+    return
+  }
+  // Otherwise identifier is a userId, user email, or profile id - selectively invalidate matching entries
+  for (const [key, val] of authCache.entries()) {
+    if (
+      val.context?.userId === identifier ||
+      val.context?.email === identifier ||
+      val.userProfile?.id === identifier ||
+      val.userProfile?.email === identifier
+    ) {
+      authCache.delete(key)
+    }
   }
 }
 

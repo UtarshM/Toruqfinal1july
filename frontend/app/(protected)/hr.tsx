@@ -169,8 +169,8 @@ export default function HRScreen() {
     type: 'casual',
   });
 
-  const roleUpper = user?.role?.toUpperCase();
-  const isAdmin = roleUpper === 'SUPER ADMIN' || roleUpper === 'ADMIN' || roleUpper === 'MANAGER';
+  const roleUpper = user?.role?.toUpperCase() || '';
+  const isAdmin = roleUpper === 'SUPER ADMIN' || roleUpper === 'ADMIN' || roleUpper === 'MANAGER' || roleUpper.includes('HR');
 
   // Load cache on mount
   useEffect(() => {
@@ -201,16 +201,17 @@ export default function HRScreen() {
       return;
     }
     try {
+      const fetchRoles = roles.length === 0;
       const [uData, rData] = await Promise.all([
         api.get<any[]>('/users/'),
-        api.get<any[]>('/roles').catch(() => [])
+        fetchRoles ? api.get<any[]>('/roles').catch(() => []) : Promise.resolve(null)
       ]);
       const arr = Array.isArray(uData) ? uData : (uData as any).items || [];
       setItems(arr);
       setTotal(arr.length);
       setCache('/hr/users', { items: arr });
 
-      if (rData) {
+      if (rData && Array.isArray(rData)) {
         setRoles(rData);
         setCache('/hr/roles', rData);
       }
@@ -297,11 +298,35 @@ export default function HRScreen() {
 
   const handleEditEmployee = async () => {
     if (!selectedEmployee) return;
-    setEditSaving(true);
+    const empId = selectedEmployee.id;
+    const updatedName = editForm.fullName.trim();
+    const updatedEmail = editForm.email.trim().toLowerCase();
+    const updatedRole = roles.find(r => r.id === editForm.roleId) || selectedEmployee.role;
+
+    // 1. Optimistic UI update: Immediately reflect changes in list & cache with 0ms delay
+    const updatedEmployee = {
+      ...selectedEmployee,
+      fullName: updatedName,
+      name: updatedName,
+      email: updatedEmail,
+      roleId: editForm.roleId || selectedEmployee.roleId,
+      role: updatedRole,
+      personalMobile: editForm.personalMobile.trim() || selectedEmployee.personalMobile,
+      phone: editForm.personalMobile.trim() || selectedEmployee.personalMobile,
+      homeMobile: editForm.homeMobile.trim() || selectedEmployee.homeMobile,
+      highestQualification: editForm.highestQualification.trim() || selectedEmployee.highestQualification,
+      isActive: editForm.isActive,
+    };
+
+    setItems(prev => prev.map(u => u.id === empId ? updatedEmployee : u));
+    setCache('/hr/users', { items: items.map(u => u.id === empId ? updatedEmployee : u) });
+    setEditModalVisible(false);
+
+    // 2. Perform API update in background
     try {
-      await api.patch(`/users/${selectedEmployee.id}`, {
-        fullName: editForm.fullName.trim(),
-        email: editForm.email.trim().toLowerCase(),
+      await api.patch(`/users/${empId}`, {
+        fullName: updatedName,
+        email: updatedEmail,
         roleId: editForm.roleId || null,
         managerId: editForm.managerId || null,
         personalMobile: editForm.personalMobile.trim() || null,
@@ -309,13 +334,9 @@ export default function HRScreen() {
         highestQualification: editForm.highestQualification.trim() || null,
         isActive: editForm.isActive,
       });
-      setEditModalVisible(false);
-      Alert.alert('Success', 'Employee updated!');
-      load();
     } catch (e: any) {
-      Alert.alert('Error', e.message || 'Failed to update employee');
-    } finally {
-      setEditSaving(false);
+      Alert.alert('Update Failed', e.message || 'Failed to update employee');
+      load();
     }
   };
 

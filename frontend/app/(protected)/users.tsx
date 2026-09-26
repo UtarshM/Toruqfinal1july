@@ -158,6 +158,14 @@ export default function UsersScreen() {
     managerId: ''
   });
 
+  // Edit User states
+  const [editUserModalVisible, setEditUserModalVisible] = useState(false);
+  const [editUserForm, setEditUserForm] = useState({
+    fullName: '',
+    personalMobile: '',
+    roleId: ''
+  });
+
   const roleUpper = currentUser?.role?.toUpperCase() || '';
   const isAdmin = roleUpper === 'SUPER ADMIN' || roleUpper === 'ADMIN' || roleUpper.includes('ADMIN') || roleUpper.includes('HR') || roleUpper === 'HR MANAGER' || roleUpper === 'HR';
 
@@ -182,16 +190,18 @@ export default function UsersScreen() {
         if (updated) setSelectedUser(updated);
       }
 
-      // Fetch roles
-      const rData = await api.get<any[]>('/roles').catch(() => []);
-      if (rData) {
-        setRoles(rData);
-        setCache('/users/roles', rData);
+      // Fetch roles only if not yet loaded in state
+      if (roles.length === 0) {
+        const rData = await api.get<any[]>('/roles').catch(() => []);
+        if (rData && Array.isArray(rData)) {
+          setRoles(rData);
+          setCache('/users/roles', rData);
+        }
       }
     } catch (e) {
       console.error('[UsersScreen] Failed to load users', e);
     }
-  }, [search, isAdmin, selectedUser, setCache]);
+  }, [search, isAdmin, selectedUser, setCache, roles.length]);
 
   const handleAddUser = async () => {
     if (!newUser.email.trim()) {
@@ -203,7 +213,7 @@ export default function UsersScreen() {
 
     setSaving(true);
     try {
-      await api.post('/users/', {
+      const createdUser = await api.post<any>('/users/', {
         fullName: cleanFullName,
         email: cleanEmail,
         password: newUser.password.trim() || undefined,
@@ -219,6 +229,20 @@ export default function UsersScreen() {
         roleId: '',
         managerId: ''
       });
+
+      // Optimistic update
+      if (createdUser && createdUser.id) {
+        const normalized = {
+          ...createdUser,
+          full_name: createdUser.fullName || cleanFullName,
+          fullName: createdUser.fullName || cleanFullName,
+          is_active: true,
+          isActive: true
+        };
+        setItems(prev => [normalized, ...prev]);
+        setTotal((prev: number) => prev + 1);
+      }
+
       Alert.alert(
         'User Created Successfully 🎉',
         `Account for "${cleanEmail}" is now active.\n\nThey can log in immediately by entering their email address on the app. Their 6-digit OTP will be dispatched to torqueotp@yahoo.com.`
@@ -228,6 +252,53 @@ export default function UsersScreen() {
       Alert.alert('Error', e.message || 'Failed to create user');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const openEditUserModal = (u: User) => {
+    setEditUserForm({
+      fullName: u.full_name || u.fullName || '',
+      personalMobile: u.personalMobile || '',
+      roleId: u.role?.id || u.role_id || ''
+    });
+    setEditUserModalVisible(true);
+  };
+
+  const handleSaveUserEdit = async () => {
+    if (!selectedUser) return;
+    const userId = selectedUser.id;
+    const cleanName = editUserForm.fullName.trim();
+    if (!cleanName) {
+      Alert.alert('Validation Error', 'Full Name is required.');
+      return;
+    }
+
+    const updatedRole = roles.find(r => r.id === editUserForm.roleId) || selectedUser.role;
+
+    // Instant Optimistic UI update (0ms delay)
+    const updatedUser: User = {
+      ...selectedUser,
+      full_name: cleanName,
+      fullName: cleanName,
+      personalMobile: editUserForm.personalMobile.trim() || undefined,
+      role: updatedRole,
+      role_id: editUserForm.roleId || selectedUser.role_id
+    };
+
+    setSelectedUser(updatedUser);
+    setItems(prev => prev.map(u => u.id === userId ? updatedUser : u));
+    setCache('/users', { users: items.map(u => u.id === userId ? updatedUser : u) });
+    setEditUserModalVisible(false);
+
+    try {
+      await api.patch(`/users/${userId}`, {
+        fullName: cleanName,
+        personalMobile: editUserForm.personalMobile.trim() || undefined,
+        roleId: editUserForm.roleId || undefined
+      });
+    } catch (e: any) {
+      Alert.alert('Update Failed', e.message || 'Failed to update user');
+      load();
     }
   };
 
@@ -460,6 +531,14 @@ export default function UsersScreen() {
                   </View>
                   <Text style={styles.modalName}>{selectedUser.full_name}</Text>
                   <Text style={styles.modalEmail}>{selectedUser.email}</Text>
+
+                  <Pressable 
+                    style={styles.editUserHeaderBtn} 
+                    onPress={() => openEditUserModal(selectedUser)}
+                  >
+                    <Ionicons name="pencil-outline" size={14} color={Colors.primary} />
+                    <Text style={styles.editUserHeaderBtnText}>Edit Name & Details</Text>
+                  </Pressable>
                 </View>
 
                 {/* Revision Remark Warning */}
@@ -622,6 +701,72 @@ export default function UsersScreen() {
                 <View style={{ height: 40 }} />
               </ScrollView>
             )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* ── Edit User Name & Role Modal ── */}
+      <Modal
+        visible={editUserModalVisible}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={() => setEditUserModalVisible(false)}
+      >
+        <View style={styles.remarkOverlay}>
+          <View style={[styles.remarkContent, { maxHeight: '85%' }]}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.md }}>
+              <Text style={styles.remarkModalTitle}>Edit User Profile</Text>
+              <Pressable onPress={() => setEditUserModalVisible(false)}>
+                <Ionicons name="close" size={22} color={Colors.textLight} />
+              </Pressable>
+            </View>
+
+            <View style={styles.field}>
+              <Text style={styles.label}>FULL NAME *</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Employee full name"
+                placeholderTextColor={Colors.textLight}
+                value={editUserForm.fullName}
+                onChangeText={(val) => setEditUserForm(p => ({ ...p, fullName: val }))}
+              />
+            </View>
+
+            <View style={styles.field}>
+              <Text style={styles.label}>MOBILE NUMBER</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="10-digit mobile"
+                placeholderTextColor={Colors.textLight}
+                keyboardType="phone-pad"
+                value={editUserForm.personalMobile}
+                onChangeText={(val) => setEditUserForm(p => ({ ...p, personalMobile: val }))}
+              />
+            </View>
+
+            <DropdownSelector
+              label="Role"
+              placeholder="Select role"
+              options={roles.map(r => ({ label: r.name, value: r.id }))}
+              selectedValue={editUserForm.roleId}
+              onSelect={(val) => setEditUserForm(prev => ({ ...prev, roleId: val }))}
+            />
+
+            <View style={{ flexDirection: 'row', gap: Spacing.md, marginTop: Spacing.lg }}>
+              <Pressable 
+                style={[styles.saveBtn, { flex: 1, backgroundColor: Colors.surfaceMuted, borderWidth: 1, borderColor: Colors.border }]} 
+                onPress={() => setEditUserModalVisible(false)}
+              >
+                <Text style={[styles.saveBtnText, { color: Colors.text }]}>Cancel</Text>
+              </Pressable>
+
+              <Pressable 
+                style={[styles.saveBtn, { flex: 1 }]} 
+                onPress={handleSaveUserEdit}
+              >
+                <Text style={styles.saveBtnText}>Save Changes</Text>
+              </Pressable>
+            </View>
           </View>
         </View>
       </Modal>
@@ -899,5 +1044,34 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#3B82F6',
     lineHeight: 15,
+  },
+  editUserHeaderBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#EFF6FF',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 6,
+    borderRadius: BorderRadius.full,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    marginTop: Spacing.sm,
+  },
+  editUserHeaderBtnText: {
+    fontSize: FontSize.xs,
+    fontWeight: '700',
+    color: Colors.primary,
+  },
+  saveBtn: {
+    height: 48,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  saveBtnText: {
+    color: Colors.white,
+    fontSize: FontSize.md,
+    fontWeight: '700',
   },
 });
