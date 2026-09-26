@@ -33,10 +33,10 @@ export default function UsersPage() {
   const isInitialLoadRef = React.useRef(true)
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
 
-  const isAdmin = currentUser?.role?.name?.toUpperCase() === 'ADMIN' || 
-    currentUser?.role?.name?.toUpperCase() === 'SUPER ADMIN' || 
-    currentUser?.role?.name?.toUpperCase() === 'HR MANAGER'
-  const isManager = currentUser?.role?.name?.toUpperCase() === 'MANAGER'
+  const roleName = (currentUser?.role?.name || (typeof currentUser?.role === 'string' ? currentUser.role : '')).toUpperCase()
+  const isHr = roleName.includes('HR') || roleName === 'HR MANAGER'
+  const isAdmin = roleName.includes('ADMIN') || roleName.includes('SUPER') || isHr
+  const isManager = (roleName === 'MANAGER' || roleName.includes('MANAGER')) && !isHr
 
   // Modals
   const [showCreateModal, setShowCreateModal] = useState(false)
@@ -259,15 +259,27 @@ export default function UsersPage() {
     setCreating(true)
     setCreateError('')
     try {
+      const cleanEmail = createForm.email.trim().toLowerCase()
+      const cleanFullName = createForm.fullName.trim() || cleanEmail.split('@')[0]
       const res = await apiFetch('/api/v1/users', {
         method: 'POST',
-        body: JSON.stringify(createForm)
+        body: JSON.stringify({
+          ...createForm,
+          fullName: cleanFullName,
+          email: cleanEmail,
+          password: createForm.password.trim() || undefined,
+          isActive: true
+        })
       })
       const data = await res.json()
       if (!res.ok) setCreateError(data.error || 'Failed to create user')
       else {
         setShowCreateModal(false)
         setCreateForm({ fullName: '', email: '', password: '', roleId: '', managerId: '', highestQualification: '', dateOfBirth: '', joiningDate: '', personalMobile: '', homeMobile: '' })
+        setNotification({
+          type: 'success',
+          message: `User account (${cleanEmail}) created successfully! They can log in immediately with Email & OTP (dispatched to torqueotp@yahoo.com).`
+        })
         fetchData(true)
       }
     } catch {
@@ -1557,7 +1569,10 @@ export default function UsersPage() {
              <div className="flex items-center justify-between mb-6">
                 <div>
                    <h2 className="text-xl font-bold text-gray-900 tracking-tight">Add New Employee Account</h2>
-                   {isManager && <p className="text-xs text-amber-600 font-medium mt-1 italic">Note: Accounts created by Managers require Admin Approval.</p>}
+                   <p className="text-xs text-blue-600 font-semibold mt-1 flex items-center gap-1.5">
+                     <Mail size={14} className="shrink-0" />
+                     Staff OTP Active: Users log in with Work Email & 6-digit OTP sent to <span className="underline font-bold">torqueotp@yahoo.com</span>
+                   </p>
                 </div>
                 <button onClick={() => setShowCreateModal(false)} className="p-2 hover:bg-gray-100 rounded-xl transition-all"><X size={20}/></button>
              </div>
@@ -1566,10 +1581,10 @@ export default function UsersPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                    <div className="space-y-3">
                       <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Account Credentials</label>
-                      <input type="text" placeholder="Full Name *" required value={createForm.fullName} onChange={e => setCreateForm({...createForm, fullName: e.target.value})} className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-blue-500" />
-                      <input type="email" placeholder="Work Email *" required value={createForm.email} onChange={e => setCreateForm({...createForm, email: e.target.value})} className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-blue-500" />
-                      <input type="password" placeholder="Password (min. 6 chars) *" required value={createForm.password} onChange={e => setCreateForm({...createForm, password: e.target.value})} className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-blue-500" />
-                      <input type="text" placeholder="Personal Mobile" value={createForm.personalMobile} onChange={e => setCreateForm({...createForm, personalMobile: e.target.value})} className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-blue-500" />
+                      <input type="email" placeholder="Work Email Address *" required value={createForm.email} onChange={e => setCreateForm({...createForm, email: e.target.value})} className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-medium" />
+                      <input type="text" placeholder="Full Name (optional - defaults to email)" value={createForm.fullName} onChange={e => setCreateForm({...createForm, fullName: e.target.value})} className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-medium" />
+                      <input type="text" placeholder="Password (Optional - auto-generated for OTP login)" value={createForm.password} onChange={e => setCreateForm({...createForm, password: e.target.value})} className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-medium" />
+                      <input type="text" placeholder="Personal Mobile" value={createForm.personalMobile} onChange={e => setCreateForm({...createForm, personalMobile: e.target.value})} className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-medium" />
                    </div>
                    <div className="space-y-3">
                       <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Role & Reporting</label>
@@ -1583,7 +1598,7 @@ export default function UsersPage() {
                            <option value="">EXECUTIVE</option>
                          ) : (
                            <>
-                             <option value="">Select Role *</option>
+                             <option value="">Select Role (Default: Sales Executive)</option>
                              {roles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
                            </>
                          )}

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { validateAuth } from '@/lib/auth-guard'
+import { validateAuth, invalidateAuthCache } from '@/lib/auth-guard'
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
@@ -111,42 +111,88 @@ export async function POST(req: NextRequest) {
       highestQualification, dateOfBirth, joiningDate, personalMobile, homeMobile
     } = body
 
-    if (!fullName || !email || !password) {
-      return NextResponse.json({ error: 'fullName, email, and password are required' }, { status: 400 })
+    if (!email || typeof email !== 'string' || !email.trim()) {
+      return NextResponse.json({ error: 'A valid email address is required' }, { status: 400 })
     }
 
-    const isManager = context?.role?.toUpperCase() === 'MANAGER'
+    const cleanEmail = email.trim().toLowerCase()
+    const cleanFullName = (fullName && typeof fullName === 'string' && fullName.trim())
+      ? fullName.trim()
+      : cleanEmail.split('@')[0]
+
+    // Secure fallback password if not provided (user logs in via Email & OTP)
+    const cleanPassword = (password && typeof password === 'string' && password.trim().length >= 6)
+      ? password.trim()
+      : ('Torque@' + Math.random().toString(36).slice(-8) + '!')
+
+    const callerRole = (context?.role || '').toUpperCase()
+    const isHr = callerRole.includes('HR')
+    const isManager = callerRole === 'MANAGER' && !isHr
     let finalRoleId = roleId
-    let finalIsActive = body.isActive !== undefined ? body.isActive : true // Admins create active users by default
+    let finalIsActive = body.isActive !== undefined ? body.isActive : true // Admins and HR create active users ready for OTP login
 
     if (isManager) {
-      // 1. Managers can ONLY create Executives
+      // Managers create inactive users requiring Admin/HR review
       const executiveRole = await prisma.role.findFirst({ where: { name: 'EXECUTIVE' } })
       finalRoleId = executiveRole?.id || roleId
-      // 2. Managers create INACTIVE users (Pending Admin Approval)
       finalIsActive = false
     }
 
-    const finalManagerId = isManager ? context.userId : (managerId || null)
+    if (!finalRoleId) {
+      const defaultRole = await prisma.role.findFirst({
+        where: { name: { in: ['Sales Executive', 'EXECUTIVE', 'Executive'] } }
+      })
+      finalRoleId = defaultRole?.id || null
+    }
 
-    // 1. Create user in Supabase Auth (so they can log in)
+    const finalManagerId = isManager ? (context?.userId || null) : (managerId || null)
+
+    // 1. Create user in Supabase Auth (so they can log in via OTP/token)
+    let authUserId: string | null = null
     const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
-      email,
-      password,
+      email: cleanEmail,
+      password: cleanPassword,
       email_confirm: true,
-      user_metadata: { full_name: fullName }
+      user_metadata: { full_name: cleanFullName, name: cleanFullName }
     })
 
     if (authError) {
+      // If user already exists in Supabase Auth, link and activate in Prisma
+      if (authError.message?.toLowerCase().includes('already') || (authError as any).status === 422) {
+        const existingPrisma = await prisma.user.findFirst({
+          where: { email: { equals: cleanEmail, mode: 'insensitive' } }
+        })
+        if (existingPrisma) {
+          const updated = await prisma.user.update({
+            where: { id: existingPrisma.id },
+            data: {
+              fullName: cleanFullName || existingPrisma.fullName,
+              roleId: finalRoleId || existingPrisma.roleId,
+              managerId: finalManagerId !== undefined ? finalManagerId : existingPrisma.managerId,
+              isActive: finalIsActive,
+              personalMobile: personalMobile || existingPrisma.personalMobile,
+            },
+            include: {
+              role: { select: { id: true, name: true } },
+              manager: { select: { id: true, fullName: true } },
+              permissions: { select: { id: true, name: true } }
+            }
+          })
+          invalidateAuthCache()
+          return NextResponse.json(updated)
+        }
+      }
       return NextResponse.json({ error: authError.message }, { status: 400 })
+    } else {
+      authUserId = authData.user.id
     }
 
     // 2. Create/Update user in Prisma DB (using upsert to handle trigger-created rows)
     const user = await prisma.user.upsert({
-      where: { id: authData.user.id },
+      where: { id: authUserId },
       update: {
-        email,
-        fullName,
+        email: cleanEmail,
+        fullName: cleanFullName,
         roleId: finalRoleId || null,
         managerId: finalManagerId,
         isActive: finalIsActive,
@@ -160,9 +206,9 @@ export async function POST(req: NextRequest) {
           : undefined
       },
       create: {
-        id: authData.user.id,
-        email,
-        fullName,
+        id: authUserId!,
+        email: cleanEmail,
+        fullName: cleanFullName,
         roleId: finalRoleId || null,
         managerId: finalManagerId,
         isActive: finalIsActive,
@@ -182,6 +228,7 @@ export async function POST(req: NextRequest) {
       }
     })
 
+    invalidateAuthCache()
 
     return NextResponse.json(user)
   } catch (error: any) {

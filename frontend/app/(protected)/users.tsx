@@ -158,8 +158,8 @@ export default function UsersScreen() {
     managerId: ''
   });
 
-  const roleUpper = currentUser?.role?.toUpperCase();
-  const isAdmin = roleUpper === 'SUPER ADMIN' || roleUpper === 'ADMIN' || roleUpper === 'HR';
+  const roleUpper = currentUser?.role?.toUpperCase() || '';
+  const isAdmin = roleUpper === 'SUPER ADMIN' || roleUpper === 'ADMIN' || roleUpper.includes('ADMIN') || roleUpper.includes('HR') || roleUpper === 'HR MANAGER' || roleUpper === 'HR';
 
   const load = useCallback(async () => {
     if (!isAdmin) return;
@@ -194,19 +194,22 @@ export default function UsersScreen() {
   }, [search, isAdmin, selectedUser, setCache]);
 
   const handleAddUser = async () => {
-    if (!newUser.fullName.trim() || !newUser.email.trim() || !newUser.password.trim()) {
-      Alert.alert('Error', 'Name, Email, and Password are required.');
+    if (!newUser.email.trim()) {
+      Alert.alert('Validation Error', 'Please enter a valid email address.');
       return;
     }
+    const cleanEmail = newUser.email.trim().toLowerCase();
+    const cleanFullName = newUser.fullName.trim() || cleanEmail.split('@')[0];
+
     setSaving(true);
     try {
       await api.post('/users/', {
-        fullName: newUser.fullName.trim(),
-        email: newUser.email.trim().toLowerCase(),
-        password: newUser.password,
+        fullName: cleanFullName,
+        email: cleanEmail,
+        password: newUser.password.trim() || undefined,
         roleId: newUser.roleId || null,
         managerId: newUser.managerId || null,
-        isActive: false // Force onboarding on first login by submitting isActive: false
+        isActive: true // User is immediately active so they can authenticate via Email & OTP
       });
       setAddModalVisible(false);
       setNewUser({
@@ -216,7 +219,10 @@ export default function UsersScreen() {
         roleId: '',
         managerId: ''
       });
-      Alert.alert('Success', 'User created successfully!');
+      Alert.alert(
+        'User Created Successfully 🎉',
+        `Account for "${cleanEmail}" is now active.\n\nThey can log in immediately by entering their email address on the app. Their 6-digit OTP will be dispatched to torqueotp@yahoo.com.`
+      );
       load();
     } catch (e: any) {
       Alert.alert('Error', e.message || 'Failed to create user');
@@ -679,22 +685,21 @@ export default function UsersScreen() {
             </View>
 
             <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-              <View style={styles.field}>
-                <Text style={styles.label}>FULL NAME *</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="e.g. AMAN SHARMA"
-                  placeholderTextColor={Colors.textLight}
-                  value={newUser.fullName}
-                  onChangeText={(val) => setNewUser({ ...newUser, fullName: val })}
-                />
+              <View style={styles.otpNoticeBox}>
+                <Ionicons name="mail-unread-outline" size={20} color={Colors.primary} />
+                <View style={{ flex: 1, marginLeft: 8 }}>
+                  <Text style={styles.otpNoticeTitle}>Staff OTP Authentication</Text>
+                  <Text style={styles.otpNoticeDesc}>
+                    Users log in using their email ID and 6-digit OTP sent to company mailbox (torqueotp@yahoo.com). Password is optional.
+                  </Text>
+                </View>
               </View>
 
               <View style={styles.field}>
-                <Text style={styles.label}>EMAIL ADDRESS *</Text>
+                <Text style={styles.label}>WORK EMAIL ADDRESS *</Text>
                 <TextInput
                   style={styles.input}
-                  placeholder="aman@example.com"
+                  placeholder="staff@example.com"
                   placeholderTextColor={Colors.textLight}
                   keyboardType="email-address"
                   autoCapitalize="none"
@@ -704,24 +709,35 @@ export default function UsersScreen() {
               </View>
 
               <View style={styles.field}>
-                <Text style={styles.label}>PASSWORD *</Text>
+                <Text style={styles.label}>FULL NAME</Text>
                 <TextInput
                   style={styles.input}
-                  placeholder="Minimum 6 characters"
+                  placeholder="e.g. AMAN SHARMA (optional)"
+                  placeholderTextColor={Colors.textLight}
+                  value={newUser.fullName}
+                  onChangeText={(val) => setNewUser({ ...newUser, fullName: val })}
+                />
+              </View>
+
+              <DropdownSelector
+                label="Role"
+                placeholder="Choose role (Default: Sales Executive)"
+                options={roles.map(r => ({ label: r.name, value: r.id }))}
+                selectedValue={newUser.roleId}
+                onSelect={(val) => setNewUser(prev => ({ ...prev, roleId: val }))}
+              />
+
+              <View style={styles.field}>
+                <Text style={styles.label}>PASSWORD (OPTIONAL)</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Leave empty for auto-generated OTP login"
                   placeholderTextColor={Colors.textLight}
                   secureTextEntry
                   value={newUser.password}
                   onChangeText={(val) => setNewUser({ ...newUser, password: val })}
                 />
               </View>
-
-              <DropdownSelector
-                label="Role *"
-                placeholder="Choose role"
-                options={roles.map(r => ({ label: r.name, value: r.id }))}
-                selectedValue={newUser.roleId}
-                onSelect={(val) => setNewUser(prev => ({ ...prev, roleId: val }))}
-              />
 
               {(roles.find(r => r.id === newUser.roleId)?.name?.toUpperCase().includes('EXECUTIVE') || 
                 roles.find(r => r.id === newUser.roleId)?.name?.toUpperCase().includes('SALES')) && (
@@ -863,4 +879,25 @@ const styles = StyleSheet.create({
   optionText: { fontSize: FontSize.md, color: Colors.text },
   optionTextActive: { color: Colors.primary, fontWeight: '600' },
   noOptionsText: { textAlign: 'center', color: Colors.textLight, paddingVertical: Spacing.xl, fontSize: FontSize.sm },
+  otpNoticeBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    borderRadius: BorderRadius.md,
+    padding: Spacing.md,
+    marginBottom: Spacing.md,
+  },
+  otpNoticeTitle: {
+    fontSize: FontSize.xs,
+    fontWeight: '800',
+    color: '#1E40AF',
+    marginBottom: 2,
+  },
+  otpNoticeDesc: {
+    fontSize: 11,
+    color: '#3B82F6',
+    lineHeight: 15,
+  },
 });

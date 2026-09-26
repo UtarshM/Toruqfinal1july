@@ -41,7 +41,7 @@ export default function Sidebar({ visible, onClose }: SidebarProps) {
   const isAdmin = roleUpper === 'SUPER ADMIN' || roleUpper === 'ADMIN' || roleUpper.includes('ADMIN') || isSuperAdminEmail;
   const isManager = roleUpper === 'MANAGER' || (roleUpper.includes('MANAGER') && !roleUpper.includes('HR'));
   const isAccountant = roleUpper === 'ACCOUNTANT' || roleUpper.includes('ACCOUNT') || roleUpper.includes('FINANCE');
-  const isHrManager = roleUpper === 'HR MANAGER' || roleUpper === 'HR';
+  const isHrManager = roleUpper === 'HR MANAGER' || roleUpper === 'HR' || roleUpper.includes('HR');
 
   const MENU_GROUPS = [
     {

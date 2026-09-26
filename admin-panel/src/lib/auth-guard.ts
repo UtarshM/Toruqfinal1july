@@ -184,6 +184,15 @@ export async function validateAuth(
         };
       }
 
+      // HR Manager has full authority to manage users (users.*) and HR records (hr.*)
+      const isHr = roleUpper.includes('HR');
+      if (isHr && (requiredPermission.startsWith('user.') || requiredPermission.startsWith('users.') || requiredPermission.startsWith('hr.'))) {
+        return {
+          context,
+          userProfile: profile
+        };
+      }
+
       let hasPermission = context.permissions.includes(requiredPermission);
       
       // Self-healing fallback for singular vs plural mismatches
