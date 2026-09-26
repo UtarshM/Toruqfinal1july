@@ -17,6 +17,13 @@
       "distribution": "internal",
       "channel": "preview"
     },
+    "preview-simulator": {
+      "node": "22.13.0",
+      "ios": {
+        "simulator": true
+      },
+      "channel": "preview"
+    },
     "production": {
       "node": "22.13.0",
       "autoIncrement": true,
