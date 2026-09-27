@@ -71,7 +71,13 @@ export async function safeRefreshToken(): Promise<string | null> {
 
 export async function getValidAccessToken(): Promise<string | null> {
   try {
-    const { data: { session } } = await supabase.auth.getSession()
+    let { data: { session } } = await supabase.auth.getSession()
+    if (!session) {
+      // Short delay retry in case session is rehydrating from storage upon tab resume
+      await new Promise(r => setTimeout(r, 400))
+      const retry = await supabase.auth.getSession()
+      session = retry.data?.session || null
+    }
     if (!session) return null
 
     // Check if token expires within 90 seconds (expires_at is Unix seconds)
@@ -93,12 +99,24 @@ export async function fetchApi(path: string, options: RequestInit = {}, retries 
   let token = await getValidAccessToken()
 
   if (!token) {
-    if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
-      console.warn('[api] No valid token found, redirecting to login...')
-      try { localStorage.removeItem('toque_user_profile') } catch {}
-      window.location.href = '/login'
+    const hasCachedProfile = typeof window !== 'undefined' && !!localStorage.getItem('toque_user_profile')
+    // Graceful retry window to prevent reload on tab switch
+    await new Promise(r => setTimeout(r, 600))
+    token = await getValidAccessToken()
+
+    if (!token) {
+      if (hasCachedProfile) {
+        console.warn('[api] Token transiently unavailable; preserving page state.')
+        throw new Error('Authorization token momentarily unavailable')
+      }
+
+      if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
+        console.warn('[api] No valid token found, redirecting to login...')
+        try { localStorage.removeItem('toque_user_profile') } catch {}
+        window.location.href = '/login'
+      }
+      throw new Error('Missing authorization token')
     }
-    throw new Error('Missing authorization token')
   }
 
   const headers: Record<string, string> = {
@@ -110,12 +128,15 @@ export async function fetchApi(path: string, options: RequestInit = {}, retries 
     headers['Content-Type'] = 'application/json'
   }
 
+  const fetchOptions: RequestInit = {
+    cache: 'no-store',
+    ...options,
+    headers,
+  }
+
   for (let i = 0; i < retries; i++) {
     try {
-      const res = await fetch(path, {
-        ...options,
-        headers,
-      })
+      const res = await fetch(path, fetchOptions)
 
       if (!res.ok) {
         // If 401 Unauthorized, attempt safe token refresh and retry request
@@ -124,15 +145,16 @@ export async function fetchApi(path: string, options: RequestInit = {}, retries 
           if (refreshedToken) {
             token = refreshedToken
             headers['Authorization'] = `Bearer ${refreshedToken}`
+            fetchOptions.headers = headers
             continue // Retry this request with the refreshed token!
           } else if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
-            console.warn('[api] Session invalid/expired, redirecting to login...')
-            try {
-              localStorage.removeItem('toque_user_profile')
-              await supabase.auth.signOut().catch(() => {})
-            } catch {}
-            window.location.href = '/login'
-            throw new Error('Session expired. Redirecting to login...')
+            const isExplicit = sessionStorage.getItem('torque_explicit_logout') === 'true'
+            if (isExplicit) {
+              console.warn('[api] Session invalid/expired, redirecting to login...')
+              try { localStorage.removeItem('toque_user_profile') } catch {}
+              window.location.href = '/login'
+              throw new Error('Session expired. Redirecting to login...')
+            }
           }
         }
 

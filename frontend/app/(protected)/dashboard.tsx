@@ -43,13 +43,13 @@ const getBannersForRole = (isAdmin: boolean, isManager: boolean, isAccountant: b
       {
         id: 'ughrani',
         badge: 'COLLECTIONS & RECOVERY',
-        title: 'Ughrani Debt Ledgers',
+        title: 'Credit Ledgers',
         subtitle: 'Track Field & Office Payment Recoveries',
         leftTag: 'OUTSTANDING',
         leftValue: 'ACTIVE BOOKS',
         rightTag: 'RECEIPTS',
         rightValue: 'INSTANT VOUCHER',
-        btnText: 'Manage Ughrani Books',
+        btnText: 'Manage Credit Books',
         type: 'ughrani',
         gradientBg: '#831843',
       },
@@ -135,7 +135,7 @@ const getBannersForRole = (isAdmin: boolean, isManager: boolean, isAccountant: b
         leftValue: 'SAME DAY QC',
         rightTag: 'COMMISSION',
         rightValue: 'VERIFIED',
-        btnText: 'Review Policy Approvals',
+        btnText: 'Review Policies To Be Done',
         type: 'approvals',
         gradientBg: '#701A75',
       },
@@ -587,14 +587,14 @@ export default function DashboardScreen() {
                 </Text>
               </Pressable>
 
-              {/* Ughrani Debt */}
+              {/* Credit Debt */}
               <Pressable
                 style={styles.metricCard}
                 onPress={() => router.push('/(protected)/ughrani')}
               >
                 <View style={styles.metricTopRow}>
                   <Ionicons name="wallet" size={16} color="#DC2626" />
-                  <Text style={styles.metricLabel}>Ughrani</Text>
+                  <Text style={styles.metricLabel}>Credit</Text>
                 </View>
                 <Text style={styles.metricValue}>
                   {stats.ughrani_pending || 'Active'}
@@ -725,7 +725,7 @@ export default function DashboardScreen() {
               >
                 <View style={styles.metricTopRow}>
                   <Ionicons name="shield-checkmark" size={16} color="#3B82F6" />
-                  <Text style={styles.metricLabel}>Policies</Text>
+                  <Text style={styles.metricLabel}>Policies PDF</Text>
                 </View>
                 <Text style={styles.metricValue}>
                   {stats.active_policies ?? stats.policies ?? 0}
@@ -764,7 +764,7 @@ export default function DashboardScreen() {
                   style={styles.subMetricItem}
                   onPress={() => router.push('/(protected)/ughrani')}
                 >
-                  <Text style={styles.subMetricLabel}>UGHRANI LEDGERS</Text>
+                  <Text style={styles.subMetricLabel}>CREDIT LEDGERS</Text>
                   <Text style={styles.subMetricValue}>Active</Text>
                 </Pressable>
                 <View style={styles.subMetricDivider} />
@@ -1389,7 +1389,7 @@ export default function DashboardScreen() {
                   }}
                 >
                   <Ionicons name="shield-checkmark" size={20} color="#DC2626" />
-                  <Text style={styles.fabSheetItemText}>Review Policy Approvals</Text>
+                  <Text style={styles.fabSheetItemText}>Review Policies To Be Done</Text>
                 </Pressable>
 
                 <Pressable

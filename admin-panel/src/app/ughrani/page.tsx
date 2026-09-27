@@ -306,7 +306,7 @@ export default function UghraniPage() {
           <div>
             <h1 className="text-2xl font-bold text-gray-900 tracking-tight flex items-center gap-2.5">
               <BookOpen className="text-red-600" size={26} />
-              Ughrani & Debt Recovery
+              Credit & Debt Recovery
             </h1>
             <p className="text-sm text-gray-500 mt-1">
               Field collection books, agent debt assignments, and overdue balance tracking matching legacy system.

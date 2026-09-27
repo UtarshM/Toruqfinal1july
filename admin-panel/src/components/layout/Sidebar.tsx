@@ -21,9 +21,9 @@ const MENU_GROUPS = [
       { name: 'Import List', href: '/data/import' },
       { name: 'Imported Spreadsheets', href: '/data/sheets' },
       { name: 'CRM', href: '/crm' },
-      { name: 'Quotations', href: '/quotations' },
       { name: 'Rate Calculator', href: '/rate-calculator' },
-      { name: 'Policies', href: '/policies' },
+      { name: 'Quotation Relationship', href: '/settings/rates' },
+      { name: 'Policies PDF', href: '/policies' },
       { name: 'Renewals', href: '/renewals' },
       { name: 'Follow-ups', href: '/follow-ups' },
       { name: 'Trashed List', href: '/leads/trash' },
@@ -36,24 +36,22 @@ const MENU_GROUPS = [
       { name: 'Loans', href: '/loans' },
       { name: 'Claims', href: '/claims' },
       { name: 'RTO Work', href: '/rto' },
-      { name: 'DL Work', href: '/dl' },
       { name: 'Fitness', href: '/fitness' },
     ]
   },
   {
     label: 'MANAGEMENT',
     items: [
-      { name: 'Policy Approvals', href: '/manager/documents' },
+      { name: 'Policies To Be Done', href: '/manager/documents' },
       { name: 'Users', href: '/users' },
       { name: 'Onboarding Approvals', href: '/users/onboarding' },
       { name: 'Roles & Permissions', href: '/roles' },
       { name: 'Data Approvals', href: '/data' },
       { name: 'Finance', href: '/finance' },
       { name: 'Cheques', href: '/cheques' },
-      { name: 'Ughrani (Recovery)', href: '/ughrani' },
+      { name: 'Credit', href: '/ughrani' },
       { name: 'HR', href: '/hr' },
-      { name: 'Lead Responses', href: '/settings/responses' },
-      { name: 'Quotation Rates', href: '/settings/rates' },
+      { name: 'Customer Responses', href: '/settings/responses' },
       { name: 'Form Customizer', href: '/settings/forms' },
       { name: 'Settings', href: '/settings' },
     ]
@@ -85,11 +83,16 @@ export default function Sidebar() {
       items = items.filter(i => i.name !== 'Imported Spreadsheets')
     }
 
+    // Quotation Relationship is admin-only configuration
+    if (!isAdmin) {
+      items = items.filter(i => i.name !== 'Quotation Relationship')
+    }
+
     if (isHr) {
       // HR manages Users, Onboarding Approvals, HR, Settings, plus Operations ("all have right of this")
       if (group.label === 'SALES') return null
       if (group.label === 'OPERATIONS') {
-        items = items.filter(i => ['Loans', 'Loan Inquiries', 'RTO Work', 'DL Work'].includes(i.name))
+        items = items.filter(i => ['Loans', 'Loan Inquiries', 'RTO Work'].includes(i.name))
       }
       if (group.label === 'OVERVIEW') {
         items = items.filter(i => i.name === 'Dashboard')
@@ -103,19 +106,19 @@ export default function Sidebar() {
         items = items.filter(i => i.name === 'Settings')
       }
       if (group.label === 'OPERATIONS') {
-        items = items.filter(i => ['Claims', 'Loans', 'Loan Inquiries', 'RTO Work', 'DL Work'].includes(i.name))
+        items = items.filter(i => ['Claims', 'Loans', 'Loan Inquiries', 'RTO Work'].includes(i.name))
       }
-      items = items.filter(i => !['CRM', 'Reports', 'Import List', 'Import Leads', 'Policy Approvals'].includes(i.name))
+      items = items.filter(i => !['CRM', 'Reports', 'Import List', 'Import Leads', 'Policies To Be Done'].includes(i.name))
     } else if (isManager && !isAdmin) {
       // Role-based filtering for Managers - ensure Operations are accessible
       if (group.label === 'OPERATIONS') {
-        items = items.filter(i => ['Loans', 'Loan Inquiries', 'Claims', 'RTO Work', 'DL Work', 'Fitness'].includes(i.name))
+        items = items.filter(i => ['Loans', 'Loan Inquiries', 'Claims', 'RTO Work', 'Fitness'].includes(i.name))
       }
       if (group.label === 'SALES') {
-        items = items.filter(i => ['List', 'Leads', 'CRM', 'Quotations', 'Rate Calculator', 'Policies', 'Renewals', 'Follow-ups'].includes(i.name))
+        items = items.filter(i => ['List', 'Leads', 'CRM', 'Rate Calculator', 'Policies PDF', 'Renewals', 'Follow-ups'].includes(i.name))
       }
       if (group.label === 'MANAGEMENT') {
-        items = items.filter(i => ['Policy Approvals', 'Onboarding Approvals', 'Users', 'Finance', 'Cheques', 'Ughrani (Recovery)', 'Settings'].includes(i.name))
+        items = items.filter(i => ['Policies To Be Done', 'Onboarding Approvals', 'Users', 'Finance', 'Cheques', 'Credit', 'Settings'].includes(i.name))
       }
     }
 

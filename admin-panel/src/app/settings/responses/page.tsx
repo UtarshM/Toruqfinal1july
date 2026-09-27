@@ -81,7 +81,7 @@ export default function ResponsesPage() {
     <AdminLayout>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Lead Responses Configuration</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Customer Responses Configuration</h1>
           <p className="text-sm text-gray-500 mt-1">Manage the fixed Gujarati responses for the employee app.</p>
         </div>
         <button onClick={handleAdd} className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-xl text-sm font-semibold hover:bg-blue-700 shadow-sm">

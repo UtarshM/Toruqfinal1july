@@ -411,14 +411,14 @@ export default function ManagerDocumentsPage() {
           <div>
             <div className="flex items-center gap-2 mb-1">
               <span className="px-2.5 py-0.5 bg-blue-50 text-blue-700 text-[10px] font-black uppercase tracking-wider rounded-lg border border-blue-200">
-                Manager Verification Central
+                Policies To Be Done Desk
               </span>
               <span className="px-2.5 py-0.5 bg-emerald-50 text-emerald-700 text-[10px] font-black uppercase tracking-wider rounded-lg border border-emerald-200">
                 Automated Monthly Master Scraper
               </span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-slate-900">
-              Document Approvals & Policy Issuance
+              Policies To Be Done (Approvals & Issuance)
             </h1>
             <p className="text-xs sm:text-sm text-slate-500 font-medium mt-1">
               Review verified 7-doc bundles, approve documents for company issuance, and upload final policy PDFs to trigger finance & renewal archives.

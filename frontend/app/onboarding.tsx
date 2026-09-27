@@ -303,7 +303,7 @@ export default function OnboardingScreen() {
               <Text style={styles.title}>Profile Onboarding</Text>
               <Text style={styles.subtitle}>Complete your profile details to unlock access</Text>
             </View>
-            <Pressable onPress={logout} style={styles.logoutBtn}>
+            <Pressable onPress={async () => { await logout(); router.replace('/'); }} style={styles.logoutBtn}>
               <Ionicons name="log-out-outline" size={22} color={Colors.error} />
             </Pressable>
           </View>

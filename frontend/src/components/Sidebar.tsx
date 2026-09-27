@@ -58,8 +58,8 @@ export default function Sidebar({ visible, onClose }: SidebarProps) {
         { name: 'Today Follow-ups', icon: 'calendar-outline', route: '/(protected)/follow-ups', visible: !isHrManager && !isAccountant },
         { name: 'Renewals Pipeline', icon: 'sync-outline', route: '/(protected)/renewals', visible: !isHrManager && !isAccountant },
         { name: 'Rate Calculator', icon: 'calculator-outline', route: '/(protected)/rate-calculator', visible: !isHrManager && !isAccountant },
-        { name: 'Quotations', icon: 'clipboard-outline', route: '/(protected)/quotations', visible: isAdmin || isManager || !isHrManager },
-        { name: 'Policies', icon: 'shield-checkmark-outline', route: '/(protected)/policies', visible: isAdmin || isManager },
+        { name: 'Quotation Relationship', icon: 'options-outline', route: '/(protected)/rates-management', visible: isAdmin },
+        { name: 'Policies PDF', icon: 'shield-checkmark-outline', route: '/(protected)/policies', visible: isAdmin || isManager },
         { name: 'Import List', icon: 'cloud-upload-outline', route: '/(protected)/leads/import', visible: isAdmin },
         { name: 'Spreadsheets', icon: 'grid-outline', route: '/(protected)/sheets', visible: isAdmin },
         { name: 'CRM Pipeline', icon: 'person-add-outline', route: '/(protected)/crm', visible: !isAccountant && !isHrManager },
@@ -74,20 +74,20 @@ export default function Sidebar({ visible, onClose }: SidebarProps) {
         { name: 'RTO Work', icon: 'car-outline', route: '/(protected)/rto', visible: !isHrManager && (isAdmin || isManager || roleUpper.includes('RTO')) },
         { name: 'Fitness Desk', icon: 'fitness-outline', route: '/(protected)/fitness', visible: !isHrManager && (isAdmin || isManager || roleUpper.includes('FITNESS')) },
         { name: 'Cheques Clearing', icon: 'card-outline', route: '/(protected)/cheques', visible: isAdmin || isManager || isAccountant },
-        { name: 'Ughrani (Collections)', icon: 'wallet-outline', route: '/(protected)/ughrani', visible: isAdmin || isManager || isAccountant },
+        { name: 'Credit', icon: 'wallet-outline', route: '/(protected)/ughrani', visible: isAdmin || isManager || isAccountant },
       ]
     },
     {
       label: 'MANAGEMENT & FINANCE',
       items: [
-        { name: 'Policy Approvals', icon: 'shield-checkmark-outline', route: '/(protected)/policy-approvals', visible: isAdmin || isManager },
+        { name: 'Policies To Be Done', icon: 'shield-checkmark-outline', route: '/(protected)/policy-approvals', visible: isAdmin || isManager },
         { name: 'Finance & Ledger', icon: 'wallet-outline', route: '/(protected)/finance', visible: isAdmin || isAccountant },
         { name: 'Users & Staff', icon: 'person-outline', route: '/(protected)/users', visible: isAdmin || isHrManager },
         { name: 'Onboarding Approvals', icon: 'checkmark-circle-outline', route: '/(protected)/onboarding-approvals', visible: isAdmin || isHrManager || isManager },
         { name: 'Payroll & Salaries', icon: 'cash-outline', route: '/(protected)/payroll', visible: isAdmin || isHrManager },
         { name: 'HR Desk', icon: 'people-circle-outline', route: '/(protected)/hr', visible: true },
+        { name: 'Customer Responses', icon: 'chatbubbles-outline', route: '/(protected)/responses', visible: isAdmin },
         { name: 'Roles & Permissions', icon: 'ribbon-outline', route: '/(protected)/roles', visible: isAdmin },
-        { name: 'Quotation Rates', icon: 'options-outline', route: '/(protected)/rates-management', visible: isAdmin },
         { name: 'Settings', icon: 'settings-outline', route: '/(protected)/settings', visible: true },
       ]
     }
@@ -129,6 +129,7 @@ export default function Sidebar({ visible, onClose }: SidebarProps) {
 
   const handleLogout = async () => {
     onClose();
+    router.replace('/');
     await logout();
   };
 

@@ -373,7 +373,7 @@ export default function UghraniScreen() {
         <Pressable onPress={() => setSidebarOpen(true)} style={styles.menuBtn}>
           <Ionicons name="menu-outline" size={26} color={Colors.text} />
         </Pressable>
-        <Text style={styles.title}>Ughrani Collections</Text>
+        <Text style={styles.title}>Credit Collections</Text>
         
         {isAdminOrManager && (
           <View style={styles.headerActions}>

@@ -130,21 +130,15 @@ export default function RatesManagementScreen() {
   // Rules CRUD
   const handleSaveRule = async () => {
     const { id, companyId, categoryId, percentage, profit, status } = ruleForm;
-    if (!companyId || percentage === '' || profit === '') {
-      Alert.alert('Error', 'Please fill all required fields.');
+    if (!companyId || !categoryId || percentage === '' || profit === '') {
+      Alert.alert('Error', 'Please select both company and vehicle category, and enter percentage and profit.');
       return;
-    }
-
-    let effectiveCatId = categoryId;
-    if (!effectiveCatId) {
-      const selectedComp = companies.find(c => c.id === companyId);
-      effectiveCatId = categories.find(c => c.name.trim().toLowerCase() === selectedComp?.name.trim().toLowerCase())?.id || categories[0]?.id || companyId;
     }
 
     try {
       const body = {
         companyId,
-        categoryId: effectiveCatId,
+        categoryId,
         percentage: parseFloat(percentage),
         profit: parseFloat(profit),
         status: parseInt(status)
@@ -152,16 +146,16 @@ export default function RatesManagementScreen() {
 
       if (id) {
         await api.patch(`/rates/relationships/${id}`, body);
-        Alert.alert('Success', 'Rule updated successfully!');
+        Alert.alert('Success', 'Quotation relationship updated successfully!');
       } else {
         await api.post('/rates/relationships', body);
-        Alert.alert('Success', 'Rule created successfully!');
+        Alert.alert('Success', 'Quotation relationship created successfully!');
       }
 
       setRuleForm({ id: '', companyId: '', categoryId: '', percentage: '', profit: '', status: '1' });
       loadData();
     } catch (err: any) {
-      Alert.alert('Error', err.message || 'Failed to save rate rule');
+      Alert.alert('Error', err.message || 'Failed to save quotation relationship');
     }
   };
 
@@ -192,7 +186,7 @@ export default function RatesManagementScreen() {
         <Pressable onPress={() => setSidebarOpen(true)} style={styles.menuBtn}>
           <Ionicons name="menu-outline" size={26} color={Colors.text} />
         </Pressable>
-        <Text style={styles.headerTitle}>Quotation Rates</Text>
+        <Text style={styles.headerTitle}>Quotation Relationship</Text>
         <Pressable onPress={loadData} style={styles.refreshBtn}>
           <Ionicons name="refresh" size={20} color={Colors.primary} />
         </Pressable>
@@ -224,7 +218,7 @@ export default function RatesManagementScreen() {
           {/* Rules Forms */}
           {activeTab === 'rules' && (
             <View style={styles.section}>
-              <Text style={styles.sectionHeading}>{ruleForm.id ? 'Edit Rate Rule' : 'New Rate Rule'}</Text>
+              <Text style={styles.sectionHeading}>{ruleForm.id ? 'Edit Relationship' : 'New Relationship'}</Text>
               
               <DropdownSelector
                 label="Company"
@@ -232,12 +226,23 @@ export default function RatesManagementScreen() {
                 options={companies.map(c => ({ label: c.name, value: c.id }))}
                 selectedValue={ruleForm.companyId}
                 onSelect={(val) => {
-                  const compRel = rules.find(r => r.companyId === val);
-                  setRuleForm({
-                    ...ruleForm,
-                    companyId: val,
-                    categoryId: compRel?.categoryId || ''
-                  });
+                  setRuleForm(prev => ({
+                    ...prev,
+                    companyId: val
+                  }));
+                }}
+              />
+
+              <DropdownSelector
+                label="Vehicle Category"
+                placeholder="Select Vehicle Category"
+                options={categories.map(cat => ({ label: cat.name, value: cat.id }))}
+                selectedValue={ruleForm.categoryId}
+                onSelect={(val) => {
+                  setRuleForm(prev => ({
+                    ...prev,
+                    categoryId: val
+                  }));
                 }}
               />
 

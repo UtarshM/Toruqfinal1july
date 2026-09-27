@@ -733,7 +733,7 @@ export default function PolicyApprovalsScreen() {
           <Ionicons name="arrow-back" size={22} color={Colors.text} />
         </Pressable>
         <View style={{ flex: 1, paddingHorizontal: 4 }}>
-          <Text style={styles.headerTitle}>Policy Approvals</Text>
+          <Text style={styles.headerTitle}>Policies To Be Done</Text>
           <Text style={styles.headerSubtitle}>Manager Verification & Issuance</Text>
         </View>
         <Pressable onPress={onRefresh} style={styles.iconBtn}>

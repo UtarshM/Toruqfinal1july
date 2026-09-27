@@ -337,7 +337,7 @@ export default function TakenCasesScreen() {
                 <Text style={styles.label}>DOCUMENT NAME / LIFECYCLE TARGET *</Text>
                 <TextInput
                   style={styles.input}
-                  placeholder="e.g. RC Book, Driving License, Insurance Copy"
+                  placeholder="e.g. RC Book, Insurance Copy, Fitness Certificate"
                   placeholderTextColor={Colors.textLight}
                   value={newCase.document_name}
                   onChangeText={(val) => setNewCase({ ...newCase, document_name: val })}

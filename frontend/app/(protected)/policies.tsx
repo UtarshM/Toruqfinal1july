@@ -479,7 +479,7 @@ export default function PoliciesScreen() {
           <Ionicons name="menu-outline" size={26} color={Colors.text} />
         </Pressable>
         <View style={{ flex: 1 }}>
-          <Text style={styles.title}>Policies</Text>
+          <Text style={styles.title}>Policies PDF</Text>
           <Text style={styles.subTitle}>{filteredItems.length} {filteredItems.length === 1 ? 'policy' : 'policies'} recorded</Text>
         </View>
         <View style={styles.headerRight}>

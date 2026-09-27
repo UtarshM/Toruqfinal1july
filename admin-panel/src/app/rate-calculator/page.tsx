@@ -88,7 +88,38 @@ export default function RateCalculatorPage() {
   useEffect(() => {
     fetchInitialData()
     fetchSavedRecords()
+
+    // Restore draft from sessionStorage
+    try {
+      const saved = sessionStorage.getItem('torque_rate_calculator_draft')
+      if (saved) {
+        const parsed = JSON.parse(saved)
+        if (parsed.recordDate) setRecordDate(parsed.recordDate)
+        if (parsed.recordPercentage !== undefined) setRecordPercentage(parsed.recordPercentage)
+        if (parsed.subCalcs) setSubCalcs(parsed.subCalcs)
+        if (parsed.calcTab) setCalcTab(parsed.calcTab)
+      }
+    } catch {}
   }, [])
+
+  // Auto-persist draft to sessionStorage
+  useEffect(() => {
+    const hasAnyInput = recordPercentage || [1, 2, 3].some(t => {
+      const s = subCalcs[t as 1 | 2 | 3]
+      return s.companyId || s.netPremium || s.totalPremium || s.profit || s.remarks
+    })
+
+    if (hasAnyInput) {
+      try {
+        sessionStorage.setItem('torque_rate_calculator_draft', JSON.stringify({
+          recordDate,
+          recordPercentage,
+          subCalcs,
+          calcTab
+        }))
+      } catch {}
+    }
+  }, [recordDate, recordPercentage, subCalcs, calcTab])
 
   const fetchInitialData = async () => {
     setIsLoadingConfig(true)
@@ -151,20 +182,9 @@ export default function RateCalculatorPage() {
     }
 
     const selectedComp = companies.find(c => c.id === newCompanyId)
-    let matchedCategoryId = ''
-    if (selectedComp) {
-      const matchingCat = categories.find(
-        cat => cat.name.trim().toLowerCase() === selectedComp.name.trim().toLowerCase()
-      )
-      if (matchingCat) {
-        matchedCategoryId = matchingCat.id
-      } else {
-        const compRel = relationships.find(r => r.companyId === newCompanyId)
-        if (compRel && compRel.categoryId) {
-          matchedCategoryId = compRel.categoryId
-        }
-      }
-    }
+    // Find active relationship rule for this company
+    const activeRel = relationships.find(r => r.companyId === newCompanyId && r.status === 1) || relationships.find(r => r.companyId === newCompanyId)
+    const matchedCategoryId = activeRel?.categoryId || ''
 
     updateSubCalc(tab, {
       companyId: newCompanyId,
@@ -172,12 +192,26 @@ export default function RateCalculatorPage() {
       categoryId: matchedCategoryId
     })
 
-    // Preset lookup
+    // If active relationship rule found in loaded relationships, immediately populate
+    if (activeRel) {
+      const pct = parseFloat(activeRel.percentage?.toString() || '0')
+      const prof = parseFloat(activeRel.profit?.toString() || '0')
+      if (pct > 0 && (tab === 1 || !recordPercentage)) {
+        setRecordPercentage(String(pct))
+      }
+      updateSubCalc(tab, {
+        profit: prof > 0 ? String(prof) : '',
+        remarks: activeRel.remarks || '',
+        hasRuleFound: true
+      })
+    }
+
+    // Preset lookup from live API
     try {
       const catParam = matchedCategoryId ? `&categoryId=${matchedCategoryId}` : ''
       const res = await fetchApi(`/api/v1/rates/relationships/lookup?companyId=${newCompanyId}${catParam}`)
       if (res && (res.qtr_percentage > 0 || res.qtr_profit > 0 || res.qtr_remarks)) {
-        // Automatically set preset percentage from vehicle-bk conditions
+        // Automatically set preset percentage
         if (res.qtr_percentage !== undefined && res.qtr_percentage !== null && (tab === 1 || !recordPercentage)) {
           setRecordPercentage(String(res.qtr_percentage))
         }
@@ -186,8 +220,6 @@ export default function RateCalculatorPage() {
           remarks: res.qtr_remarks || '',
           hasRuleFound: true
         })
-      } else {
-        updateSubCalc(tab, { hasRuleFound: false })
       }
     } catch (err) {
       console.error('Relationship lookup failed:', err)
@@ -213,6 +245,7 @@ export default function RateCalculatorPage() {
 
   // Clear or reset entire form
   const handleResetForm = () => {
+    try { sessionStorage.removeItem('torque_rate_calculator_draft') } catch {}
     setEditingId(null)
     setRecordDate(getISTDateString(0))
     setRecordPercentage('')

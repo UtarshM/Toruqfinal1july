@@ -396,20 +396,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   async function logout() {
+    // 1. Immediately reset state so UI transitions instantly without blocking
+    setUser(null);
+    setIsLoading(false);
+
+    if (logoutTimerRef.current) {
+      clearTimeout(logoutTimerRef.current);
+      logoutTimerRef.current = null;
+    }
+
+    // 2. Immediately wipe persistent caches
     try {
-      if (logoutTimerRef.current) {
-        clearTimeout(logoutTimerRef.current);
-        logoutTimerRef.current = null;
-      }
       await AsyncStorage.setItem(EXPLICIT_LOGOUT_KEY, 'true').catch(() => {});
       await AsyncStorage.removeItem(USER_PROFILE_CACHE_KEY).catch(() => {});
       await AsyncStorage.removeItem(SESSION_EXPIRY_KEY).catch(() => {});
       await useCacheStore.getState().clearCache();
-      await supabase.auth.signOut();
     } catch (e) {
-      console.warn('Logout error:', e);
+      console.warn('Cache clearing error:', e);
     }
-    setUser(null);
+
+    // 3. Perform signOut with a 1.2s timeout so network hangs never freeze the app
+    try {
+      await Promise.race([
+        supabase.auth.signOut(),
+        new Promise(r => setTimeout(r, 1200))
+      ]);
+    } catch (e) {
+      console.warn('Logout signOut error:', e);
+    }
   }
 
   async function refreshUser() {

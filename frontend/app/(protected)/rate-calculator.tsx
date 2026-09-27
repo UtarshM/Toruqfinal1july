@@ -253,8 +253,9 @@ export default function RateCalculatorScreen() {
 
   // Instant Local Rule Lookup on Company Selection (0ms)
   const handleSelectCompany = (companyId: string) => {
-    // Find matching relationship locally from SQLite / Seed cached array
-    const compRel = relationships.find(r => r.companyId === companyId);
+    // Find matching relationship locally from SQLite / Seed cached array (matching category if selected)
+    const compRel = relationships.find(r => r.companyId === companyId && (!calcState.categoryId || r.categoryId === calcState.categoryId)) 
+      || relationships.find(r => r.companyId === companyId);
 
     const pct = compRel?.percentage ? parseFloat(String(compRel.percentage)) : 0;
     const prof = compRel?.profit ? parseFloat(String(compRel.profit)) : 0;
@@ -286,7 +287,10 @@ export default function RateCalculatorScreen() {
 
     // Fallback background check if rule was not found in cache
     if (!compRel && companyId) {
-      api.get(`/rates/relationships/lookup?companyId=${companyId}`).then(res => {
+      const lookupUrl = calcState.categoryId 
+        ? `/rates/relationships/lookup?companyId=${companyId}&categoryId=${calcState.categoryId}`
+        : `/rates/relationships/lookup?companyId=${companyId}`;
+      api.get(lookupUrl).then(res => {
         const data = res?.data ?? res;
         if (data && (data.qtr_percentage > 0 || data.qtr_profit > 0 || data.qtr_remarks)) {
           setCalcState(cur => {

@@ -36,7 +36,7 @@ export default function AppFooter({ active }: { active?: string }) {
     tabs = [
       { label: 'Home', icon: 'home', iconOutline: 'home-outline', route: '/(protected)/dashboard' },
       { label: 'Cheques', icon: 'card', iconOutline: 'card-outline', route: '/(protected)/cheques' },
-      { label: 'Ughrani', icon: 'wallet', iconOutline: 'wallet-outline', route: '/(protected)/ughrani' },
+      { label: 'Credit', icon: 'wallet', iconOutline: 'wallet-outline', route: '/(protected)/ughrani' },
       { label: 'Finance', icon: 'cash', iconOutline: 'cash-outline', route: '/(protected)/finance' },
       { label: 'Settings', icon: 'settings', iconOutline: 'settings-outline', route: '/(protected)/settings' },
     ];

@@ -2,6 +2,9 @@ import { validateAuth } from '@/lib/auth-guard'
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 export async function GET(req: NextRequest) {
   const { error } = await validateAuth(req)
   if (error) return error
@@ -83,3 +86,35 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })
   }
 }
+
+export async function DELETE(req: NextRequest) {
+  const { context, error } = await validateAuth(req)
+  if (error || !context) return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const role = context.role?.toUpperCase()
+  if (role !== 'SUPER ADMIN' && role !== 'ADMIN') {
+    return NextResponse.json({ error: 'Forbidden: Admin access required' }, { status: 403 })
+  }
+
+  try {
+    const body = await req.json()
+    const { ids } = body
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return NextResponse.json({ error: 'ids array is required' }, { status: 400 })
+    }
+
+    const result = await prisma.quotationRelationship.updateMany({
+      where: { id: { in: ids } },
+      data: {
+        status: 3,
+        updatedBy: context.userId
+      }
+    })
+
+    return NextResponse.json({ success: true, count: result.count })
+  } catch (err) {
+    console.error('Relationship bulk DELETE error:', err)
+    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })
+  }
+}
+

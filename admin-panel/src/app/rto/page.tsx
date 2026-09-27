@@ -297,21 +297,6 @@ export default function RTOPage() {
 
         {/* Dual Tab Switcher & Action Buttons */}
         <div className="flex flex-wrap items-center gap-2">
-          <div className="bg-gray-100 p-1 rounded-xl flex items-center gap-1 border border-gray-200">
-            <button
-              className="px-3.5 py-1.5 text-xs font-bold rounded-lg bg-white text-blue-700 shadow-sm transition-all flex items-center gap-1.5"
-            >
-              <Car size={14} />
-              Vehicle RTO Work
-            </button>
-            <button
-              onClick={() => router.push('/dl')}
-              className="px-3.5 py-1.5 text-xs font-semibold rounded-lg text-gray-600 hover:text-gray-900 transition-all flex items-center gap-1.5"
-            >
-              <Award size={14} />
-              Driving License (DL)
-            </button>
-          </div>
 
           <button
             onClick={fetchData}
