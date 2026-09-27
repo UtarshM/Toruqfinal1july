@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import AdminLayout from '@/components/layout/AdminLayout'
 import { useAuth } from '@/context/AuthContext'
-import { useApi } from '@/hooks/useApi'
+import { fetchApi } from '@/lib/api'
 import { 
   Plus, Edit2, Trash2, ShieldAlert, Sparkles, Building, 
   ListCollapse, Save, X, RefreshCw, Search, CheckCircle2, MessageSquare,
@@ -17,7 +17,6 @@ interface InlineEditState {
 
 export default function QuotationRelationshipPage() {
   const { user, isLoading: authLoading } = useAuth()
-  const apiFetch = useApi()
 
   const [activeTab, setActiveTab] = useState<'rules' | 'companies'>('rules')
   const [loading, setLoading] = useState(true)
@@ -66,37 +65,32 @@ export default function QuotationRelationshipPage() {
   const [editingCompanyId, setEditingCompanyId] = useState<string | null>(null)
   const [editCompanyName, setEditCompanyName] = useState('')
 
-  const roleUpper = user?.role?.name?.toUpperCase() || ''
-  const isAdmin = roleUpper === 'SUPER ADMIN' || roleUpper === 'ADMIN'
+  const roleName = (typeof user?.role === 'string' ? user.role : user?.role?.name || '').toUpperCase()
+  const isSuperAdminEmail = user?.email?.toLowerCase() === 'torqueautoadvisor@gmail.com'
+  const isAdmin = roleName.includes('ADMIN') || roleName.includes('SUPER') || isSuperAdminEmail
 
   useEffect(() => {
     if (!authLoading && user && isAdmin) {
       loadAllData()
     }
-  }, [authLoading, user])
+  }, [authLoading, user, isAdmin])
 
   const loadAllData = async () => {
     setLoading(true)
     setErrorMsg('')
     try {
-      const [compRes, catRes, ruleRes] = await Promise.all([
-        apiFetch('/api/v1/rates/companies'),
-        apiFetch('/api/v1/rates/categories'),
-        apiFetch('/api/v1/rates/relationships')
+      const [comps, cats, rls] = await Promise.all([
+        fetchApi('/api/v1/rates/companies'),
+        fetchApi('/api/v1/rates/categories'),
+        fetchApi('/api/v1/rates/relationships')
       ])
 
-      if (compRes.ok && catRes.ok && ruleRes.ok) {
-        const comps = await compRes.json()
-        const cats = await catRes.json()
-        const rls = await ruleRes.json()
-        setCompanies(Array.isArray(comps) ? comps : [])
-        setCategories(Array.isArray(cats) ? cats : [])
-        setRules(Array.isArray(rls) ? rls : [])
-      } else {
-        setErrorMsg('Failed to load quotation relationship data.')
-      }
-    } catch {
-      setErrorMsg('Network error fetching configuration.')
+      setCompanies(Array.isArray(comps) ? comps : [])
+      setCategories(Array.isArray(cats) ? cats : [])
+      setRules(Array.isArray(rls) ? rls : [])
+    } catch (err: any) {
+      console.error('Quotation relationship load error:', err)
+      setErrorMsg(err.message || 'Failed to load quotation relationship data.')
     } finally {
       setLoading(false)
     }
@@ -112,44 +106,34 @@ export default function QuotationRelationshipPage() {
     e.preventDefault()
     if (!companyName.trim()) return
     try {
-      const res = await apiFetch('/api/v1/rates/companies', {
+      await fetchApi('/api/v1/rates/companies', {
         method: 'POST',
         body: JSON.stringify({ name: companyName.trim() })
       })
-      if (res.ok) {
-        setCompanyName('')
-        setIsMobileModalOpen(false)
-        showSuccess('Company added successfully!')
-        loadAllData()
-      } else {
-        const data = await res.json()
-        setErrorMsg(data.error || 'Failed to add company')
-      }
-    } catch {
-      setErrorMsg('Network error occurred.')
+      setCompanyName('')
+      setIsMobileModalOpen(false)
+      showSuccess('Company added successfully!')
+      loadAllData()
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Failed to add company')
     }
   }
 
   const handleUpdateCompany = async (id: string, newStatus?: number) => {
     try {
-      const res = await apiFetch(`/api/v1/rates/companies/${id}`, {
+      await fetchApi(`/api/v1/rates/companies/${id}`, {
         method: 'PATCH',
         body: JSON.stringify({
           ...(newStatus !== undefined && { status: newStatus }),
           ...(editingCompanyId === id && { name: editCompanyName.trim() })
         })
       })
-      if (res.ok) {
-        setEditingCompanyId(null)
-        setEditCompanyName('')
-        showSuccess('Company updated successfully!')
-        loadAllData()
-      } else {
-        const data = await res.json()
-        setErrorMsg(data.error || 'Failed to update company')
-      }
-    } catch {
-      setErrorMsg('Network error occurred.')
+      setEditingCompanyId(null)
+      setEditCompanyName('')
+      showSuccess('Company updated successfully!')
+      loadAllData()
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Failed to update company')
     }
   }
 
@@ -178,7 +162,7 @@ export default function QuotationRelationshipPage() {
       const url = id ? `/api/v1/rates/relationships/${id}` : '/api/v1/rates/relationships'
       const method = id ? 'PATCH' : 'POST'
 
-      const res = await apiFetch(url, {
+      await fetchApi(url, {
         method,
         body: JSON.stringify({
           companyId,
@@ -190,17 +174,12 @@ export default function QuotationRelationshipPage() {
         })
       })
 
-      if (res.ok) {
-        setRuleForm({ id: '', companyId: '', categoryId: '', percentage: '', profit: '', remarks: '', status: '1' })
-        setIsMobileModalOpen(false)
-        showSuccess(id ? 'Quotation relationship rule updated!' : 'New quotation relationship rule created!')
-        loadAllData()
-      } else {
-        const data = await res.json()
-        setErrorMsg(data.error || 'Failed to save quotation relationship rule')
-      }
-    } catch {
-      setErrorMsg('Network error occurred while saving.')
+      setRuleForm({ id: '', companyId: '', categoryId: '', percentage: '', profit: '', remarks: '', status: '1' })
+      setIsMobileModalOpen(false)
+      showSuccess(id ? 'Quotation relationship rule updated!' : 'New quotation relationship rule created!')
+      loadAllData()
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Failed to save quotation relationship rule')
     }
   }
 
@@ -232,21 +211,16 @@ export default function QuotationRelationshipPage() {
         payload.remarks = value.trim()
       }
 
-      const res = await apiFetch(`/api/v1/rates/relationships/${id}`, {
+      await fetchApi(`/api/v1/rates/relationships/${id}`, {
         method: 'PATCH',
         body: JSON.stringify(payload)
       })
 
-      if (res.ok) {
-        showSuccess(`Updated ${field} successfully!`)
-        setInlineEdit(null)
-        loadAllData()
-      } else {
-        const data = await res.json()
-        setErrorMsg(data.error || `Failed to update ${field}`)
-      }
-    } catch {
-      setErrorMsg('Network error while updating field.')
+      showSuccess(`Updated ${field} successfully!`)
+      setInlineEdit(null)
+      loadAllData()
+    } catch (err: any) {
+      setErrorMsg(err.message || `Failed to update ${field}`)
     } finally {
       setInlineSaving(false)
     }
@@ -256,37 +230,28 @@ export default function QuotationRelationshipPage() {
   const handleToggleStatus = async (r: any) => {
     const nextStatus = r.status === 1 ? 2 : 1
     try {
-      const res = await apiFetch(`/api/v1/rates/relationships/${r.id}`, {
+      await fetchApi(`/api/v1/rates/relationships/${r.id}`, {
         method: 'PATCH',
         body: JSON.stringify({ status: nextStatus })
       })
-      if (res.ok) {
-        showSuccess(`Rule set to ${nextStatus === 1 ? 'Active' : 'Inactive'}!`)
-        loadAllData()
-      } else {
-        const data = await res.json()
-        setErrorMsg(data.error || 'Failed to update status')
-      }
-    } catch {
-      setErrorMsg('Network error updating status.')
+      showSuccess(`Rule set to ${nextStatus === 1 ? 'Active' : 'Inactive'}!`)
+      loadAllData()
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Failed to update status')
     }
   }
 
   const handleDeleteRule = async (id: string) => {
     if (!confirm('Are you sure you want to delete this quotation relationship rule?')) return
     try {
-      const res = await apiFetch(`/api/v1/rates/relationships/${id}`, {
+      await fetchApi(`/api/v1/rates/relationships/${id}`, {
         method: 'DELETE'
       })
-      if (res.ok) {
-        showSuccess('Quotation relationship rule deleted successfully!')
-        setSelectedIds(prev => prev.filter(item => item !== id))
-        loadAllData()
-      } else {
-        setErrorMsg('Failed to delete quotation relationship rule.')
-      }
-    } catch {
-      setErrorMsg('Network error occurred.')
+      showSuccess('Quotation relationship rule deleted successfully!')
+      setSelectedIds(prev => prev.filter(item => item !== id))
+      loadAllData()
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Failed to delete quotation relationship rule.')
     }
   }
 
@@ -298,21 +263,16 @@ export default function QuotationRelationshipPage() {
     setIsBulkDeleting(true)
     setErrorMsg('')
     try {
-      const res = await apiFetch('/api/v1/rates/relationships', {
+      await fetchApi('/api/v1/rates/relationships', {
         method: 'DELETE',
         body: JSON.stringify({ ids: selectedIds })
       })
 
-      if (res.ok) {
-        showSuccess(`Deleted ${selectedIds.length} quotation relationship rules successfully!`)
-        setSelectedIds([])
-        loadAllData()
-      } else {
-        const data = await res.json()
-        setErrorMsg(data.error || 'Failed to bulk delete rules')
-      }
-    } catch {
-      setErrorMsg('Network error during bulk delete.')
+      showSuccess(`Deleted ${selectedIds.length} quotation relationship rules successfully!`)
+      setSelectedIds([])
+      loadAllData()
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Failed to bulk delete rules')
     } finally {
       setIsBulkDeleting(false)
     }
