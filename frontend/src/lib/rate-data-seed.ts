@@ -48,16 +48,6 @@ export const DEFAULT_RATE_COMPANIES: RateCompanySeed[] = [
     "status": 1
   },
   {
-    "id": "0e49f1bb-2abb-4903-b924-b327b06aee5f",
-    "name": "HDFC 0-2500 GVW NORMAL & NIL DEP",
-    "status": 1
-  },
-  {
-    "id": "cb9e27f3-e6a3-4847-8baf-f7a60aff1489",
-    "name": "HDFC 2501-3500 GVW NORMAL & NIL DEP",
-    "status": 1
-  },
-  {
     "id": "82551198-138c-4145-baac-74b67f8cb556",
     "name": "ICICI 0-3500 GVW NIL DEP AND NORMAL",
     "status": 1
@@ -813,28 +803,6 @@ export const DEFAULT_RATE_RELATIONSHIPS: RateRelationshipSeed[] = [
     "status": 1,
     "companyName": "ROYAL 12000-20000 GVW NIL DEP",
     "categoryName": "ROYAL 12000-20000 GVW NIL DEP"
-  },
-  {
-    "id": "1548653a-ce27-4327-a4f7-b5fe98d4274a",
-    "companyId": "0e49f1bb-2abb-4903-b924-b327b06aee5f",
-    "categoryId": "b40dc2c5-2346-410f-8adf-bff3daab2987",
-    "percentage": 63,
-    "profit": 5000,
-    "remarks": "DISCOUNT 90% ALL MAKE MODEL ALL RTO",
-    "status": 1,
-    "companyName": "HDFC 0-2500 GVW NORMAL & NIL DEP",
-    "categoryName": "HDFC 0-2500 GVW NORMAL & NIL DEP"
-  },
-  {
-    "id": "be763f96-a062-4b62-ae2d-e889984a8be4",
-    "companyId": "cb9e27f3-e6a3-4847-8baf-f7a60aff1489",
-    "categoryId": "604e3594-0a35-47df-ad9c-3ed561da36c3",
-    "percentage": 50,
-    "profit": 4500,
-    "remarks": "DISCOUNT 90% ALL MAKE MODEL ALL RTO",
-    "status": 1,
-    "companyName": "HDFC 2501-3500 GVW NORMAL & NIL DEP",
-    "categoryName": "HDFC 2501-3500 GVW NORMAL & NIL DEP"
   },
   {
     "id": "8ccdd71a-ff14-45e1-a234-d9718ef5ac9c",

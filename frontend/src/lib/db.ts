@@ -5,8 +5,6 @@ import { DEFAULT_RATE_COMPANIES, DEFAULT_RATE_RELATIONSHIPS } from './rate-data-
 
 let dbInstance: SQLite.SQLiteDatabase | null = null;
 const memoryCacheStore = new Map<string, any>();
-memoryCacheStore.set('rate_companies', DEFAULT_RATE_COMPANIES);
-memoryCacheStore.set('rate_relationships', DEFAULT_RATE_RELATIONSHIPS);
 
 /**
  * Retrieves the open database instance, creating it if it doesn't exist.

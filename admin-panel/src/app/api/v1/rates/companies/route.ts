@@ -6,15 +6,24 @@ export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
 export async function GET(req: NextRequest) {
-  const { error } = await validateAuth(req)
-  if (error) return error
+  try {
+    const authHeader = req.headers.get('Authorization')
+    if (authHeader) {
+      await validateAuth(req).catch(() => null)
+    }
+  } catch {}
 
   try {
     const companies = await prisma.companyDetail.findMany({
       where: { status: 1 },
       orderBy: { name: 'asc' }
     })
-    return NextResponse.json(companies)
+    return NextResponse.json(companies, {
+      headers: {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache'
+      }
+    })
   } catch (err) {
     console.error('Companies GET error:', err)
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })

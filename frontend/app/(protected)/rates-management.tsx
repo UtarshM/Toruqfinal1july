@@ -6,6 +6,7 @@ import { api } from '../../src/utils/api';
 import { Colors, Spacing, FontSize, BorderRadius } from '../../src/utils/theme';
 import { Ionicons } from '@expo/vector-icons';
 import Sidebar from '../../src/components/Sidebar';
+import { setCacheItem } from '../../src/lib/db';
 
 interface DropdownSelectorProps {
   label: string;
@@ -91,6 +92,15 @@ export default function RatesManagementScreen() {
       setCompanies(compRes || []);
       setCategories(catRes || []);
       setRules(ruleRes || []);
+
+      if (Array.isArray(compRes) && compRes.length > 0) {
+        const activeComps = compRes.filter((c: any) => c.status === 1 || c.status === undefined);
+        setCacheItem('rate_companies', activeComps);
+      }
+      if (Array.isArray(ruleRes) && ruleRes.length > 0) {
+        const activeRels = ruleRes.filter((r: any) => r.status === 1 || r.status === 2 || r.status === undefined);
+        setCacheItem('rate_relationships', activeRels);
+      }
     } catch (err: any) {
       Alert.alert('Error', 'Failed to load rates configuration.');
     } finally {

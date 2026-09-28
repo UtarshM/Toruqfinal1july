@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View,
@@ -13,9 +13,10 @@ import {
   StatusBar,
   Alert,
   Modal,
-  Linking
+  Linking,
+  RefreshControl
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { useAuth } from '../../src/context/AuthContext';
 import { api, BASE_URL } from '../../src/utils/api';
 import { Colors, Spacing, FontSize, BorderRadius } from '../../src/utils/theme';
@@ -198,58 +199,88 @@ export default function RateCalculatorScreen() {
   // Single Rate Calculator State (Rate Calculator 1 Rules)
   const [calcState, setCalcState] = useState<SubCalcState>({ ...emptySubCalc });
 
-  // 1. Instant Local Read on Mount + Background Revalidation
-  useEffect(() => {
-    let isMounted = true;
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-    // Fast local read from multi-tier cache (Memory -> AsyncStorage -> SQLite)
-    getCacheItem('rate_companies').then((data) => {
-      if (isMounted && data && Array.isArray(data) && data.length > 0) {
-        setCompanies(data);
+  // Reusable master data fetcher: queries server and saves to local multi-tier cache
+  const fetchMasterData = useCallback(async (isUserInitiated = false) => {
+    if (isUserInitiated) setIsSyncing(true);
+    setLoadingConfig(true);
+    try {
+      const [compRes, relRes] = await Promise.all([
+        api.get('/rates/companies').catch((err) => {
+          console.warn('[RateCalc] Companies fetch note:', err?.message || err);
+          return null;
+        }),
+        api.get('/rates/relationships').catch((err) => {
+          console.warn('[RateCalc] Relationships fetch note:', err?.message || err);
+          return null;
+        })
+      ]);
+
+      const rawComps = Array.isArray(compRes?.data ?? compRes) 
+        ? (compRes?.data ?? compRes) 
+        : ((compRes?.data ?? compRes)?.companies || []);
+      const rawRels = Array.isArray(relRes?.data ?? relRes) 
+        ? (relRes?.data ?? relRes) 
+        : [];
+
+      if (rawComps && rawComps.length > 0) {
+        // Exclude deactivated/removed companies (status must be 1)
+        const activeComps = rawComps.filter((c: any) => c.status === 1 || c.status === undefined);
+        setCompanies(activeComps);
+        await setCacheItem('rate_companies', activeComps);
       }
-    });
 
-    getCacheItem('rate_relationships').then((data) => {
-      if (isMounted && data && Array.isArray(data) && data.length > 0) {
-        setRelationships(data);
+      if (rawRels && rawRels.length > 0) {
+        // Active or soft rules
+        const activeRels = rawRels.filter((r: any) => r.status === 1 || r.status === 2 || r.status === undefined);
+        setRelationships(activeRels);
+        await setCacheItem('rate_relationships', activeRels);
       }
-    });
 
-    // Background sync to ensure fresh rules if device has internet
-    const fetchMasterData = async () => {
-      setLoadingConfig(true);
-      try {
-        const [compRes, relRes] = await Promise.all([
-          api.get('/rates/companies').catch(() => null),
-          api.get('/rates/relationships').catch(() => null)
-        ]);
-
-        const compData = Array.isArray(compRes?.data ?? compRes) ? (compRes?.data ?? compRes) : ((compRes?.data ?? compRes)?.companies || []);
-        const relData = Array.isArray(relRes?.data ?? relRes) ? (relRes?.data ?? relRes) : [];
-
-        if (isMounted) {
-          if (compData && compData.length > 0) {
-            setCompanies(compData);
-            setCacheItem('rate_companies', compData);
-          }
-          if (relData && relData.length > 0) {
-            setRelationships(relData);
-            setCacheItem('rate_relationships', relData);
-          }
-        }
-      } catch (err) {
-        console.warn('[RateCalc] Master sync note:', err);
-      } finally {
-        if (isMounted) setLoadingConfig(false);
+      if (isUserInitiated) {
+        Alert.alert('Updated', 'Latest insurance companies and calculation rules synced successfully.');
       }
-    };
-
-    fetchMasterData();
-
-    return () => {
-      isMounted = false;
-    };
+    } catch (err: any) {
+      console.warn('[RateCalc] Master sync failed:', err?.message || err);
+      if (isUserInitiated) {
+        Alert.alert('Sync Notice', 'Could not reach server. Using offline cached rates.');
+      }
+    } finally {
+      setLoadingConfig(false);
+      if (isUserInitiated) setIsSyncing(false);
+    }
   }, []);
+
+  // 1. Instant Local Read on Screen Mount/Focus + Background Revalidation
+  useFocusEffect(
+    useCallback(() => {
+      let isMounted = true;
+
+      // 1. Instant local read from multi-tier cache (Memory -> AsyncStorage -> SQLite)
+      getCacheItem('rate_companies').then((data) => {
+        if (isMounted && data && Array.isArray(data) && data.length > 0) {
+          const activeComps = data.filter((c: any) => c.status === 1 || c.status === undefined);
+          setCompanies(activeComps);
+        }
+      });
+
+      getCacheItem('rate_relationships').then((data) => {
+        if (isMounted && data && Array.isArray(data) && data.length > 0) {
+          const activeRels = data.filter((r: any) => r.status === 1 || r.status === 2 || r.status === undefined);
+          setRelationships(activeRels);
+        }
+      });
+
+      // 2. Concurrently fetch latest updates from server in background
+      fetchMasterData(false);
+
+      return () => {
+        isMounted = false;
+      };
+    }, [fetchMasterData])
+  );
 
   // Instant Local Rule Lookup on Company Selection (0ms)
   const handleSelectCompany = (companyId: string) => {
@@ -582,8 +613,16 @@ export default function RateCalculatorScreen() {
           <Ionicons name="menu-outline" size={26} color="#1E293B" />
         </Pressable>
         <Text style={styles.headerTitle}>Rate Calculator</Text>
-        <Pressable onPress={handleClearCurrent} style={styles.menuBtn}>
-          <Ionicons name="refresh-outline" size={22} color="#002FA7" />
+        <Pressable 
+          onPress={() => fetchMasterData(true)} 
+          style={styles.menuBtn}
+          disabled={isSyncing}
+        >
+          {isSyncing ? (
+            <ActivityIndicator size="small" color="#002FA7" />
+          ) : (
+            <Ionicons name="sync-outline" size={22} color="#002FA7" />
+          )}
         </Pressable>
       </View>
 
@@ -592,6 +631,18 @@ export default function RateCalculatorScreen() {
           style={styles.scroll}
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefreshing}
+              onRefresh={async () => {
+                setIsRefreshing(true);
+                await fetchMasterData(false);
+                setIsRefreshing(false);
+              }}
+              colors={['#002FA7']}
+              tintColor="#002FA7"
+            />
+          }
         >
           {/* Clean Card matching qutcalc_one.php - ONLY ONE CALCULATOR */}
           <View style={styles.calculatorCard}>
