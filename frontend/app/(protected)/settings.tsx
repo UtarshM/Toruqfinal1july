@@ -14,7 +14,8 @@ import {
   KeyboardAvoidingView, 
   Platform, 
   TouchableWithoutFeedback, 
-  Keyboard 
+  Keyboard,
+  Linking 
 } from 'react-native';
 import AppFooter from '../../src/components/AppFooter';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -120,8 +121,6 @@ export default function SettingsScreen() {
         desc: 'Change your full name and contact details',
         onPress: handleOpenEditModal
       },
-      { label: 'Change PIN', icon: 'keypad-outline', desc: 'Update your 4-digit PIN' },
-      { label: 'Security', icon: 'shield-outline', desc: 'Password and authentication' },
     ]},
     { title: 'App Settings', items: [
       {
@@ -131,14 +130,54 @@ export default function SettingsScreen() {
         onPress: handleCheckUpdate
       },
       { label: 'Notifications', icon: 'notifications-outline', desc: 'Manage push notifications', onPress: () => router.push('/(protected)/notifications') },
-      { label: 'Data & Storage', icon: 'cloud-outline', desc: 'Cache and data management' },
-      { label: 'Language', icon: 'language-outline', desc: 'App language preferences' },
+      { 
+        label: 'Data & Storage', 
+        icon: 'cloud-outline', 
+        desc: 'Clear local SQLite cache & refresh data',
+        onPress: () => {
+          Alert.alert(
+            'Clear Local Cache',
+            'Clear local cached rates and database tables to re-sync fresh from server?',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              {
+                text: 'Clear & Re-sync',
+                onPress: async () => {
+                  try {
+                    const db = await getDB();
+                    await db.runAsync('DELETE FROM general_cache');
+                    Alert.alert('Cache Cleared ✓', 'Local cache cleared. Data will refresh fresh from the server.');
+                  } catch (e: any) {
+                    Alert.alert('Error', e?.message || 'Failed to clear local cache');
+                  }
+                }
+              }
+            ]
+          );
+        }
+      },
     ]},
     { title: 'About', items: [
-      { label: 'Help & Support', icon: 'help-circle-outline', desc: 'Get help and FAQs' },
-      { label: 'Terms of Service', icon: 'document-outline', desc: 'Terms and conditions' },
-      { label: 'Privacy Policy', icon: 'lock-closed-outline', desc: 'How we handle your data' },
-      { label: 'Version', icon: 'information-circle-outline', desc: 'Torque Auto Advisor v2.0.0' },
+      { 
+        label: 'Help & Support', 
+        icon: 'help-circle-outline', 
+        desc: 'WhatsApp support & Torque helpdesk',
+        onPress: () => {
+          Linking.openURL('https://wa.me/919925203300?text=' + encodeURIComponent('Hello Torque Auto Advisor Support, I need assistance with the app.'))
+            .catch(() => Alert.alert('Support Helpline', 'WhatsApp / Phone: +91 99252 03300\nEmail: torqueautoadvisor@gmail.com'));
+        }
+      },
+      { 
+        label: 'App Version', 
+        icon: 'information-circle-outline', 
+        desc: 'Torque Auto Advisor v2.0.0 (Internal Staff Build)',
+        onPress: () => {
+          Alert.alert(
+            'Torque Auto Advisor',
+            `Version: 2.0.0\nChannel: ${Updates.channel || 'preview'}\nRuntime Version: ${Updates.runtimeVersion || '2.0.0'}\nTarget: Internal Staff Production`
+          );
+        }
+      },
     ]},
   ];
 

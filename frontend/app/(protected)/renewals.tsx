@@ -158,7 +158,7 @@ export default function RenewalsScreen() {
 
   const handleRenewQuote = (item: RenewalItem) => {
     router.push({
-      pathname: '/(protected)/quotation-new',
+      pathname: '/(protected)/rate-calculator',
       params: {
         customer_name: item.customerName,
         phone: item.mobileNo,

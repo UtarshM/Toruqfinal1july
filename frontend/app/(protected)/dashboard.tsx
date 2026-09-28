@@ -897,23 +897,16 @@ export default function DashboardScreen() {
 
                 <Pressable
                   style={styles.recommendedItem}
-                  onPress={() => router.push('/(protected)/quotations')}
+                  onPress={() => router.push('/(protected)/rate-calculator')}
                 >
-                  <View style={[styles.recIconWrap, { backgroundColor: '#EFF6FF' }]}>
-                    <Ionicons name="clipboard" size={24} color="#2563EB" />
+                  <View style={[styles.recIconWrap, { backgroundColor: '#F3E8FF' }]}>
+                    <Ionicons name="calculator" size={24} color="#7E22CE" />
                   </View>
-                  <Text style={styles.recItemTitle}>Quotations</Text>
+                  <Text style={styles.recItemTitle}>Rate Calc</Text>
                 </Pressable>
               </View>
 
               <View style={styles.secondaryRecRow}>
-                <Pressable
-                  style={styles.secRecPill}
-                  onPress={() => router.push('/(protected)/rate-calculator')}
-                >
-                  <Ionicons name="calculator-outline" size={14} color="#002FA7" />
-                  <Text style={styles.secRecPillText}>Rate Calc</Text>
-                </Pressable>
                 <Pressable
                   style={styles.secRecPill}
                   onPress={() => router.push('/(protected)/settings')}
@@ -1022,14 +1015,6 @@ export default function DashboardScreen() {
               </View>
 
               <View style={styles.secondaryRecRow}>
-                <Pressable
-                  style={styles.secRecPill}
-                  onPress={() => router.push('/(protected)/quotations')}
-                >
-                  <Ionicons name="clipboard-outline" size={14} color="#002FA7" />
-                  <Text style={styles.secRecPillText}>Quotations</Text>
-                </Pressable>
-
                 <Pressable
                   style={styles.secRecPill}
                   onPress={() => router.push('/(protected)/claims')}
@@ -1161,7 +1146,11 @@ export default function DashboardScreen() {
             </View>
           ) : (
             items.slice(0, 4).map((item, idx) => (
-              <View key={idx} style={styles.activityItem}>
+              <Pressable
+                key={idx}
+                style={styles.activityItem}
+                onPress={() => router.push('/(protected)/notifications')}
+              >
                 <View style={styles.activityIconCircle}>
                   <Ionicons name="flash" size={14} color="#002FA7" />
                 </View>
@@ -1174,7 +1163,7 @@ export default function DashboardScreen() {
                   </Text>
                 </View>
                 <Ionicons name="chevron-forward" size={14} color="#94A3B8" />
-              </View>
+              </Pressable>
             ))
           )}
         </View>
@@ -1327,11 +1316,11 @@ export default function DashboardScreen() {
                   style={styles.fabSheetItem}
                   onPress={() => {
                     setFabActionVisible(false);
-                    router.push('/(protected)/leads');
+                    router.push('/lead/new');
                   }}
                 >
-                  <Ionicons name="list" size={20} color="#002FA7" />
-                  <Text style={styles.fabSheetItemText}>New List Entry</Text>
+                  <Ionicons name="person-add" size={20} color="#002FA7" />
+                  <Text style={styles.fabSheetItemText}>New Lead Entry</Text>
                 </Pressable>
 
                 <Pressable
@@ -1374,11 +1363,11 @@ export default function DashboardScreen() {
                   style={styles.fabSheetItem}
                   onPress={() => {
                     setFabActionVisible(false);
-                    router.push('/(protected)/leads');
+                    router.push('/lead/new');
                   }}
                 >
-                  <Ionicons name="list" size={20} color="#002FA7" />
-                  <Text style={styles.fabSheetItemText}>New List Entry</Text>
+                  <Ionicons name="person-add" size={20} color="#002FA7" />
+                  <Text style={styles.fabSheetItemText}>New Lead Entry</Text>
                 </Pressable>
 
                 <Pressable

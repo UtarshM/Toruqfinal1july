@@ -196,7 +196,7 @@ export default function RatesManagementScreen() {
         <Pressable onPress={() => setSidebarOpen(true)} style={styles.menuBtn}>
           <Ionicons name="menu-outline" size={26} color={Colors.text} />
         </Pressable>
-        <Text style={styles.headerTitle}>Quotation Relationship</Text>
+        <Text style={styles.headerTitle}>Rate Margins & Rules</Text>
         <Pressable onPress={loadData} style={styles.refreshBtn}>
           <Ionicons name="refresh" size={20} color={Colors.primary} />
         </Pressable>
