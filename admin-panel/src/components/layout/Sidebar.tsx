@@ -24,7 +24,6 @@ const MENU_GROUPS = [
       { name: 'Rate Calculator', href: '/rate-calculator' },
       { name: 'Quotation Relationship', href: '/settings/rates' },
       { name: 'Policies PDF', href: '/policies' },
-      { name: 'Renewals', href: '/renewals' },
       { name: 'Follow-ups', href: '/follow-ups' },
       { name: 'Trashed List', href: '/leads/trash' },
     ]
@@ -115,7 +114,7 @@ export default function Sidebar() {
         items = items.filter(i => ['Loans', 'Loan Inquiries', 'Claims', 'RTO Work', 'Fitness'].includes(i.name))
       }
       if (group.label === 'SALES') {
-        items = items.filter(i => ['List', 'Leads', 'CRM', 'Rate Calculator', 'Policies PDF', 'Renewals', 'Follow-ups'].includes(i.name))
+        items = items.filter(i => ['List', 'Leads', 'CRM', 'Rate Calculator', 'Policies PDF', 'Follow-ups'].includes(i.name))
       }
       if (group.label === 'MANAGEMENT') {
         items = items.filter(i => ['Policies To Be Done', 'Onboarding Approvals', 'Users', 'Finance', 'Cheques', 'Credit', 'Settings'].includes(i.name))

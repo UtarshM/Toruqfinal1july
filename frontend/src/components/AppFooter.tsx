@@ -53,7 +53,7 @@ export default function AppFooter({ active }: { active?: string }) {
       { label: 'Home', icon: 'home', iconOutline: 'home-outline', route: '/(protected)/dashboard' },
       { label: 'List', icon: 'list', iconOutline: 'list-outline', route: '/(protected)/leads' },
       { label: 'Approvals', icon: 'shield-checkmark', iconOutline: 'shield-checkmark-outline', route: '/(protected)/policy-approvals' },
-      { label: 'Renewals', icon: 'sync', iconOutline: 'sync-outline', route: '/(protected)/renewals' },
+      { label: 'Calculator', icon: 'calculator', iconOutline: 'calculator-outline', route: '/(protected)/rate-calculator' },
       { label: 'Settings', icon: 'settings', iconOutline: 'settings-outline', route: '/(protected)/settings' },
     ];
   } else {
@@ -62,7 +62,7 @@ export default function AppFooter({ active }: { active?: string }) {
       { label: 'Home', icon: 'home', iconOutline: 'home-outline', route: '/(protected)/dashboard' },
       { label: 'My List', icon: 'list', iconOutline: 'list-outline', route: '/(protected)/leads' },
       { label: 'Follow-ups', icon: 'calendar', iconOutline: 'calendar-outline', route: '/(protected)/follow-ups' },
-      { label: 'Renewals', icon: 'sync', iconOutline: 'sync-outline', route: '/(protected)/renewals' },
+      { label: 'Calculator', icon: 'calculator', iconOutline: 'calculator-outline', route: '/(protected)/rate-calculator' },
       { label: 'Settings', icon: 'settings', iconOutline: 'settings-outline', route: '/(protected)/settings' },
     ];
   }

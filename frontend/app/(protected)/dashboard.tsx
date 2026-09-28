@@ -140,16 +140,16 @@ const getBannersForRole = (isAdmin: boolean, isManager: boolean, isAccountant: b
         gradientBg: '#701A75',
       },
       {
-        id: 'renewals',
-        badge: 'RETENTION & TARGETS',
-        title: 'Overdue Renewals Pipeline',
-        subtitle: 'Auto Reminders & One-Click WhatsApp Follow-up',
-        leftTag: 'EXPIRY RETENTION',
-        leftValue: 'HIGH CONVERSION',
-        rightTag: 'TARGET PROGRESS',
-        rightValue: 'AUTOMATED',
-        btnText: 'Open Renewals Desk',
-        type: 'renewals',
+        id: 'rates_rules',
+        badge: 'RATES & COMMISSION RULES',
+        title: 'Manage Insurer Margins',
+        subtitle: 'Configure Multi-Insurer Payouts & Commission Margins',
+        leftTag: 'COMPANIES',
+        leftValue: 'MULTI-INSURER',
+        rightTag: 'RULES',
+        rightValue: 'INSTANT SYNC',
+        btnText: 'Rate Margins & Rules',
+        type: 'rates',
         gradientBg: '#064E3B',
       },
     ];
@@ -168,19 +168,6 @@ const getBannersForRole = (isAdmin: boolean, isManager: boolean, isAccountant: b
       btnText: 'Rate Calculator & Quotes',
       type: 'quote',
       gradientBg: '#0F172A',
-    },
-    {
-      id: 'renewals',
-      badge: 'RETENTION & TARGETS',
-      title: 'Overdue Renewals Pipeline',
-      subtitle: 'Auto Reminders & One-Click WhatsApp Follow-up',
-      leftTag: 'EXPIRY RETENTION',
-      leftValue: 'HIGH CONVERSION',
-      rightTag: 'TARGET PROGRESS',
-      rightValue: 'AUTOMATED',
-      btnText: 'Open Renewals Desk',
-      type: 'renewals',
-      gradientBg: '#064E3B',
     },
     {
       id: 'claims',
@@ -410,8 +397,10 @@ export default function DashboardScreen() {
       router.push('/(protected)/payroll' as any);
     } else if (banner.type === 'approvals') {
       router.push('/(protected)/policy-approvals' as any);
+    } else if (banner.type === 'rates') {
+      router.push('/(protected)/rates-management' as any);
     } else if (banner.type === 'renewals') {
-      router.push('/(protected)/renewals' as any);
+      router.push('/(protected)/rate-calculator' as any);
     }
   };
 
@@ -690,14 +679,14 @@ export default function DashboardScreen() {
               {/* Renewals */}
               <Pressable
                 style={styles.metricCard}
-                onPress={() => router.push('/(protected)/renewals')}
+                onPress={() => router.push('/(protected)/rate-calculator')}
               >
                 <View style={styles.metricTopRow}>
-                  <Ionicons name="sync" size={16} color="#10B981" />
-                  <Text style={styles.metricLabel}>Renewals</Text>
+                  <Ionicons name="calculator" size={16} color="#7E22CE" />
+                  <Text style={styles.metricLabel}>Calculator</Text>
                 </View>
-                <Text style={styles.metricValue}>
-                  {stats.renewals_count ?? 0}
+                <Text style={[styles.metricValue, { fontSize: 13, color: '#7E22CE' }]}>
+                  Instant
                 </Text>
               </Pressable>
             </View>
@@ -840,10 +829,10 @@ export default function DashboardScreen() {
                 <View style={styles.subMetricDivider} />
                 <Pressable
                   style={styles.subMetricItem}
-                  onPress={() => router.push('/(protected)/renewals')}
+                  onPress={() => router.push('/(protected)/rate-calculator')}
                 >
-                  <Text style={styles.subMetricLabel}>RENEWALS DUE</Text>
-                  <Text style={styles.subMetricValue}>{stats.renewals_count ?? 0}</Text>
+                  <Text style={styles.subMetricLabel}>RATE CALCULATOR</Text>
+                  <Text style={styles.subMetricValue}>Open →</Text>
                 </Pressable>
                 <View style={styles.subMetricDivider} />
                 <Pressable
@@ -1005,22 +994,22 @@ export default function DashboardScreen() {
 
                 <Pressable
                   style={styles.recommendedItem}
-                  onPress={() => router.push('/(protected)/renewals')}
+                  onPress={() => router.push('/(protected)/claims')}
                 >
-                  <View style={[styles.recIconWrap, { backgroundColor: '#F0FDF4' }]}>
-                    <Ionicons name="repeat" size={24} color="#16A34A" />
+                  <View style={[styles.recIconWrap, { backgroundColor: '#EFF6FF' }]}>
+                    <Ionicons name="shield-checkmark" size={24} color="#2563EB" />
                   </View>
-                  <Text style={styles.recItemTitle}>Renewals</Text>
+                  <Text style={styles.recItemTitle}>Claims Hub</Text>
                 </Pressable>
               </View>
 
               <View style={styles.secondaryRecRow}>
                 <Pressable
                   style={styles.secRecPill}
-                  onPress={() => router.push('/(protected)/claims')}
+                  onPress={() => router.push('/(protected)/cheques')}
                 >
-                  <Ionicons name="document-text-outline" size={14} color="#002FA7" />
-                  <Text style={styles.secRecPillText}>Claims Hub</Text>
+                  <Ionicons name="card-outline" size={14} color="#002FA7" />
+                  <Text style={styles.secRecPillText}>Cheques Desk</Text>
                 </Pressable>
 
                 <Pressable
@@ -1066,22 +1055,22 @@ export default function DashboardScreen() {
 
                 <Pressable
                   style={styles.recommendedItem}
-                  onPress={() => router.push('/(protected)/renewals')}
+                  onPress={() => router.push('/(protected)/rate-calculator')}
                 >
-                  <View style={[styles.recIconWrap, { backgroundColor: '#F0FDF4' }]}>
-                    <Ionicons name="repeat" size={24} color="#16A34A" />
+                  <View style={[styles.recIconWrap, { backgroundColor: '#ECFDF5' }]}>
+                    <Ionicons name="calculator" size={24} color="#059669" />
                   </View>
-                  <Text style={styles.recItemTitle}>Renewals</Text>
+                  <Text style={styles.recItemTitle}>Calculator</Text>
                 </Pressable>
 
                 <Pressable
                   style={styles.recommendedItem}
-                  onPress={() => router.push('/(protected)/rate-calculator')}
+                  onPress={() => router.push('/(protected)/rates-management')}
                 >
                   <View style={[styles.recIconWrap, { backgroundColor: '#F3E8FF' }]}>
-                    <Ionicons name="calculator" size={24} color="#7E22CE" />
+                    <Ionicons name="options-outline" size={24} color="#7E22CE" />
                   </View>
-                  <Text style={styles.recItemTitle}>Rate Calc</Text>
+                  <Text style={styles.recItemTitle}>Rate Rules</Text>
                 </Pressable>
               </View>
 
@@ -1385,11 +1374,11 @@ export default function DashboardScreen() {
                   style={styles.fabSheetItem}
                   onPress={() => {
                     setFabActionVisible(false);
-                    router.push('/(protected)/renewals');
+                    router.push('/(protected)/rate-calculator');
                   }}
                 >
-                  <Ionicons name="repeat" size={20} color="#16A34A" />
-                  <Text style={styles.fabSheetItemText}>Renewals Pipeline</Text>
+                  <Ionicons name="calculator" size={20} color="#059669" />
+                  <Text style={styles.fabSheetItemText}>Rate Calculator & Quotes</Text>
                 </Pressable>
 
                 <Pressable

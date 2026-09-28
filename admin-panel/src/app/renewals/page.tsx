@@ -1,5 +1,6 @@
 "use client"
 import React, { useState, useEffect, useMemo, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import AdminLayout from '@/components/layout/AdminLayout'
 import { fetchApi } from '@/lib/api'
 import {
@@ -30,6 +31,12 @@ interface RenewalItem {
 }
 
 export default function RenewalsPage() {
+  const router = useRouter()
+
+  useEffect(() => {
+    router.replace('/rate-calculator')
+  }, [router])
+
   const [renewals, setRenewals] = useState<RenewalItem[]>([])
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'all' | 'overdue' | '7days' | '30days' | 'renewed' | 'refused'>('all')

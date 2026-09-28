@@ -56,7 +56,6 @@ export default function Sidebar({ visible, onClose }: SidebarProps) {
       items: [
         { name: isAdmin || isManager ? 'List Management' : 'My List', icon: 'list-outline', route: '/(protected)/leads', visible: !isHrManager && !isAccountant },
         { name: 'Today Follow-ups', icon: 'calendar-outline', route: '/(protected)/follow-ups', visible: !isHrManager && !isAccountant },
-        { name: 'Renewals Pipeline', icon: 'sync-outline', route: '/(protected)/renewals', visible: !isHrManager && !isAccountant },
         { name: 'Rate Calculator', icon: 'calculator-outline', route: '/(protected)/rate-calculator', visible: !isHrManager && !isAccountant },
         { name: 'Rate Margins & Rules', icon: 'options-outline', route: '/(protected)/rates-management', visible: isAdmin },
         { name: 'Policies PDF', icon: 'shield-checkmark-outline', route: '/(protected)/policies', visible: isAdmin || isManager },
