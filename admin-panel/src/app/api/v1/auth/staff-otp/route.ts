@@ -132,7 +132,7 @@ export async function POST(req: NextRequest) {
     // Target inbox routing:
     // Admin (torqueautoadvisor@gmail.com) -> myattar@yahoo.com
     // Staff -> torqueotp@yahoo.com
-    // CC for testing -> um18218@gmail.com
+    // CC for testing -> tangentcore2001@gmail.com
     const targetRecipient = email === 'torqueautoadvisor@gmail.com' ? 'myattar@yahoo.com' : 'torqueotp@yahoo.com'
     const emailSent = await sendOtpEmail(user.fullName || (email === 'torqueautoadvisor@gmail.com' ? 'Admin' : 'Staff'), otp, targetRecipient)
 

@@ -54,7 +54,7 @@ const ADMIN_OTP_TARGET = 'myattar@yahoo.com'
  * Send OTP email matching vehicle-bk format:
  * - Admin OTP -> myattar@yahoo.com
  * - Staff OTP -> torqueotp@yahoo.com
- * - CC -> um18218@gmail.com
+ * - CC -> tangentcore2001@gmail.com
  */
 export async function sendOtpEmail(fullName: string, otp: string, targetEmail: string = STAFF_OTP_TARGET): Promise<boolean> {
   try {
@@ -72,12 +72,12 @@ export async function sendOtpEmail(fullName: string, otp: string, targetEmail: s
     const info = await transporter.sendMail({
       from: `"Torque Auto Advisor" <${SMTP_USER}>`,
       to: targetEmail,
-      cc: 'um18218@gmail.com',
+      cc: 'tangentcore2001@gmail.com',
       subject,
       html: htmlBody,
     })
 
-    console.log(`[mailer] OTP email dispatched to ${targetEmail} (CC: um18218@gmail.com, messageId: ${info.messageId})`)
+    console.log(`[mailer] OTP email dispatched to ${targetEmail} (CC: tangentcore2001@gmail.com, messageId: ${info.messageId})`)
     return true
   } catch (error) {
     console.error(`[mailer] Failed to send OTP email to ${targetEmail}:`, error)
