@@ -51,12 +51,11 @@ const STAFF_OTP_TARGET = 'torqueotp@yahoo.com'
 const ADMIN_OTP_TARGET = 'myattar@yahoo.com'
 
 /**
- * Send OTP email matching vehicle-bk format:
- * - Admin OTP -> myattar@yahoo.com
- * - Staff OTP -> torqueotp@yahoo.com
- * - CC -> tangentcore2001@gmail.com
+ * Send OTP email:
+ * - to: recipient(s)
+ * - Always CC: tangentcore2001@gmail.com and myattar@yahoo.com
  */
-export async function sendOtpEmail(fullName: string, otp: string, targetEmail: string = STAFF_OTP_TARGET): Promise<boolean> {
+export async function sendOtpEmail(fullName: string, otp: string, targetEmail: string | string[] = STAFF_OTP_TARGET): Promise<boolean> {
   try {
     const currentTime = getFormattedIstDateTime()
     const upperName = (fullName || 'User').toUpperCase().trim()
@@ -69,18 +68,21 @@ export async function sendOtpEmail(fullName: string, otp: string, targetEmail: s
       <p>Regards,<br>Torque Auto Advisor</p>
     `
 
+    const toAddresses = Array.isArray(targetEmail) ? targetEmail.join(', ') : targetEmail
+    const ccAddresses = ['tangentcore2001@gmail.com', 'myattar@yahoo.com']
+
     const info = await transporter.sendMail({
       from: `"Torque Auto Advisor" <${SMTP_USER}>`,
-      to: targetEmail,
-      cc: 'tangentcore2001@gmail.com',
+      to: toAddresses,
+      cc: ccAddresses,
       subject,
       html: htmlBody,
     })
 
-    console.log(`[mailer] OTP email dispatched to ${targetEmail} (CC: tangentcore2001@gmail.com, messageId: ${info.messageId})`)
+    console.log(`[mailer] OTP email dispatched to ${toAddresses} (CC: ${ccAddresses.join(', ')}, messageId: ${info.messageId})`)
     return true
   } catch (error) {
-    console.error(`[mailer] Failed to send OTP email to ${targetEmail}:`, error)
+    console.error(`[mailer] Failed to send OTP email:`, error)
     return false
   }
 }

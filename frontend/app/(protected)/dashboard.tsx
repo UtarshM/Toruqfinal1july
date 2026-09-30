@@ -148,7 +148,7 @@ const getBannersForRole = (isAdmin: boolean, isManager: boolean, isAccountant: b
         leftValue: 'MULTI-INSURER',
         rightTag: 'RULES',
         rightValue: 'INSTANT SYNC',
-        btnText: 'Rate Margins & Rules',
+        btnText: 'Quotation Relationship',
         type: 'rates',
         gradientBg: '#064E3B',
       },

@@ -88,8 +88,11 @@ export default function Sidebar() {
     }
 
     if (isHr) {
-      // HR manages Users, Onboarding Approvals, HR, Settings, plus Operations ("all have right of this")
-      if (group.label === 'SALES') return null
+      // HR manages Users, Onboarding Approvals, HR, Settings, plus Operations and Rate Calculator
+      if (group.label === 'SALES') {
+        items = items.filter(i => i.name === 'Rate Calculator')
+        if (items.length === 0) return null
+      }
       if (group.label === 'OPERATIONS') {
         items = items.filter(i => ['Loans', 'Loan Inquiries', 'RTO Work'].includes(i.name))
       }

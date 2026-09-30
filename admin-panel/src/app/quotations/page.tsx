@@ -28,7 +28,6 @@ export default function QuotationsPage() {
   // Calculation State
   const [calcData, setCalcData] = useState({
     companyId: '',
-    categoryId: '',
     netPremium: '',
     totalPremium: '',
     percentage: 0,
@@ -83,8 +82,7 @@ export default function QuotationsPage() {
     const lookupRelation = async () => {
       if (calcData.companyId) {
         try {
-          const catParam = calcData.categoryId ? `&categoryId=${calcData.categoryId}` : ''
-          const res = await fetchApi(`/api/v1/rates/relationships/lookup?companyId=${calcData.companyId}${catParam}`)
+          const res = await fetchApi(`/api/v1/rates/relationships/lookup?companyId=${calcData.companyId}`)
           setCalcData(prev => ({
             ...prev,
             percentage: res.qtr_percentage || 0,
@@ -102,7 +100,7 @@ export default function QuotationsPage() {
       }
     }
     lookupRelation()
-  }, [calcData.companyId, calcData.categoryId])
+  }, [calcData.companyId])
 
   // Live calculation of rate and benefit
   useEffect(() => {
@@ -136,7 +134,6 @@ export default function QuotationsPage() {
     }
     try {
       const selectedCompany = companies.find(c => c.id === calcData.companyId)
-      const selectedCategory = categories.find(c => c.id === calcData.categoryId)
 
       await fetchApi('/api/v1/quotations', {
         method: 'POST',
@@ -145,7 +142,6 @@ export default function QuotationsPage() {
           rate: parseFloat(calcData.rate),
           benefit: parseFloat(calcData.benefit),
           companyId: calcData.companyId,
-          categoryId: calcData.categoryId,
           netPremium: parseFloat(calcData.netPremium),
           totalPremium: parseFloat(calcData.totalPremium),
           percentage: calcData.percentage,
@@ -153,7 +149,6 @@ export default function QuotationsPage() {
           details: {
             ...newQuote.details,
             companyName: selectedCompany?.name,
-            categoryName: selectedCategory?.name,
             netPremium: parseFloat(calcData.netPremium),
             totalPremium: parseFloat(calcData.totalPremium),
             percentage: calcData.percentage,
@@ -166,7 +161,6 @@ export default function QuotationsPage() {
       setIsModalOpen(false)
       setCalcData({
         companyId: '',
-        categoryId: '',
         netPremium: '',
         totalPremium: '',
         percentage: 0,
@@ -391,9 +385,7 @@ export default function QuotationsPage() {
                 <div>
                   <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Company *</label>
                   <select required value={calcData.companyId} onChange={e => {
-                    const compId = e.target.value
-                    const compMatch = categories.find(c => c.name.trim().toLowerCase() === companies.find(comp => comp.id === compId)?.name.trim().toLowerCase())
-                    setCalcData({...calcData, companyId: compId, categoryId: compMatch?.id || compId})
+                    setCalcData({...calcData, companyId: e.target.value})
                   }}
                     className="w-full px-3.5 py-2.5 bg-gray-50 border border-gray-200 rounded-xl outline-none text-xs">
                     <option value="">Select Company</option>

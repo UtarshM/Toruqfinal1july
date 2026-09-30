@@ -47,8 +47,20 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const { companyId, categoryId, percentage, profit, remarks, status } = body
 
-    if (!companyId || !categoryId || percentage === undefined || profit === undefined) {
-      return NextResponse.json({ error: 'companyId, categoryId, percentage, and profit are required' }, { status: 400 })
+    if (!companyId || percentage === undefined || profit === undefined) {
+      return NextResponse.json({ error: 'companyId, percentage, and profit are required' }, { status: 400 })
+    }
+
+    let finalCategoryId = categoryId
+    if (!finalCategoryId) {
+      const defaultCat = await prisma.categoryDetail.findFirst({ select: { id: true } })
+      finalCategoryId = defaultCat?.id
+    }
+    if (!finalCategoryId) {
+      const newCat = await prisma.categoryDetail.create({
+        data: { name: 'Standard', status: 1 }
+      })
+      finalCategoryId = newCat.id
     }
 
     const pct = parseFloat(percentage)
@@ -65,18 +77,18 @@ export async function POST(req: NextRequest) {
     const existing = await prisma.quotationRelationship.findFirst({
       where: {
         companyId,
-        categoryId,
+        categoryId: finalCategoryId,
         status: { in: [1, 2] }
       }
     })
 
     if (existing) {
-      return NextResponse.json({ error: 'Quotation relationship already exists for this Company and Category' }, { status: 400 })
+      return NextResponse.json({ error: 'Quotation relationship already exists for this Company' }, { status: 400 })
     }
 
     const createData: any = {
       companyId,
-      categoryId,
+      categoryId: finalCategoryId,
       percentage: pct,
       profit: prof,
       status: status !== undefined ? parseInt(status) : 1,

@@ -8,11 +8,11 @@ import {
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { getISTDateString, formatDateDMY } from '@/lib/date-format'
+import { getShortCompanyName, formatRateCalculatorQuoteMessage } from '@/lib/rate-calculator-utils'
 
 interface SubCalcState {
   companyId: string
   companyName: string
-  categoryId: string
   netPremium: string
   totalPremium: string
   profit: string
@@ -23,7 +23,6 @@ interface SubCalcState {
 const emptySubCalc: SubCalcState = {
   companyId: '',
   companyName: '',
-  categoryId: '',
   netPremium: '',
   totalPremium: '',
   profit: '',
@@ -69,7 +68,6 @@ export default function RateCalculatorPage() {
 
   // Lists from DB
   const [companies, setCompanies] = useState<any[]>([])
-  const [categories, setCategories] = useState<any[]>([])
   const [relationships, setRelationships] = useState<any[]>([])
   const [isLoadingConfig, setIsLoadingConfig] = useState(true)
 
@@ -124,13 +122,11 @@ export default function RateCalculatorPage() {
   const fetchInitialData = async () => {
     setIsLoadingConfig(true)
     try {
-      const [compRes, catRes, relRes] = await Promise.all([
+      const [compRes, relRes] = await Promise.all([
         fetchApi('/api/v1/rates/companies'),
-        fetchApi('/api/v1/rates/categories'),
         fetchApi('/api/v1/rates/relationships')
       ])
       setCompanies(compRes || [])
-      setCategories(catRes || [])
       setRelationships(relRes || [])
     } catch (err) {
       console.error('Failed to load rate calculator config:', err)
@@ -173,7 +169,6 @@ export default function RateCalculatorPage() {
       updateSubCalc(tab, {
         companyId: '',
         companyName: '',
-        categoryId: '',
         profit: '',
         remarks: '',
         hasRuleFound: false
@@ -184,12 +179,10 @@ export default function RateCalculatorPage() {
     const selectedComp = companies.find(c => c.id === newCompanyId)
     // Find active relationship rule for this company
     const activeRel = relationships.find(r => r.companyId === newCompanyId && r.status === 1) || relationships.find(r => r.companyId === newCompanyId)
-    const matchedCategoryId = activeRel?.categoryId || ''
 
     updateSubCalc(tab, {
       companyId: newCompanyId,
       companyName: selectedComp?.name || '',
-      categoryId: matchedCategoryId
     })
 
     // If active relationship rule found in loaded relationships, immediately populate
@@ -208,8 +201,7 @@ export default function RateCalculatorPage() {
 
     // Preset lookup from live API
     try {
-      const catParam = matchedCategoryId ? `&categoryId=${matchedCategoryId}` : ''
-      const res = await fetchApi(`/api/v1/rates/relationships/lookup?companyId=${newCompanyId}${catParam}`)
+      const res = await fetchApi(`/api/v1/rates/relationships/lookup?companyId=${newCompanyId}`)
       if (res && (res.qtr_percentage > 0 || res.qtr_profit > 0 || res.qtr_remarks)) {
         // Automatically set preset percentage
         if (res.qtr_percentage !== undefined && res.qtr_percentage !== null && (tab === 1 || !recordPercentage)) {
@@ -326,7 +318,6 @@ export default function RateCalculatorPage() {
       return {
         companyId: c.companyId || '',
         companyName: c.companyName || '',
-        categoryId: c.categoryId || '',
         netPremium: c.netPremium !== undefined ? String(c.netPremium) : '',
         totalPremium: c.totalPremium !== undefined ? String(c.totalPremium) : '',
         profit: c.profit !== undefined ? String(c.profit) : '',
@@ -769,8 +760,9 @@ export default function RateCalculatorPage() {
               disabled={!currentCalc.canCalc}
               onClick={() => {
                 const advisorName = user?.fullName || (user as any)?.full_name || (user as any)?.name || 'Sales 1'
+                const shortComp = getShortCompanyName(currentSubCalc.companyName || `Option ${activeTab}`)
                 const params = new URLSearchParams({
-                  company: currentSubCalc.companyName || `Quote - Option ${activeTab}`,
+                  company: shortComp,
                   date: formatDateDMY(recordDate),
                   netPremium: String(currentCalc.numNet),
                   totalPremium: String(currentCalc.numTotal),
@@ -793,19 +785,13 @@ export default function RateCalculatorPage() {
               disabled={!currentCalc.canCalc}
               onClick={() => {
                 const compName = currentSubCalc.companyName || `Calculation ${activeTab}`
-                const msg = [
-                  `*TORQUE AUTO ADVISOR - OFFICIAL QUOTE* 🚗📋`,
-                  `----------------------------------------`,
-                  `*Company:* ${compName}`,
-                  `*Date:* ${formatDateDMY(recordDate)}`,
-                  `*Net Premium:* ₹${currentCalc.numNet.toLocaleString()}`,
-                  `*Total Premium (with GST):* ₹${currentCalc.numTotal.toLocaleString()}`,
-                  `*Payable Customer Rate:* ₹${currentCalc.rate.toLocaleString()}`,
-                  currentCalc.benefit > 0 ? `*Customer Savings / Benefit:* ₹${currentCalc.benefit.toLocaleString()} 🎉` : '',
-                  currentSubCalc.remarks ? `\n*Policy Conditions:*\n${currentSubCalc.remarks}` : '',
-                  `----------------------------------------`,
-                  `_For best motor insurance deals & instant policy issue, contact Torque Auto Advisor._`
-                ].filter(Boolean).join('\n')
+                const msg = formatRateCalculatorQuoteMessage({
+                  companyName: compName,
+                  totalPremium: currentCalc.numTotal,
+                  benefit: currentCalc.benefit,
+                  rate: currentCalc.rate,
+                  remarks: currentSubCalc.remarks
+                })
                 window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, '_blank')
               }}
               className="px-3 py-2 bg-[#25D366] hover:bg-[#1EBE5D] text-white rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
@@ -1028,8 +1014,9 @@ export default function RateCalculatorPage() {
                               <button
                                 onClick={() => {
                                   const advisorName = user?.fullName || (user as any)?.full_name || (user as any)?.name || 'Sales 1'
+                                  const shortComp = getShortCompanyName(c1.companyName || 'Insurance')
                                   const params = new URLSearchParams({
-                                    company: c1.companyName || 'Calculation',
+                                    company: shortComp,
                                     date: rec.date ? formatDateDMY(rec.date) : '',
                                     netPremium: String(c1.netPremium || ''),
                                     totalPremium: String(c1.totalPremium || ''),
@@ -1051,20 +1038,14 @@ export default function RateCalculatorPage() {
                             {c1.rate ? (
                               <button
                                 onClick={() => {
-                                  const compName = c1.companyName || 'Calculation'
-                                  const msg = [
-                                    `*TORQUE AUTO ADVISOR - OFFICIAL QUOTE* 🚗📋`,
-                                    `----------------------------------------`,
-                                    `*Company:* ${compName}`,
-                                    rec.date ? `*Date:* ${formatDateDMY(rec.date)}` : '',
-                                    c1.netPremium ? `*Net Premium:* ₹${Number(c1.netPremium).toLocaleString()}` : '',
-                                    c1.totalPremium ? `*Total Premium (with GST):* ₹${Number(c1.totalPremium).toLocaleString()}` : '',
-                                    `*Payable Customer Rate:* ₹${Number(c1.rate).toLocaleString()}`,
-                                    c1.benefit && c1.benefit > 0 ? `*Customer Savings / Benefit:* ₹${Number(c1.benefit).toLocaleString()} 🎉` : '',
-                                    c1.remarks ? `\n*Policy Conditions:*\n${c1.remarks}` : '',
-                                    `----------------------------------------`,
-                                    `_For best motor insurance deals & instant policy issue, contact Torque Auto Advisor._`
-                                  ].filter(Boolean).join('\n')
+                                  const compName = c1.companyName || 'Insurance'
+                                  const msg = formatRateCalculatorQuoteMessage({
+                                    companyName: compName,
+                                    totalPremium: c1.totalPremium || '',
+                                    benefit: c1.benefit || 0,
+                                    rate: c1.rate || 0,
+                                    remarks: c1.remarks
+                                  })
                                   window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, '_blank')
                                 }}
                                 className="p-2 bg-white border border-slate-200 hover:bg-emerald-50 text-emerald-600 hover:text-emerald-700 rounded-xl transition-all cursor-pointer shadow-2xs"

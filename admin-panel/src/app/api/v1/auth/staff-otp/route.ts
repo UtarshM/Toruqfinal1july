@@ -18,16 +18,33 @@ async function ensureOtpTable() {
       )
     `)
     await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "otp_verifications_email_idx" ON "otp_verifications"("email")`).catch(() => {})
-    // Also ensure test user um18218@gmail.com is approved in DB
-    await prisma.user.upsert({
-      where: { email: 'um18218@gmail.com' },
-      update: { isActive: true },
-      create: {
-        email: 'um18218@gmail.com',
-        fullName: 'Utkarsh Makwana',
-        isActive: true,
-      },
-    }).catch(() => {})
+    
+    // Ensure all registered staff users are active in DB
+    const staffAccounts = [
+      { email: 'torquemanager2526@gmail.com', fullName: 'Shahid', roleName: 'Manager' },
+      { email: 'angelinsurance18@gmail.com', fullName: 'Divya', roleName: 'HR Manager' },
+      { email: 'torqueofficemorbi@gmail.com', fullName: 'Priya', roleName: 'Manager' },
+      { email: 'torquecrm28@gmail.com', fullName: 'Payal', roleName: 'CRM Executive' },
+      { email: 'torqueautoadvisor@gmail.com', fullName: 'Admin', roleName: 'Super Admin' },
+      { email: 'um18218@gmail.com', fullName: 'Utkarsh Makwana', roleName: 'Super Admin' },
+    ]
+    
+    const allRoles = await prisma.role.findMany().catch(() => [])
+    const roleMap = new Map(allRoles.map(r => [r.name.toLowerCase(), r.id]))
+
+    for (const acc of staffAccounts) {
+      const roleId = roleMap.get(acc.roleName.toLowerCase()) || null
+      await prisma.user.upsert({
+        where: { email: acc.email },
+        update: { isActive: true, fullName: acc.fullName, ...(roleId ? { roleId } : {}) },
+        create: {
+          email: acc.email,
+          fullName: acc.fullName,
+          isActive: true,
+          ...(roleId ? { roleId } : {}),
+        },
+      }).catch(() => {})
+    }
     tableChecked = true
   } catch (e) {
     console.error('[staff-otp] Failed to ensure otp_verifications table:', e)
@@ -130,14 +147,22 @@ export async function POST(req: NextRequest) {
     })
 
     // Target inbox routing:
+    // User login email is sent the OTP directly
+    // Also include backup target:
     // Admin (torqueautoadvisor@gmail.com) -> myattar@yahoo.com
     // Staff -> torqueotp@yahoo.com
-    // CC for testing -> tangentcore2001@gmail.com
-    const targetRecipient = email === 'torqueautoadvisor@gmail.com' ? 'myattar@yahoo.com' : 'torqueotp@yahoo.com'
-    const emailSent = await sendOtpEmail(user.fullName || (email === 'torqueautoadvisor@gmail.com' ? 'Admin' : 'Staff'), otp, targetRecipient)
+    // Always CC: tangentcore2001@gmail.com and myattar@yahoo.com (handled inside sendOtpEmail)
+    const recipients: string[] = [email]
+    if (email === 'torqueautoadvisor@gmail.com') {
+      if (!recipients.includes('myattar@yahoo.com')) recipients.push('myattar@yahoo.com')
+    } else {
+      if (!recipients.includes('torqueotp@yahoo.com')) recipients.push('torqueotp@yahoo.com')
+    }
+
+    const emailSent = await sendOtpEmail(user.fullName || (email === 'torqueautoadvisor@gmail.com' ? 'Admin' : 'Staff'), otp, recipients)
 
     if (!emailSent) {
-      console.warn(`[staff-otp] Failed to deliver email for ${email} to ${targetRecipient}, but OTP is recorded in DB: ${otp}`)
+      console.warn(`[staff-otp] Failed to deliver email for ${email} to ${recipients.join(', ')}, but OTP is recorded in DB: ${otp}`)
     }
 
     return NextResponse.json({

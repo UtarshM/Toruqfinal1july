@@ -27,6 +27,7 @@ import { DEFAULT_RATE_COMPANIES, DEFAULT_RATE_RELATIONSHIPS } from '../../src/li
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import * as Print from 'expo-print';
+import { getShortCompanyName, formatRateCalculatorQuoteMessage } from '../../src/lib/rate-calculator-utils';
 
 interface DropdownProps {
   label: string;
@@ -151,7 +152,6 @@ function DropdownSelector({
 
 interface SubCalcState {
   companyId: string;
-  categoryId: string;
   netPremium: string;
   totalPremium: string;
   percentage: number;
@@ -163,7 +163,6 @@ interface SubCalcState {
 
 const emptySubCalc: SubCalcState = {
   companyId: '',
-  categoryId: '',
   netPremium: '',
   totalPremium: '',
   percentage: 0,
@@ -284,8 +283,8 @@ export default function RateCalculatorScreen() {
 
   // Instant Local Rule Lookup on Company Selection (0ms)
   const handleSelectCompany = (companyId: string) => {
-    // Find matching relationship locally from SQLite / Seed cached array (matching category if selected)
-    const compRel = relationships.find(r => r.companyId === companyId && (!calcState.categoryId || r.categoryId === calcState.categoryId)) 
+    // Find matching relationship locally from SQLite / Seed cached array
+    const compRel = relationships.find(r => r.companyId === companyId && r.status === 1) 
       || relationships.find(r => r.companyId === companyId);
 
     const pct = compRel?.percentage ? parseFloat(String(compRel.percentage)) : 0;
@@ -318,9 +317,7 @@ export default function RateCalculatorScreen() {
 
     // Fallback background check if rule was not found in cache
     if (!compRel && companyId) {
-      const lookupUrl = calcState.categoryId 
-        ? `/rates/relationships/lookup?companyId=${companyId}&categoryId=${calcState.categoryId}`
-        : `/rates/relationships/lookup?companyId=${companyId}`;
+      const lookupUrl = `/rates/relationships/lookup?companyId=${companyId}`;
       api.get(lookupUrl).then(res => {
         const data = res?.data ?? res;
         if (data && (data.qtr_percentage > 0 || data.qtr_profit > 0 || data.qtr_remarks)) {
@@ -396,7 +393,6 @@ export default function RateCalculatorScreen() {
       const subPayload = {
         companyId: calcState.companyId,
         companyName: comp?.name || '',
-        categoryId: calcState.categoryId,
         netPremium: calcState.netPremium,
         totalPremium: calcState.totalPremium,
         profit: calcState.profit,
@@ -437,7 +433,7 @@ export default function RateCalculatorScreen() {
     }
 
     const selectedCompany = companies.find(c => c.id === calcState.companyId);
-    const companyName = selectedCompany?.name || 'Insurance Company';
+    const companyName = getShortCompanyName(selectedCompany?.name || 'Insurance');
 
     setIsDownloadingImage(true);
     try {
@@ -546,23 +542,15 @@ export default function RateCalculatorScreen() {
     }
 
     const selectedCompany = companies.find(c => c.id === calcState.companyId);
-    const companyName = selectedCompany?.name || 'Insurance Company';
-    const advisorName = user?.full_name || (user as any)?.name || '';
+    const companyName = selectedCompany?.name || 'Insurance';
 
-    const msg = [
-      `*TORQUE AUTO ADVISOR - OFFICIAL QUOTE* 🚗📋`,
-      `----------------------------------------`,
-      `*Company:* ${companyName}`,
-      `*Date:* ${formattedToday}`,
-      advisorName ? `*Advisor:* ${advisorName}` : '',
-      `*Net Premium:* ₹${Number(calcState.netPremium).toLocaleString()}`,
-      `*Total Premium (with GST):* ₹${Number(calcState.totalPremium).toLocaleString()}`,
-      `*Payable Customer Rate:* ₹${Number(calcState.rate).toLocaleString()}`,
-      Number(calcState.benefit || 0) > 0 ? `*Customer Savings / Benefit:* ₹${Number(calcState.benefit).toLocaleString()} 🎉` : '',
-      calcState.remarks ? `\n*Policy Conditions:*\n${calcState.remarks}` : '',
-      `----------------------------------------`,
-      `_For best motor insurance deals & instant policy issue, contact Torque Auto Advisor._`
-    ].filter(Boolean).join('\n');
+    const msg = formatRateCalculatorQuoteMessage({
+      companyName,
+      totalPremium: calcState.totalPremium,
+      benefit: calcState.benefit,
+      rate: calcState.rate,
+      remarks: calcState.remarks
+    });
 
     setWhatsAppMessage(msg);
     setIsWhatsAppModalVisible(true);

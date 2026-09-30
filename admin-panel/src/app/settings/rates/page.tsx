@@ -145,10 +145,6 @@ export default function QuotationRelationshipPage() {
       setErrorMsg('Please select an insurance company.')
       return
     }
-    if (!categoryId) {
-      setErrorMsg('Please select a vehicle category.')
-      return
-    }
     if (percentage === '' || isNaN(parseFloat(percentage))) {
       setErrorMsg('Please enter a valid percentage.')
       return
@@ -158,6 +154,9 @@ export default function QuotationRelationshipPage() {
       return
     }
 
+    // Default category fallback to satisfy backend schema
+    const effectiveCategoryId = categoryId || categories[0]?.id || undefined
+
     try {
       const url = id ? `/api/v1/rates/relationships/${id}` : '/api/v1/rates/relationships'
       const method = id ? 'PATCH' : 'POST'
@@ -166,7 +165,7 @@ export default function QuotationRelationshipPage() {
         method,
         body: JSON.stringify({
           companyId,
-          categoryId,
+          ...(effectiveCategoryId && { categoryId: effectiveCategoryId }),
           percentage: parseFloat(percentage),
           profit: parseFloat(profit),
           remarks: remarks.trim() || undefined,
@@ -437,7 +436,7 @@ export default function QuotationRelationshipPage() {
                 <Sparkles size={12} /> Matrix Rules
               </span>
             </div>
-            <p className="text-xs sm:text-sm text-slate-500 mt-1">Configure company-category percentages, profit margins, and vehicle relationship conditions.</p>
+            <p className="text-xs sm:text-sm text-slate-500 mt-1">Configure insurance company payout percentages, profit margins, and quotation relationships.</p>
           </div>
 
           <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end">
@@ -463,7 +462,7 @@ export default function QuotationRelationshipPage() {
         </div>
 
         {/* Quick Stat Bar */}
-        <div className="grid grid-cols-3 gap-2 sm:gap-4">
+        <div className="grid grid-cols-2 gap-2 sm:gap-4">
           <div className="bg-white p-3 sm:p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
             <div>
               <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider">Relationships</p>
@@ -471,16 +470,6 @@ export default function QuotationRelationshipPage() {
             </div>
             <div className="p-2 sm:p-3 bg-blue-50 text-blue-600 rounded-xl hidden sm:block">
               <ListCollapse size={20} />
-            </div>
-          </div>
-
-          <div className="bg-white p-3 sm:p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
-            <div>
-              <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider">Categories</p>
-              <p className="text-lg sm:text-2xl font-black text-slate-900 mt-0.5">{categories.length}</p>
-            </div>
-            <div className="p-2 sm:p-3 bg-amber-50 text-amber-600 rounded-xl hidden sm:block">
-              <Sparkles size={20} />
             </div>
           </div>
 
@@ -584,7 +573,7 @@ export default function QuotationRelationshipPage() {
               <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
-                placeholder={`Search ${activeTab === 'rules' ? 'company, category, remarks...' : 'companies...'}`}
+                placeholder={`Search ${activeTab === 'rules' ? 'company, remarks...' : 'companies...'}`}
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 pl-9 pr-3 text-xs outline-none focus:ring-2 focus:ring-blue-500/20 font-semibold"
@@ -685,20 +674,6 @@ export default function QuotationRelationshipPage() {
                       >
                         <option value="">Select Company</option>
                         {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                      </select>
-                    </div>
-
-                    {/* Category Dropdown */}
-                    <div>
-                      <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Vehicle Category *</label>
-                      <select
-                        required
-                        value={ruleForm.categoryId}
-                        onChange={e => setRuleForm({ ...ruleForm, categoryId: e.target.value })}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-blue-500/20"
-                      >
-                        <option value="">Select Category</option>
-                        {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                       </select>
                     </div>
 
@@ -838,19 +813,6 @@ export default function QuotationRelationshipPage() {
                               </div>
                             </th>
 
-                            {/* Category Sort */}
-                            <th 
-                              onClick={() => toggleSort('category')}
-                              className="px-4 py-3.5 cursor-pointer hover:text-slate-900 select-none"
-                            >
-                              <div className="flex items-center gap-1">
-                                <span>Category</span>
-                                {sortField === 'category' ? (
-                                  sortAsc ? <ChevronUp size={13} /> : <ChevronDown size={13} />
-                                ) : <ArrowUpDown size={12} className="text-slate-300" />}
-                              </div>
-                            </th>
-
                             {/* Percentage Sort */}
                             <th 
                               onClick={() => toggleSort('percentage')}
@@ -924,11 +886,6 @@ export default function QuotationRelationshipPage() {
                                   {/* Company Name */}
                                   <td className="px-4 py-3 font-extrabold text-slate-900">
                                     {r.company?.name || '—'}
-                                  </td>
-
-                                  {/* Category Name */}
-                                  <td className="px-4 py-3 text-slate-600 font-semibold max-w-[200px] truncate" title={r.category?.name || '—'}>
-                                    {r.category?.name || '—'}
                                   </td>
 
                                   {/* Percentage (%) with Inline Pencil Edit */}
@@ -1130,7 +1087,6 @@ export default function QuotationRelationshipPage() {
                                 />
                                 <div>
                                   <h4 className="font-extrabold text-slate-900 text-sm">{r.company?.name || '—'}</h4>
-                                  <p className="text-[11px] text-slate-500 font-semibold">{r.category?.name || '—'}</p>
                                 </div>
                               </div>
                               <button
@@ -1342,19 +1298,6 @@ export default function QuotationRelationshipPage() {
                     >
                       <option value="">Select Company</option>
                       {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Vehicle Category *</label>
-                    <select
-                      required
-                      value={ruleForm.categoryId}
-                      onChange={e => setRuleForm({ ...ruleForm, categoryId: e.target.value })}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-slate-800 outline-none"
-                    >
-                      <option value="">Select Category</option>
-                      {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                     </select>
                   </div>
 
