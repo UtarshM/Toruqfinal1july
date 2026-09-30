@@ -69,11 +69,21 @@ export function formatRateCalculatorQuoteMessage(params: {
   const shortComp = getShortCompanyName(params.companyName);
   const cleanBrand = shortComp.replace(/\s+Company$/i, '').trim();
   const totalNum = Math.round(Number(params.totalPremium) || 0);
-  const benefitNum = Math.round(Number(params.benefit) || 0);
   const rateNum = Math.round(Number(params.rate) || 0);
 
+  // Derive cashback amount:
+  // 1. If explicit benefit is provided, use its absolute value
+  // 2. Otherwise calculate difference: total - rate
+  let cashbackNum = 0;
+  const rawBenefit = Math.round(Number(params.benefit) || 0);
+  if (rawBenefit !== 0) {
+    cashbackNum = Math.abs(rawBenefit);
+  } else if (totalNum > rateNum && rateNum > 0) {
+    cashbackNum = totalNum - rateNum;
+  }
+
   const totalFormatted = totalNum.toLocaleString('en-IN');
-  const benefitFormatted = benefitNum.toLocaleString('en-IN');
+  const cashbackFormatted = cashbackNum.toLocaleString('en-IN');
   const rateFormatted = rateNum.toLocaleString('en-IN');
 
   const paragraphs: string[] = [];
@@ -81,12 +91,8 @@ export function formatRateCalculatorQuoteMessage(params: {
   // Paragraph 1: Company line
   paragraphs.push(`${cleanBrand} Company નો વીમો આવશે.`);
 
-  // Paragraph 2: Policy amount & cashback/discount
-  if (benefitNum > 0) {
-    paragraphs.push(`₹${totalFormatted} ની પોલિસી આવશે, જેમાં હું તમને ₹${benefitFormatted} કેશબેક (ડિસ્કાઉન્ટ) કરી આપીશ.`);
-  } else {
-    paragraphs.push(`₹${totalFormatted} ની પોલિસી આવશે.`);
-  }
+  // Paragraph 2: Policy amount & cashback (discount) - ALWAYS include cashback message
+  paragraphs.push(`₹${totalFormatted} ની પોલિસી આવશે, જેમાં હું તમને ₹${cashbackFormatted} કેશબેક (ડિસ્કાઉન્ટ) કરી આપીશ.`);
 
   // Paragraph 3: Final payable by customer
   paragraphs.push(`એટલે તમારે માત્ર ₹${rateFormatted} જ આપવાના રહેશે.`);

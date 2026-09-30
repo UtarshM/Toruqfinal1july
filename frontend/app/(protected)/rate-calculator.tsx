@@ -297,7 +297,7 @@ export default function RateCalculatorScreen() {
 
       let rVal = '';
       let bVal = '';
-      if (pct > 0 && prof > 0 && net > 0 && total > 0) {
+      if (pct > 0 && prof >= 0 && net > 0 && total > 0) {
         // Calculator 1 rule formula: Rate = Total - (Net * Pct / 100) + Profit
         const rateNum = Math.round(total - (net * (pct / 100)) + prof);
         rVal = String(rateNum);
@@ -320,17 +320,17 @@ export default function RateCalculatorScreen() {
       const lookupUrl = `/rates/relationships/lookup?companyId=${companyId}`;
       api.get(lookupUrl).then(res => {
         const data = res?.data ?? res;
-        if (data && (data.qtr_percentage > 0 || data.qtr_profit > 0 || data.qtr_remarks)) {
+        if (data && (data.qtr_percentage > 0 || data.qtr_profit !== undefined || data.qtr_remarks)) {
           setCalcState(cur => {
             const p = data.qtr_percentage || cur.percentage;
-            const pr = data.qtr_profit || cur.profit;
+            const pr = data.qtr_profit !== undefined ? data.qtr_profit : cur.profit;
             const remText = data.qtr_remarks || cur.remarks;
             const net = parseFloat(cur.netPremium) || 0;
             const total = parseFloat(cur.totalPremium) || 0;
 
             let rVal = cur.rate;
             let bVal = cur.benefit;
-            if (p > 0 && pr > 0 && net > 0 && total > 0) {
+            if (p > 0 && pr >= 0 && net > 0 && total > 0) {
               const rateNum = Math.round(total - (net * (p / 100)) + pr);
               rVal = String(rateNum);
               bVal = String(Math.round(total - rateNum));
@@ -359,7 +359,7 @@ export default function RateCalculatorScreen() {
       const pct = cur.percentage || 0;
       const prof = cur.profit || 0;
 
-      if (pct > 0 && prof > 0 && net > 0 && total > 0) {
+      if (pct > 0 && prof >= 0 && net > 0 && total > 0) {
         // Calculator 1 formula: Rate = Total - (Net * Pct / 100) + Profit
         const rateNum = Math.round(total - (net * (pct / 100)) + prof);
         updated.rate = String(rateNum);
