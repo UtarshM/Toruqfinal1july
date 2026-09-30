@@ -38,17 +38,34 @@ export async function POST(req: NextRequest) {
   const { context, error } = await validateAuth(req)
   if (error || !context) return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const role = context.role?.toUpperCase()
-  if (role !== 'SUPER ADMIN' && role !== 'ADMIN') {
+  const role = context.role?.toUpperCase() || ''
+  const isSuperAdminEmail = context.email?.toLowerCase() === 'torqueautoadvisor@gmail.com'
+  if (role !== 'SUPER ADMIN' && role !== 'ADMIN' && !isSuperAdminEmail) {
     return NextResponse.json({ error: 'Forbidden: Admin access required' }, { status: 403 })
   }
 
   try {
     const body = await req.json()
-    const { companyId, categoryId, percentage, profit, remarks, status } = body
+    const { categoryId, percentage, profit, remarks, status } = body
+    let companyId = body.companyId
+
+    if (!companyId && body.companyName && typeof body.companyName === 'string') {
+      const trimmedName = body.companyName.trim()
+      if (trimmedName) {
+        let existingComp = await prisma.companyDetail.findFirst({
+          where: { name: { equals: trimmedName, mode: 'insensitive' } }
+        })
+        if (!existingComp) {
+          existingComp = await prisma.companyDetail.create({
+            data: { name: trimmedName, status: 1 }
+          })
+        }
+        companyId = existingComp.id
+      }
+    }
 
     if (!companyId || percentage === undefined || profit === undefined) {
-      return NextResponse.json({ error: 'companyId, percentage, and profit are required' }, { status: 400 })
+      return NextResponse.json({ error: 'Company, percentage, and profit are required' }, { status: 400 })
     }
 
     let finalCategoryId = categoryId
@@ -112,8 +129,9 @@ export async function DELETE(req: NextRequest) {
   const { context, error } = await validateAuth(req)
   if (error || !context) return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const role = context.role?.toUpperCase()
-  if (role !== 'SUPER ADMIN' && role !== 'ADMIN') {
+  const role = context.role?.toUpperCase() || ''
+  const isSuperAdminEmail = context.email?.toLowerCase() === 'torqueautoadvisor@gmail.com'
+  if (role !== 'SUPER ADMIN' && role !== 'ADMIN' && !isSuperAdminEmail) {
     return NextResponse.json({ error: 'Forbidden: Admin access required' }, { status: 403 })
   }
 

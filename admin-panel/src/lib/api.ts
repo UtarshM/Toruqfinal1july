@@ -72,9 +72,23 @@ export async function safeRefreshToken(): Promise<string | null> {
 export async function getValidAccessToken(): Promise<string | null> {
   try {
     let { data: { session } } = await supabase.auth.getSession()
-    if (!session) {
+    if (!session && typeof window !== 'undefined') {
+      // Fallback: check localStorage directly for Supabase session key
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i)
+        if (k && k.startsWith('sb-') && k.endsWith('-auth-token')) {
+          try {
+            const raw = localStorage.getItem(k)
+            if (raw) {
+              const parsed = JSON.parse(raw)
+              if (parsed?.access_token) return parsed.access_token
+            }
+          } catch {}
+        }
+      }
+
       // Short delay retry in case session is rehydrating from storage upon tab resume
-      await new Promise(r => setTimeout(r, 400))
+      await new Promise(r => setTimeout(r, 300))
       const retry = await supabase.auth.getSession()
       session = retry.data?.session || null
     }
@@ -99,6 +113,17 @@ export async function fetchApi(path: string, options: RequestInit = {}, retries 
   let token = await getValidAccessToken()
 
   if (!token) {
+    const isGet = !options.method || options.method.toUpperCase() === 'GET'
+    if (isGet && path.includes('/rates/')) {
+      // Rates read endpoints can proceed without strict bearer token
+      const res = await fetch(path, { ...options, cache: 'no-store' })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || `HTTP ${res.status}`)
+      }
+      return res.json()
+    }
+
     const hasCachedProfile = typeof window !== 'undefined' && !!localStorage.getItem('toque_user_profile')
     // Graceful retry window to prevent reload on tab switch
     await new Promise(r => setTimeout(r, 600))
