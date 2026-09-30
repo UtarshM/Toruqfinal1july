@@ -784,13 +784,12 @@ export default function RateCalculatorPage() {
               type="button"
               disabled={!currentCalc.canCalc}
               onClick={() => {
-                const compName = currentSubCalc.companyName || `Calculation ${activeTab}`
+                const compName = currentSubCalc.companyName || (companies.find(c => c.id === currentSubCalc.companyId)?.name) || 'Insurance'
                 const msg = formatRateCalculatorQuoteMessage({
                   companyName: compName,
                   totalPremium: currentCalc.numTotal,
                   benefit: currentCalc.benefit,
-                  rate: currentCalc.rate,
-                  remarks: currentSubCalc.remarks
+                  rate: currentCalc.rate
                 })
                 window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, '_blank')
               }}
@@ -1043,8 +1042,7 @@ export default function RateCalculatorPage() {
                                     companyName: compName,
                                     totalPremium: c1.totalPremium || '',
                                     benefit: c1.benefit || 0,
-                                    rate: c1.rate || 0,
-                                    remarks: c1.remarks
+                                    rate: c1.rate || 0
                                   })
                                   window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, '_blank')
                                 }}

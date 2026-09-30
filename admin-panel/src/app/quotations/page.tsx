@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { FileText, Plus, Share2, Download, Search, MessageCircle, X, AlertCircle } from 'lucide-react'
 import { formatDateDMY } from '@/lib/date-format'
+import { formatRateCalculatorQuoteMessage } from '@/lib/rate-calculator-utils'
 
 export default function QuotationsPage() {
   const { user } = useAuth()
@@ -175,12 +176,30 @@ export default function QuotationsPage() {
     }
   }
 
-  const handleShare = async (id: string) => {
+  const handleShare = async (id: string, quoteItem?: any) => {
     try {
       const { shareUrl } = await fetchApi(`/api/v1/quotations/${id}/share`, { method: 'POST' })
       await navigator.clipboard.writeText(shareUrl)
       alert('Share link copied to clipboard!')
-      const waUrl = `https://wa.me/?text=${encodeURIComponent('Here is your insurance quotation: ' + shareUrl)}`
+      
+      let shareText = ''
+      if (quoteItem) {
+        const compName = quoteItem.company?.name || 'Insurance'
+        const totalPrem = quoteItem.totalPremium || quoteItem.amount || quoteItem.rate || 0
+        const ben = quoteItem.benefit || 0
+        const finalRate = quoteItem.rate || quoteItem.amount || 0
+        const gujaratiMsg = formatRateCalculatorQuoteMessage({
+          companyName: compName,
+          totalPremium: totalPrem,
+          benefit: ben,
+          rate: finalRate
+        })
+        shareText = `${gujaratiMsg}\n\n${shareUrl}`
+      } else {
+        shareText = shareUrl
+      }
+
+      const waUrl = `https://wa.me/?text=${encodeURIComponent(shareText)}`
       
       if (typeof window !== 'undefined' && (window as any).ReactNativeWebView) {
         (window as any).ReactNativeWebView.postMessage(JSON.stringify({ type: 'open_url', url: waUrl }));
@@ -340,7 +359,7 @@ export default function QuotationsPage() {
                       </div>
                     )}
                     <button 
-                      onClick={() => handleShare(quote.id)}
+                      onClick={() => handleShare(quote.id, quote)}
                       className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-all"
                       title="WhatsApp Share"
                     >

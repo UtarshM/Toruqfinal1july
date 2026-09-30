@@ -548,8 +548,7 @@ export default function RateCalculatorScreen() {
       companyName,
       totalPremium: calcState.totalPremium,
       benefit: calcState.benefit,
-      rate: calcState.rate,
-      remarks: calcState.remarks
+      rate: calcState.rate
     });
 
     setWhatsAppMessage(msg);

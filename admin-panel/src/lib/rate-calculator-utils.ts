@@ -67,6 +67,7 @@ export function formatRateCalculatorQuoteMessage(params: {
   remarks?: string
 }): string {
   const shortComp = getShortCompanyName(params.companyName)
+  const cleanBrand = shortComp.replace(/\s+Company$/i, '').trim()
   const totalNum = Math.round(Number(params.totalPremium) || 0)
   const benefitNum = Math.round(Number(params.benefit) || 0)
   const rateNum = Math.round(Number(params.rate) || 0)
@@ -75,25 +76,22 @@ export function formatRateCalculatorQuoteMessage(params: {
   const benefitFormatted = benefitNum.toLocaleString('en-IN')
   const rateFormatted = rateNum.toLocaleString('en-IN')
 
-  const lines: string[] = []
+  const paragraphs: string[] = []
 
-  // 1. Company line
-  lines.push(`${shortComp} Company નો વીમો આવશે.\n`)
+  // Paragraph 1: Company line
+  paragraphs.push(`${cleanBrand} Company નો વીમો આવશે.`)
 
-  // 2. Policy amount & cashback/discount
+  // Paragraph 2: Policy amount & cashback/discount
   if (benefitNum > 0) {
-    lines.push(`₹${totalFormatted} ની પોલિસી આવશે, જેમાં હું તમને ₹${benefitFormatted} કેશબેક (ડિસ્કાઉન્ટ) કરી આપીશ.\n`)
+    paragraphs.push(`₹${totalFormatted} ની પોલિસી આવશે, જેમાં હું તમને ₹${benefitFormatted} કેશબેક (ડિસ્કાઉન્ટ) કરી આપીશ.`)
   } else {
-    lines.push(`₹${totalFormatted} ની પોલિસી આવશે.\n`)
+    paragraphs.push(`₹${totalFormatted} ની પોલિસી આવશે.`)
   }
 
-  // 3. Final payable by customer
-  lines.push(`એટલે તમારે માત્ર ₹${rateFormatted} જ આપવાના રહેશે.`)
+  // Paragraph 3: Final payable by customer
+  paragraphs.push(`એટલે તમારે માત્ર ₹${rateFormatted} જ આપવાના રહેશે.`)
 
-  // Optional underwriting remarks if present
-  if (params.remarks && params.remarks.trim()) {
-    lines.push(`\n*શરતો:* ${params.remarks.trim()}`)
-  }
+  // Internal broker notes/remarks are excluded from customer-facing quote messages
 
-  return lines.join('\n')
+  return paragraphs.join('\n\n')
 }
