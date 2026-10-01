@@ -1,6 +1,7 @@
 import { validateAuth } from '@/lib/auth-guard'
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
+import { invalidateRateCache, setCachedRateData } from '@/lib/rate-cache'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -155,9 +156,15 @@ export async function POST(req: NextRequest) {
       return { relationships: freshRelationships, companies: freshCompanies }
     })
 
+    invalidateRateCache()
+    if (results.relationships) setCachedRateData('rates_relationships', results.relationships)
+    if (results.companies) setCachedRateData('rates_companies', results.companies)
+
     return NextResponse.json({
       success: true,
       message: 'Batch changes saved successfully',
+      relationships: results.relationships,
+      companies: results.companies,
       data: results
     })
   } catch (err: any) {

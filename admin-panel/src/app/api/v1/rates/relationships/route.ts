@@ -1,6 +1,7 @@
 import { validateAuth } from '@/lib/auth-guard'
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
+import { getCachedRateData, setCachedRateData, invalidateRateCache } from '@/lib/rate-cache'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -14,6 +15,16 @@ export async function GET(req: NextRequest) {
   } catch {}
 
   try {
+    const cached = getCachedRateData<any[]>('rates_relationships')
+    if (cached) {
+      return NextResponse.json(cached, {
+        headers: {
+          'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=120',
+          'X-Cache': 'HIT'
+        }
+      })
+    }
+
     const relations = await prisma.quotationRelationship.findMany({
       where: { status: { in: [1, 2] } },
       include: {
@@ -22,10 +33,12 @@ export async function GET(req: NextRequest) {
       },
       orderBy: { createdAt: 'desc' }
     })
+    setCachedRateData('rates_relationships', relations)
+
     return NextResponse.json(relations, {
       headers: {
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
-        'Pragma': 'no-cache'
+        'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=120',
+        'X-Cache': 'MISS'
       }
     })
   } catch (err) {
@@ -118,6 +131,7 @@ export async function POST(req: NextRequest) {
       data: createData
     })
 
+    invalidateRateCache()
     return NextResponse.json(relation)
   } catch (err) {
     console.error('Relationship POST error:', err)
@@ -150,6 +164,7 @@ export async function DELETE(req: NextRequest) {
       }
     })
 
+    invalidateRateCache()
     return NextResponse.json({ success: true, count: result.count })
   } catch (err) {
     console.error('Relationship bulk DELETE error:', err)

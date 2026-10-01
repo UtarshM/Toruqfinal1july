@@ -237,8 +237,8 @@ export async function GET(
 
     const isAll = limitParam === 'all' || allParam === 'true' || limitParam === '0'
     const parsedLimit = parseInt(limitParam || '100')
-    // Safe preview limit: max 1000 records so serverless API never hangs or exceeds payload limits
-    const previewLimit = isAll ? 1000 : (isNaN(parsedLimit) ? 100 : Math.min(Math.max(10, parsedLimit), 1000))
+    // When 'all' is requested, do not cap at 1000; return all matching records
+    const previewLimit = isAll ? undefined : (isNaN(parsedLimit) ? 100 : Math.max(10, parsedLimit))
     const [count, leads] = await Promise.all([
       prisma.lead.count({ where: whereClause }),
       prisma.lead.findMany({
@@ -264,8 +264,8 @@ export async function GET(
           { expiryDate: 'desc' },
           { createdAt: 'desc' }
         ],
-        skip: shouldPaginate ? (page - 1) * limit : 0,
-        take: previewLimit
+        skip: shouldPaginate ? (page - 1) * limit : undefined,
+        take: shouldPaginate ? limit : previewLimit
       })
     ])
 

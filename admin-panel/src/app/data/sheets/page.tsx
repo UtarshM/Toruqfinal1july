@@ -326,8 +326,8 @@ export default function ImportedSheetsPage() {
       const monthQuery = month > 0 ? `&month=${month}` : ''
       const yearQuery = year > 0 ? `&year=${year}` : ''
       const cityQuery = city !== 'all' ? `&city=${encodeURIComponent(city)}` : ''
-      // Request rowsPerPage (default 100, up to 1000) so month/year filtering loads instantly in <100ms
-      const requestedLimit = (forceAll || rowsPerPage === 'all') ? '1000' : `${Math.max(100, Number(rowsPerPage) || 100)}`
+      // When 'all' is requested, query with limit=all so full rows are retrieved
+      const requestedLimit = (forceAll || rowsPerPage === 'all') ? 'all' : `${Math.max(100, Number(rowsPerPage) || 100)}`
       const limitQuery = `&limit=${requestedLimit}`
       const res = await fetchApi(
         `/api/v1/import/sheets/${encodeURIComponent(selectedFile.fileName)}?${limitQuery.slice(1)}${batchQuery}${monthQuery}${yearQuery}${cityQuery}`
@@ -1647,6 +1647,9 @@ export default function ImportedSheetsPage() {
                         const val = e.target.value === 'all' ? 'all' : Number(e.target.value)
                         setRowsPerPage(val)
                         setCurrentPage(1)
+                        if (val === 'all' && previewData && previewData.rows.length < (previewData.totalRows || 0)) {
+                          reloadPreview(expiryMonthFilter, expiryYearFilter, previewCityFilter, true)
+                        }
                       }}
                       className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-700 outline-none"
                     >
@@ -1654,7 +1657,9 @@ export default function ImportedSheetsPage() {
                       <option value={50}>50</option>
                       <option value={100}>100</option>
                       <option value={250}>250</option>
-                      <option value="all">All ({previewData.rows.length})</option>
+                      <option value={500}>500</option>
+                      <option value={1000}>1000</option>
+                      <option value="all">All ({previewData.totalRows || previewData.rows.length})</option>
                     </select>
                   </div>
                 </div>
