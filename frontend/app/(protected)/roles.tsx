@@ -6,6 +6,7 @@ import { api } from '../../src/utils/api';
 import { Colors, Spacing, FontSize, BorderRadius } from '../../src/utils/theme';
 import { Ionicons } from '@expo/vector-icons';
 import { useCacheStore } from '../../src/store/cacheStore';
+import { useAuth } from '../../src/context/AuthContext';
 import Sidebar from '../../src/components/Sidebar';
 
 const GROUP_LABELS: Record<string, string> = {
@@ -184,6 +185,31 @@ const ACTION_LABELS: Record<string, string> = {
 
 export default function RolesScreen() {
   const router = useRouter();
+  const { user } = useAuth();
+  const roleUpper = (typeof (user?.role as any) === 'object' ? (user?.role as any)?.name : user?.role)?.toUpperCase() || '';
+  const isSuperAdminEmail = user?.email?.toLowerCase() === 'torqueautoadvisor@gmail.com';
+  const isAdmin = roleUpper === 'SUPER ADMIN' || roleUpper === 'SUPER_ADMIN' || roleUpper === 'ADMIN' || (roleUpper.includes('ADMIN') && !roleUpper.includes('MANAGER')) || isSuperAdminEmail;
+
+  if (!isAdmin) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 }}>
+          <Ionicons name="lock-closed" size={54} color="#EF4444" />
+          <Text style={{ fontSize: 18, fontWeight: '800', color: '#1E293B', marginTop: 16 }}>Access Restricted</Text>
+          <Text style={{ fontSize: 14, color: '#64748B', textAlign: 'center', marginTop: 8 }}>
+            Only Administrators have permission to view and manage roles and permissions.
+          </Text>
+          <Pressable
+            style={{ marginTop: 24, backgroundColor: '#002FA7', paddingHorizontal: 20, paddingVertical: 12, borderRadius: 10 }}
+            onPress={() => router.replace('/(protected)/dashboard')}
+          >
+            <Text style={{ color: '#FFFFFF', fontWeight: '700' }}>Back to Dashboard</Text>
+          </Pressable>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   const { cache, setCache, loadCache } = useCacheStore();
 
   const [roles, setRoles] = useState<any[]>(cache['/roles'] || []);

@@ -54,6 +54,7 @@ interface AuthContextType {
   isLoading: boolean;
   isPinAuthenticated: boolean;
   setPinAuthenticated: (val: boolean) => void;
+  hasPermission: (permissionName: string) => boolean;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
   updateUser: (updatedFields: Partial<User>) => Promise<void>;
@@ -67,6 +68,7 @@ const AuthContext = createContext<AuthContextType>({
   isLoading: true,
   isPinAuthenticated: false,
   setPinAuthenticated: () => {},
+  hasPermission: () => false,
   logout: async () => {},
   refreshUser: async () => {},
   updateUser: async () => {},
@@ -342,6 +344,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const isSuperAdminEmail = (data.email || session.user.email || '').toLowerCase() === 'torqueautoadvisor@gmail.com';
         const roleName = isSuperAdminEmail ? 'Super Admin' : (data.role?.name || data.role || 'Staff');
 
+        // Extract permissions from role AND direct permissions safely into clean string array
+        const rolePerms = Array.isArray(data.role?.permissions)
+          ? data.role.permissions.map((p: any) => typeof p === 'string' ? p : p.name)
+          : [];
+        const directPerms = Array.isArray(data.permissions)
+          ? data.permissions.map((p: any) => typeof p === 'string' ? p : p.name)
+          : [];
+        const mergedPerms = Array.from(new Set([...rolePerms, ...directPerms])).filter(Boolean);
+
         const profileUser: User = {
           id: data.id,
           email: data.email || session.user.email || '',
@@ -350,7 +361,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           phone: data.personalMobile || data.phone || session.user.user_metadata?.phone || '',
           role: roleName,
           role_id: data.roleId || null,
-          permissions: isSuperAdminEmail ? ['*'] : (data.permissions || []),
+          permissions: isSuperAdminEmail ? ['*'] : mergedPerms,
           is_active: data.isActive !== false,
           requiresOnboardingForm,
           onboardingRemark,
@@ -610,12 +621,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  const hasPermission = (permissionName: string): boolean => {
+    if (!user) return false;
+    const roleUpper = (user.role || '').toUpperCase();
+    const isSuperAdmin = 
+      roleUpper === 'SUPER ADMIN' || 
+      roleUpper === 'SUPER_ADMIN' ||
+      roleUpper === 'ADMIN' ||
+      (roleUpper.includes('ADMIN') && !roleUpper.includes('MANAGER')) ||
+      user.email?.toLowerCase() === 'torqueautoadvisor@gmail.com' ||
+      (Array.isArray(user.permissions) && user.permissions.includes('*'));
+
+    if (isSuperAdmin) return true;
+    if (!user.permissions || !Array.isArray(user.permissions)) return false;
+
+    // Direct match
+    if (user.permissions.includes(permissionName)) return true;
+
+    // Singular / Plural cross-matching (e.g. lead.view <-> leads.view)
+    const parts = permissionName.split('.');
+    if (parts.length === 2) {
+      const [group, action] = parts;
+      const singularGroup = group.endsWith('s') ? group.slice(0, -1) : group;
+      const pluralGroup = singularGroup + 's';
+
+      if (user.permissions.includes(`${singularGroup}.${action}`) || user.permissions.includes(`${pluralGroup}.${action}`)) {
+        return true;
+      }
+    }
+
+    return false;
+  };
+
   return (
     <AuthContext.Provider value={{ 
       user, 
       isLoading, 
       isPinAuthenticated, 
       setPinAuthenticated: setIsPinAuthenticated,
+      hasPermission,
       logout, 
       refreshUser,
       updateUser,

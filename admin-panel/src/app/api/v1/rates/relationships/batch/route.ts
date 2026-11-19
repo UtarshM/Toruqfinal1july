@@ -10,9 +10,9 @@ export async function POST(req: NextRequest) {
   const { context, error } = await validateAuth(req)
   if (error || !context) return error || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const role = context.role?.toUpperCase() || ''
+  const role = (context.role || '').toUpperCase().replace(/_/g, ' ')
   const isSuperAdminEmail = context.email?.toLowerCase() === 'torqueautoadvisor@gmail.com'
-  if (role !== 'SUPER ADMIN' && role !== 'ADMIN' && !isSuperAdminEmail) {
+  if (!role.includes('ADMIN') && !isSuperAdminEmail) {
     return NextResponse.json({ error: 'Forbidden: Admin access required' }, { status: 403 })
   }
 
@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Process all modifications in a single atomic transaction
-    const results = await prisma.$transaction(async (tx) => {
+    const results = await prisma.$transaction(async (tx: any) => {
       // 1. Handle Deletions
       if (Array.isArray(deletes) && deletes.length > 0) {
         await tx.quotationRelationship.deleteMany({

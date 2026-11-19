@@ -16,6 +16,7 @@ export async function GET(req: NextRequest) {
   const remarks = searchParams.get('remarks') || ''
   const vehicleNo = searchParams.get('vehicleNo') || ''
   const advisorName = searchParams.get('advisor') || 'Sales 1'
+  const advisorPhone = searchParams.get('phone') || searchParams.get('advisorPhone') || ''
 
   const logoBase64 = TORQUE_LOGO_BASE64
 
@@ -153,11 +154,11 @@ export async function GET(req: NextRequest) {
             color: '#FFFFFF',
           }}
         >
-          <div style={{ display: 'flex', flexDirection: 'column' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', flex: 1, marginRight: '16px' }}>
             <div style={{ fontSize: '11px', fontWeight: 700, color: '#93C5FD', letterSpacing: '1px', textTransform: 'uppercase' }}>
-              Selected Insurance Company
+              Selected Insurance Company & Segment
             </div>
-            <div style={{ fontSize: '22px', fontWeight: 900, color: '#FFFFFF', marginTop: '2px' }}>
+            <div style={{ fontSize: company.length > 36 ? '18px' : '22px', fontWeight: 900, color: '#FFFFFF', marginTop: '2px', lineHeight: 1.25 }}>
               {company}
             </div>
           </div>
@@ -354,7 +355,7 @@ export async function GET(req: NextRequest) {
             Prepared by Sales Advisor:
           </div>
           <div style={{ fontSize: '13px', fontWeight: 800, color: '#0F172A' }}>
-            {advisorName}
+            {advisorName}{advisorPhone ? ` • ${advisorPhone}` : ''}
           </div>
         </div>
 

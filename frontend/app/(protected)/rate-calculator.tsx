@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View,
@@ -281,14 +281,114 @@ export default function RateCalculatorScreen() {
     }, [fetchMasterData])
   );
 
+  // Merge companies list with any unique companies present in relationships to guarantee 100% coverage
+  const allAvailableCompanies = useMemo(() => {
+    const map = new Map<string, { id: string; name: string }>();
+    companies.forEach(c => {
+      if (c && c.name) map.set(c.name.trim().toLowerCase(), { id: c.id, name: c.name });
+    });
+    relationships.forEach(r => {
+      const name = (r.companyName || r.company?.name || '').trim();
+      const id = r.companyId || r.company?.id || r.id;
+      if (name && !map.has(name.toLowerCase())) {
+        map.set(name.toLowerCase(), { id, name });
+      }
+    });
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [companies, relationships]);
+
+  // Robust Relationship Matcher across IDs, embedded objects, and normalized names
+  const findMatchingRelationship = useCallback((targetCompanyId: string) => {
+    if (!targetCompanyId || !Array.isArray(relationships) || relationships.length === 0) return null;
+
+    const selectedComp = allAvailableCompanies.find((c: any) => c.id === targetCompanyId || c.name === targetCompanyId);
+    const targetId = selectedComp?.id || targetCompanyId;
+    const targetName = (selectedComp?.name || targetCompanyId || '').trim().toLowerCase();
+
+    // 1. Direct ID match on active rules (status 1 or 2)
+    let matched = relationships.find(r => 
+      (r.status === 1 || r.status === 2 || r.status === undefined) && (
+        r.companyId === targetId ||
+        r.company?.id === targetId ||
+        r.id === targetId
+      )
+    );
+    if (matched) return matched;
+
+    // 2. Direct Name match (normalized) on active rules
+    if (targetName) {
+      matched = relationships.find(r => {
+        if (r.status !== 1 && r.status !== 2 && r.status !== undefined) return false;
+        const rName = (r.companyName || r.company?.name || '').trim().toLowerCase();
+        return rName && (rName === targetName || rName.includes(targetName) || targetName.includes(rName));
+      });
+      if (matched) return matched;
+    }
+
+    // 3. Fallback matching ignoring status filter
+    matched = relationships.find(r => 
+      r.companyId === targetId ||
+      r.company?.id === targetId ||
+      r.id === targetId
+    );
+    if (matched) return matched;
+
+    if (targetName) {
+      matched = relationships.find(r => {
+        const rName = (r.companyName || r.company?.name || '').trim().toLowerCase();
+        return rName && (rName === targetName || rName.includes(targetName) || targetName.includes(rName));
+      });
+      if (matched) return matched;
+    }
+
+    return null;
+  }, [relationships, allAvailableCompanies]);
+
+  // Synchronize calcState with latest relationships whenever relationships change
+  useEffect(() => {
+    if (!calcState.companyId || relationships.length === 0) return;
+
+    const compRel = findMatchingRelationship(calcState.companyId);
+    if (compRel) {
+      const pct = compRel.percentage !== undefined && compRel.percentage !== null ? parseFloat(String(compRel.percentage)) : 0;
+      const prof = compRel.profit !== undefined && compRel.profit !== null ? parseFloat(String(compRel.profit)) : 0;
+      const rem = compRel.remarks || '';
+
+      setCalcState(cur => {
+        const net = parseFloat(cur.netPremium) || 0;
+        const total = parseFloat(cur.totalPremium) || 0;
+
+        let rVal = cur.rate;
+        let bVal = cur.benefit;
+        if (pct > 0 && prof >= 0 && net > 0 && total > 0) {
+          const rateNum = Math.round(total - (net * (pct / 100)) + prof);
+          rVal = String(rateNum);
+          bVal = String(Math.round(total - rateNum));
+        }
+
+        if (cur.percentage === pct && cur.profit === prof && cur.remarks === rem && cur.rate === rVal && cur.benefit === bVal) {
+          return cur;
+        }
+
+        return {
+          ...cur,
+          percentage: pct,
+          profit: prof,
+          remarks: rem,
+          rate: rVal,
+          benefit: bVal
+        };
+      });
+    }
+  }, [relationships, allAvailableCompanies, calcState.companyId, findMatchingRelationship]);
+
   // Instant Local Rule Lookup on Company Selection (0ms)
   const handleSelectCompany = (companyId: string) => {
     // Find matching relationship locally from SQLite / Seed cached array
-    const compRel = relationships.find(r => r.companyId === companyId && r.status === 1) 
-      || relationships.find(r => r.companyId === companyId);
+    const compRel = findMatchingRelationship(companyId);
 
-    const pct = compRel?.percentage ? parseFloat(String(compRel.percentage)) : 0;
-    const prof = compRel?.profit ? parseFloat(String(compRel.profit)) : 0;
+    const pct = compRel?.percentage !== undefined && compRel?.percentage !== null ? parseFloat(String(compRel.percentage)) : 0;
+    const prof = compRel?.profit !== undefined && compRel?.profit !== null ? parseFloat(String(compRel.profit)) : 0;
     const rem = compRel?.remarks || '';
 
     setCalcState(cur => {
@@ -433,7 +533,9 @@ export default function RateCalculatorScreen() {
     }
 
     const selectedCompany = companies.find(c => c.id === calcState.companyId);
-    const companyName = getShortCompanyName(selectedCompany?.name || 'Insurance');
+    // Keep the full official company name with segment (e.g. CHOLA 20000-40000 GVW NIL DEP AND NORMAL)
+    const companyName = (selectedCompany?.name || 'Insurance').trim();
+    const advisorPhone = String((user as any)?.personalMobile || user?.phone || '');
 
     setIsDownloadingImage(true);
     try {
@@ -445,7 +547,8 @@ export default function RateCalculatorScreen() {
         rate: String(calcState.rate),
         benefit: String(calcState.benefit || '0'),
         remarks: String(calcState.remarks || ''),
-        advisor: String(user?.full_name || (user as any)?.name || 'Sales 1')
+        advisor: String(user?.full_name || (user as any)?.name || 'Sales 1'),
+        ...(advisorPhone ? { phone: advisorPhone } : {})
       });
 
       const downloadUrl = `${BASE_URL}/api/v1/rates/image?${qs.toString()}`.replace(/\+/g, '%20');
@@ -650,10 +753,10 @@ export default function RateCalculatorScreen() {
               <DropdownSelector
                 label="Company"
                 placeholder="Select Company"
-                options={companies.map(c => ({ label: c.name, value: c.id }))}
+                options={allAvailableCompanies.map((c: any) => ({ label: c.name, value: c.id }))}
                 selectedValue={calcState.companyId}
                 onSelect={handleSelectCompany}
-                loading={loadingConfig && companies.length === 0}
+                loading={loadingConfig && allAvailableCompanies.length === 0}
               />
 
               {/* 3. Remarks (Read-only, auto-populated from company rule, NOT editable) */}

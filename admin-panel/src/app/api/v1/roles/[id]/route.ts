@@ -1,14 +1,25 @@
-import { validateAuth } from '@/lib/auth-guard'
+import { validateAuth, invalidateAuthCache } from '@/lib/auth-guard'
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { supabaseAdmin } from '@/lib/supabase-admin'
+
+function checkIsAdmin(context: any): boolean {
+  if (!context) return false
+  const roleUpper = (context.role || '').toUpperCase()
+  const isSuperAdminEmail = context.email?.toLowerCase() === 'torqueautoadvisor@gmail.com'
+  return roleUpper === 'SUPER ADMIN' || roleUpper === 'SUPER_ADMIN' || roleUpper === 'ADMIN' || (roleUpper.includes('ADMIN') && !roleUpper.includes('MANAGER')) || isSuperAdminEmail || context.permissions?.includes('*')
+}
 
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { error } = await validateAuth(req, 'role.view')
+  const { context, error } = await validateAuth(req, 'role.view')
   if (error) return error
+
+  if (!checkIsAdmin(context)) {
+    return NextResponse.json({ error: 'Forbidden: Only Administrators can view roles and permissions' }, { status: 403 })
+  }
 
   try {
     const { id } = await params
@@ -28,8 +39,12 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { error } = await validateAuth(req, 'role.edit')
+  const { context, error } = await validateAuth(req, 'role.edit')
   if (error) return error
+
+  if (!checkIsAdmin(context)) {
+    return NextResponse.json({ error: 'Forbidden: Only Administrators can modify roles and permissions' }, { status: 403 })
+  }
 
   try {
     const { id } = await params
@@ -53,6 +68,9 @@ export async function PATCH(
         _count: { select: { users: true } }
       }
     })
+
+    // Invalidate auth cache so all users with this role reflect updated permissions immediately
+    invalidateAuthCache()
 
     // If role name changed, sync all users with this role in Supabase Auth
     if (name && role.users && role.users.length > 0) {
@@ -78,8 +96,12 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { error } = await validateAuth(req, 'role.delete')
+  const { context, error } = await validateAuth(req, 'role.delete')
   if (error) return error
+
+  if (!checkIsAdmin(context)) {
+    return NextResponse.json({ error: 'Forbidden: Only Administrators can delete roles' }, { status: 403 })
+  }
 
   try {
     const { id } = await params
@@ -91,6 +113,7 @@ export async function DELETE(
     })
 
     await prisma.role.delete({ where: { id } })
+    invalidateAuthCache()
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error('Role DELETE Error:', error)

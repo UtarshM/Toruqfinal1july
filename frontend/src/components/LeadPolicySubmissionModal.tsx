@@ -1450,7 +1450,7 @@ export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClo
                   
                   <FormField label="Mobile No 1" value={formData.mobileNo1} onChange={(v: string) => handleFieldChange('mobileNo1', v)} placeholder="Primary Mobile" />
                   <FormField label="Mobile No 2" value={formData.mobileNo2} onChange={(v: string) => handleFieldChange('mobileNo2', v)} placeholder="Secondary Mobile" />
-                  <FormField label="Approved Rate / Quotation" value={formData.rate} onChange={(v: string) => handleFieldChange('rate', v)} placeholder="e.g. 18500" />
+                  <FormField label="Approved Rate / Quotation" value={formData.rate} onChange={(v: string) => handleFieldChange('rate', v)} placeholder="e.g. 18500" editable={false} />
                   <FormField label="Rs From Customer (Amount Paid)" value={formData.rsFromCustomer} onChange={(v: string) => handleFieldChange('rsFromCustomer', v)} placeholder="e.g. 18500" />
                   <DropdownSelect
                     label="Payment Mode"
@@ -2114,17 +2114,22 @@ function DropdownSelect({
   );
 }
 
-function FormField({ label, value, onChange, placeholder, multiline = false }: any) {
+function FormField({ label, value, onChange, placeholder, multiline = false, editable = true }: any) {
   return (
     <View style={styles.formGroup}>
       <Text style={styles.formLabel}>{label}</Text>
       <TextInput
-        style={[styles.formInput, multiline && { height: 70, textAlignVertical: 'top' }]}
+        style={[
+          styles.formInput,
+          multiline && { height: 70, textAlignVertical: 'top' },
+          !editable && { backgroundColor: '#F1F5F9', color: '#64748B', borderColor: '#E2E8F0' }
+        ]}
         value={value ? String(value) : ''}
         onChangeText={onChange}
         placeholder={placeholder}
         placeholderTextColor={Colors.textLight}
         multiline={multiline}
+        editable={editable}
       />
     </View>
   );

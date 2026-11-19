@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { View, Text, StyleSheet, ScrollView, Pressable, TextInput, ActivityIndicator, Alert, Modal, RefreshControl } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useAuth } from '../../src/context/AuthContext';
 import { api } from '../../src/utils/api';
 import { Colors, Spacing, FontSize, BorderRadius } from '../../src/utils/theme';
 import { Ionicons } from '@expo/vector-icons';
@@ -98,6 +99,11 @@ function DropdownSelector({ label, placeholder, options, selectedValue, onSelect
 
 export default function RatesManagementScreen() {
   const router = useRouter();
+  const { user } = useAuth();
+  const roleUpper = (typeof (user?.role as any) === 'object' ? (user?.role as any)?.name : user?.role)?.toUpperCase() || '';
+  const isSuperAdminEmail = user?.email?.toLowerCase() === 'torqueautoadvisor@gmail.com';
+  const isAdmin = roleUpper === 'SUPER ADMIN' || roleUpper === 'SUPER_ADMIN' || roleUpper === 'ADMIN' || (roleUpper.includes('ADMIN') && !roleUpper.includes('MANAGER')) || isSuperAdminEmail;
+
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'rules' | 'companies'>('rules');
   const [loading, setLoading] = useState(false);
@@ -255,13 +261,36 @@ export default function RatesManagementScreen() {
         status: parseInt(status, 10) || 1
       };
 
+      let savedRel: any = null;
       if (id) {
-        await api.patch(`/rates/relationships/${id}`, body);
+        const res = await api.patch(`/rates/relationships/${id}`, body);
+        savedRel = res?.data ?? res;
         Alert.alert('Success', 'Quotation relationship updated successfully!');
       } else {
-        await api.post('/rates/relationships', body);
+        const res = await api.post('/rates/relationships', body);
+        savedRel = res?.data ?? res;
         Alert.alert('Success', 'Quotation relationship created successfully!');
       }
+
+      // Optimistically persist to local cache immediately so Rate Calculator reflects changes instantly
+      const compObj = companies.find(c => c.id === companyId);
+      const updatedRuleObj = {
+        ...(savedRel || {}),
+        id: id || savedRel?.id || `rule-${Date.now()}`,
+        companyId,
+        companyName: compObj?.name || (savedRel?.company?.name || ''),
+        company: compObj ? { id: compObj.id, name: compObj.name } : savedRel?.company,
+        percentage: pct,
+        profit: prof,
+        remarks: remarks?.trim() || null,
+        status: parseInt(status, 10) || 1
+      };
+
+      setRules(prev => {
+        const next = id ? prev.map(r => r.id === id ? { ...r, ...updatedRuleObj } : r) : [updatedRuleObj, ...prev];
+        setCacheItem('rate_relationships', next).catch(() => {});
+        return next;
+      });
 
       setRuleForm({ id: '', companyId: '', categoryId: '', percentage: '', profit: '', remarks: '', status: '1' });
       loadData(false);
@@ -289,6 +318,30 @@ export default function RatesManagementScreen() {
       }
     ]);
   };
+
+  if (!isAdmin) {
+    return (
+      <SafeAreaView style={styles.safe} edges={['top']}>
+        <Sidebar visible={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+        <View style={styles.header}>
+          <Pressable onPress={() => setSidebarOpen(true)} style={styles.menuBtn}>
+            <Ionicons name="menu-outline" size={26} color={Colors.text} />
+          </Pressable>
+          <Text style={styles.headerTitle}>Quotation Relationship</Text>
+          <View style={{ width: 40 }} />
+        </View>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 }}>
+          <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: '#FEF2F2', justifyContent: 'center', alignItems: 'center', marginBottom: 16 }}>
+            <Ionicons name="shield-outline" size={32} color="#DC2626" />
+          </View>
+          <Text style={{ fontSize: 18, fontWeight: '800', color: '#0F172A', marginBottom: 8 }}>Access Restricted</Text>
+          <Text style={{ fontSize: 13, color: '#64748B', textAlign: 'center', lineHeight: 20 }}>
+            Only administrators are authorized to view or configure quotation relationships and profit rules.
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>

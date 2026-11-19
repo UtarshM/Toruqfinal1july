@@ -188,8 +188,12 @@ const ACTION_LABELS: Record<string, string> = {
 }
 
 export default function RolesPage() {
-  const { token, isLoading: authLoading } = useAuth()
+  const { user, token, isLoading: authLoading } = useAuth()
   const apiFetch = useApi()
+
+  const roleName = (typeof user?.role === 'string' ? user.role : user?.role?.name || '').toUpperCase()
+  const isSuperAdminEmail = user?.email?.toLowerCase() === 'torqueautoadvisor@gmail.com'
+  const isAdmin = roleName.includes('ADMIN') || roleName.includes('SUPER') || isSuperAdminEmail
 
   const [roles, setRoles] = useState<any[]>([])
   const [permissions, setPermissions] = useState<any[]>([])
@@ -221,7 +225,7 @@ export default function RolesPage() {
   }, [apiFetch])
 
   const fetchData = useCallback(async () => {
-    if (!token) return
+    if (!token && !user) return
     setIsLoading(true)
     setSaveError('')
     try {
@@ -243,14 +247,14 @@ export default function RolesPage() {
     } finally {
       setIsLoading(false)
     }
-  }, [token, apiFetch, loadRolePerms])
+  }, [token, user, apiFetch, loadRolePerms])
 
   useEffect(() => {
     if (!authLoading) {
-      if (token) fetchData()
+      if (token || user) fetchData()
       else setIsLoading(false)
     }
-  }, [authLoading, token]) // eslint-disable-line
+  }, [authLoading, token, user]) // eslint-disable-line
 
   const toggleUnifiedPermission = (p: any) => {
     const allOn = p.ids.every((id: string) => rolePermissions.includes(id))
@@ -406,7 +410,7 @@ export default function RolesPage() {
     setRolePermissions(prev => allOn ? prev.filter(id => !allIds.includes(id)) : [...new Set([...prev, ...allIds])])
   }
 
-  if (authLoading) {
+  if (authLoading || (user && !token && isLoading)) {
     return (
       <AdminLayout>
         <div className="flex flex-col items-center justify-center h-[70vh] gap-4">
@@ -417,7 +421,7 @@ export default function RolesPage() {
     )
   }
 
-  if (!token) {
+  if (!user && !token) {
     return (
       <AdminLayout>
         <div className="flex flex-col items-center justify-center h-[70vh] gap-4">
@@ -429,6 +433,24 @@ export default function RolesPage() {
             className="px-6 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700"
           >
             Go to Login
+          </button>
+        </div>
+      </AdminLayout>
+    )
+  }
+
+  if (!authLoading && !isAdmin) {
+    return (
+      <AdminLayout>
+        <div className="flex flex-col items-center justify-center h-[70vh] gap-4">
+          <Shield size={48} className="text-red-500" />
+          <p className="text-xl font-bold text-gray-900">Access Restricted</p>
+          <p className="text-sm text-gray-500">Only Administrators have permission to view and manage roles and permissions.</p>
+          <button
+            onClick={() => window.location.href = '/dashboard'}
+            className="px-6 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700"
+          >
+            Back to Dashboard
           </button>
         </div>
       </AdminLayout>

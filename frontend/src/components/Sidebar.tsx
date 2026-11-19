@@ -16,7 +16,7 @@ interface SidebarProps {
 
 export default function Sidebar({ visible, onClose }: SidebarProps) {
   const router = useRouter();
-  const { user, logout } = useAuth();
+  const { user, logout, hasPermission } = useAuth();
   const slideAnim = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
   const [checkingUpdate, setCheckingUpdate] = useState(false);
 
@@ -36,9 +36,9 @@ export default function Sidebar({ visible, onClose }: SidebarProps) {
     }
   }, [visible]);
 
-  const roleUpper = user?.role?.toUpperCase() || '';
+  const roleUpper = (typeof (user?.role as any) === 'object' ? (user?.role as any)?.name : user?.role)?.toUpperCase() || '';
   const isSuperAdminEmail = user?.email?.toLowerCase() === 'torqueautoadvisor@gmail.com';
-  const isAdmin = roleUpper === 'SUPER ADMIN' || roleUpper === 'ADMIN' || roleUpper.includes('ADMIN') || isSuperAdminEmail;
+  const isAdmin = roleUpper === 'SUPER ADMIN' || roleUpper === 'SUPER_ADMIN' || roleUpper === 'ADMIN' || (roleUpper.includes('ADMIN') && !roleUpper.includes('MANAGER')) || isSuperAdminEmail;
   const isManager = roleUpper === 'MANAGER' || (roleUpper.includes('MANAGER') && !roleUpper.includes('HR'));
   const isAccountant = roleUpper === 'ACCOUNTANT' || roleUpper.includes('ACCOUNT') || roleUpper.includes('FINANCE');
   const isHrManager = roleUpper === 'HR MANAGER' || roleUpper === 'HR' || roleUpper.includes('HR');
@@ -48,44 +48,44 @@ export default function Sidebar({ visible, onClose }: SidebarProps) {
       label: 'OVERVIEW',
       items: [
         { name: 'Dashboard', icon: 'home-outline', route: '/(protected)/dashboard', visible: true },
-        { name: 'Reports', icon: 'bar-chart-outline', route: '/(protected)/reports', visible: isAdmin || isManager },
+        { name: 'Reports', icon: 'bar-chart-outline', route: '/(protected)/reports', visible: isAdmin || isManager || hasPermission('dashboard.view_admin') || hasPermission('dashboard.view_manager') || hasPermission('report.view') },
       ]
     },
     {
       label: 'SALES & CRM',
       items: [
-        { name: isAdmin || isManager ? 'List Management' : 'My List', icon: 'list-outline', route: '/(protected)/leads', visible: !isHrManager && !isAccountant },
-        { name: 'Today Follow-ups', icon: 'calendar-outline', route: '/(protected)/follow-ups', visible: !isHrManager && !isAccountant },
+        { name: isAdmin || isManager ? 'List Management' : 'My List', icon: 'list-outline', route: '/(protected)/leads', visible: isAdmin || isManager || hasPermission('lead.view') || (!isHrManager && !isAccountant) },
+        { name: 'Today Follow-ups', icon: 'calendar-outline', route: '/(protected)/follow-ups', visible: isAdmin || isManager || hasPermission('lead.view') || (!isHrManager && !isAccountant) },
         { name: 'Rate Calculator', icon: 'calculator-outline', route: '/(protected)/rate-calculator', visible: true },
-        { name: 'Quotation Relationship', icon: 'options-outline', route: '/(protected)/rates-management', visible: isAdmin || isManager },
-        { name: 'Policies PDF', icon: 'shield-checkmark-outline', route: '/(protected)/policies', visible: isAdmin || isManager },
-        { name: 'Import List', icon: 'cloud-upload-outline', route: '/(protected)/leads/import', visible: isAdmin },
-        { name: 'Spreadsheets', icon: 'grid-outline', route: '/(protected)/sheets', visible: isAdmin },
-        { name: 'CRM Pipeline', icon: 'person-add-outline', route: '/(protected)/crm', visible: !isAccountant && !isHrManager },
+        { name: 'Quotation Relationship', icon: 'options-outline', route: '/(protected)/rates-management', visible: isAdmin },
+        { name: 'Policies PDF', icon: 'shield-checkmark-outline', route: '/(protected)/policies', visible: isAdmin || isManager || hasPermission('quotation.generate_pdf') || hasPermission('policy.view') },
+        { name: 'Import List', icon: 'cloud-upload-outline', route: '/(protected)/leads/import', visible: isAdmin || hasPermission('lead.import') },
+        { name: 'Spreadsheets', icon: 'grid-outline', route: '/(protected)/sheets', visible: isAdmin || hasPermission('data.view') || hasPermission('data.manage_documents') },
+        { name: 'CRM Pipeline', icon: 'person-add-outline', route: '/(protected)/crm', visible: isAdmin || hasPermission('crm.view') || (!isAccountant && !isHrManager) },
       ]
     },
     {
       label: 'OPERATIONS',
       items: [
-        { name: 'Loan Inquiries', icon: 'clipboard-outline', route: '/(protected)/loan-inquiries', visible: !isAccountant && !isHrManager },
-        { name: 'Vehicle Loans', icon: 'cash-outline', route: '/(protected)/loans', visible: !isAccountant && !isHrManager },
-        { name: 'Claims Hub', icon: 'document-text-outline', route: '/(protected)/claims', visible: !isHrManager && (isAdmin || isManager || roleUpper.includes('CLAIM')) },
-        { name: 'RTO Work', icon: 'car-outline', route: '/(protected)/rto', visible: !isHrManager && (isAdmin || isManager || roleUpper.includes('RTO')) },
-        { name: 'Fitness Desk', icon: 'fitness-outline', route: '/(protected)/fitness', visible: !isHrManager && (isAdmin || isManager || roleUpper.includes('FITNESS')) },
-        { name: 'Cheques Clearing', icon: 'card-outline', route: '/(protected)/cheques', visible: isAdmin || isManager || isAccountant },
-        { name: 'Credit', icon: 'wallet-outline', route: '/(protected)/ughrani', visible: isAdmin || isManager || isAccountant },
+        { name: 'Loan Inquiries', icon: 'clipboard-outline', route: '/(protected)/loan-inquiries', visible: isAdmin || hasPermission('loan.view') || (!isAccountant && !isHrManager) },
+        { name: 'Vehicle Loans', icon: 'cash-outline', route: '/(protected)/loans', visible: isAdmin || hasPermission('loan.view') || (!isAccountant && !isHrManager) },
+        { name: 'Claims Hub', icon: 'document-text-outline', route: '/(protected)/claims', visible: isAdmin || hasPermission('claims.view') || (!isHrManager && (isManager || roleUpper.includes('CLAIM'))) },
+        { name: 'RTO Work', icon: 'car-outline', route: '/(protected)/rto', visible: isAdmin || hasPermission('rto.view') || (!isHrManager && (isManager || roleUpper.includes('RTO'))) },
+        { name: 'Fitness Desk', icon: 'fitness-outline', route: '/(protected)/fitness', visible: isAdmin || hasPermission('fitness.view') || (!isHrManager && (isManager || roleUpper.includes('FITNESS'))) },
+        { name: 'Cheques Clearing', icon: 'card-outline', route: '/(protected)/cheques', visible: isAdmin || isManager || isAccountant || hasPermission('accounts.view') },
+        { name: 'Credit', icon: 'wallet-outline', route: '/(protected)/ughrani', visible: isAdmin || isManager || isAccountant || hasPermission('accounts.view') },
       ]
     },
     {
       label: 'MANAGEMENT & FINANCE',
       items: [
-        { name: 'Policies To Be Done', icon: 'shield-checkmark-outline', route: '/(protected)/policy-approvals', visible: isAdmin || isManager },
-        { name: 'Finance & Ledger', icon: 'wallet-outline', route: '/(protected)/finance', visible: isAdmin || isAccountant },
-        { name: 'Users & Staff', icon: 'person-outline', route: '/(protected)/users', visible: isAdmin || isHrManager },
-        { name: 'Onboarding Approvals', icon: 'checkmark-circle-outline', route: '/(protected)/onboarding-approvals', visible: isAdmin || isHrManager || isManager },
-        { name: 'Payroll & Salaries', icon: 'cash-outline', route: '/(protected)/payroll', visible: isAdmin || isHrManager },
+        { name: 'Policies To Be Done', icon: 'shield-checkmark-outline', route: '/(protected)/policy-approvals', visible: isAdmin || isManager || hasPermission('policy.view') },
+        { name: 'Finance & Ledger', icon: 'wallet-outline', route: '/(protected)/finance', visible: isAdmin || isAccountant || hasPermission('accounts.view') },
+        { name: 'Users & Staff', icon: 'person-outline', route: '/(protected)/users', visible: isAdmin || isHrManager || hasPermission('user.view') },
+        { name: 'Onboarding Approvals', icon: 'checkmark-circle-outline', route: '/(protected)/onboarding-approvals', visible: isAdmin || isHrManager || isManager || hasPermission('user.create') },
+        { name: 'Payroll & Salaries', icon: 'cash-outline', route: '/(protected)/payroll', visible: isAdmin || isHrManager || hasPermission('accounts.manage_salary') },
         { name: 'HR Desk', icon: 'people-circle-outline', route: '/(protected)/hr', visible: true },
-        { name: 'Customer Responses', icon: 'chatbubbles-outline', route: '/(protected)/responses', visible: isAdmin },
+        { name: 'Customer Responses', icon: 'chatbubbles-outline', route: '/(protected)/responses', visible: isAdmin || hasPermission('template.view') },
         { name: 'Roles & Permissions', icon: 'ribbon-outline', route: '/(protected)/roles', visible: isAdmin },
         { name: 'Settings', icon: 'settings-outline', route: '/(protected)/settings', visible: true },
       ]

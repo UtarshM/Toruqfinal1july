@@ -69,11 +69,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       if (response.ok) {
         const data = await response.json()
-        const rolePermissions = data.role?.permissions?.map((p: any) => p.name) || []
-        const userPermissions = data.permissions?.map((p: any) => p.name) || []
+        const rolePermissions = (data.role?.permissions || []).map((p: any) => typeof p === 'string' ? p : p.name)
+        const userPermissions = (data.permissions || []).map((p: any) => typeof p === 'string' ? p : p.name)
+        const isSuperAdminEmail = (data.email || session.user?.email || '').toLowerCase() === 'torqueautoadvisor@gmail.com'
         const profile = {
           ...data,
-          permissions: Array.from(new Set([...rolePermissions, ...userPermissions]))
+          permissions: isSuperAdminEmail || (data.permissions && data.permissions.includes('*'))
+            ? ['*']
+            : Array.from(new Set([...rolePermissions, ...userPermissions])).filter(Boolean)
         }
         setUser(profile)
         lastProfileFetchRef.current = Date.now()
@@ -125,7 +128,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Track whether we have a cached profile from localStorage
     let hasCachedProfile = false
 
-    // 1. Instantly restore cached user profile on mount so UI does not flash or lag
+    // 1. Instantly restore cached user profile & token on mount so UI does not flash or lag
     if (typeof window !== 'undefined') {
       try {
         const cached = localStorage.getItem('toque_user_profile')
@@ -133,6 +136,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setUser(JSON.parse(cached))
           setIsLoading(false)
           hasCachedProfile = true
+        }
+
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i)
+          if (k && (k.startsWith('sb-') || k.includes('auth-token'))) {
+            try {
+              const raw = localStorage.getItem(k)
+              if (raw) {
+                const parsed = JSON.parse(raw)
+                const tok = parsed?.access_token || parsed?.currentSession?.access_token || (Array.isArray(parsed) && parsed[0]?.access_token)
+                if (tok) {
+                  setToken(tok)
+                  break
+                }
+              }
+            } catch {}
+          }
         }
       } catch {}
     }

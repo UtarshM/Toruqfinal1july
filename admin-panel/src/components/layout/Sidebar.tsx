@@ -87,6 +87,11 @@ export default function Sidebar() {
       items = items.filter(i => i.name !== 'Quotation Relationship')
     }
 
+    // Roles & Permissions is strictly admin-only configuration
+    if (!isAdmin) {
+      items = items.filter(i => i.name !== 'Roles & Permissions')
+    }
+
     if (isHr) {
       // HR manages Users, Onboarding Approvals, HR, Settings, plus Operations and Rate Calculator
       if (group.label === 'SALES') {

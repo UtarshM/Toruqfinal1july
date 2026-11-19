@@ -760,9 +760,10 @@ export default function RateCalculatorPage() {
               disabled={!currentCalc.canCalc}
               onClick={() => {
                 const advisorName = user?.fullName || (user as any)?.full_name || (user as any)?.name || 'Sales 1'
-                const shortComp = getShortCompanyName(currentSubCalc.companyName || `Option ${activeTab}`)
+                const advisorPhone = (user as any)?.personalMobile || (user as any)?.phone || ''
+                const fullComp = (currentSubCalc.companyName || `Option ${activeTab}`).trim()
                 const params = new URLSearchParams({
-                  company: shortComp,
+                  company: fullComp,
                   date: formatDateDMY(recordDate),
                   netPremium: String(currentCalc.numNet),
                   totalPremium: String(currentCalc.numTotal),
@@ -770,6 +771,7 @@ export default function RateCalculatorPage() {
                   benefit: String(currentCalc.benefit),
                   remarks: currentSubCalc.remarks || '',
                   advisor: advisorName,
+                  ...(advisorPhone && { phone: advisorPhone }),
                 })
                 window.open(`/api/v1/rates/image?${params.toString()}`, '_blank')
               }}
@@ -957,7 +959,7 @@ export default function RateCalculatorPage() {
                                   <div>Net: ₹{Number(c2.netPremium || 0).toLocaleString()}</div>
                                   <div>Total: ₹{Number(c2.totalPremium || 0).toLocaleString()}</div>
                                   <div className="font-bold text-emerald-700">Rate: ₹{Number(c2.rate || 0).toLocaleString()}</div>
-                                  {c2.profit !== undefined && (
+                                  {isAdmin && c2.profit !== undefined && (
                                     <div className="font-bold text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 text-[10px] inline-block">
                                       Profit 2: ₹{Number(c2.profit || 0).toLocaleString()}
                                     </div>
@@ -987,7 +989,7 @@ export default function RateCalculatorPage() {
                                   <div>Net: ₹{Number(c3.netPremium || 0).toLocaleString()}</div>
                                   <div>Total: ₹{Number(c3.totalPremium || 0).toLocaleString()}</div>
                                   <div className="font-bold text-emerald-700">Rate: ₹{Number(c3.rate || 0).toLocaleString()}</div>
-                                  {c3.profit !== undefined && (
+                                  {isAdmin && c3.profit !== undefined && (
                                     <div className="font-bold text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 text-[10px] inline-block">
                                       Profit 3: ₹{Number(c3.profit || 0).toLocaleString()}
                                     </div>
@@ -1013,9 +1015,10 @@ export default function RateCalculatorPage() {
                               <button
                                 onClick={() => {
                                   const advisorName = user?.fullName || (user as any)?.full_name || (user as any)?.name || 'Sales 1'
-                                  const shortComp = getShortCompanyName(c1.companyName || 'Insurance')
+                                  const advisorPhone = (user as any)?.personalMobile || (user as any)?.phone || ''
+                                  const fullComp = (c1.companyName || 'Insurance').trim()
                                   const params = new URLSearchParams({
-                                    company: shortComp,
+                                    company: fullComp,
                                     date: rec.date ? formatDateDMY(rec.date) : '',
                                     netPremium: String(c1.netPremium || ''),
                                     totalPremium: String(c1.totalPremium || ''),
@@ -1023,6 +1026,7 @@ export default function RateCalculatorPage() {
                                     benefit: String(c1.benefit || ''),
                                     remarks: c1.remarks || '',
                                     advisor: advisorName,
+                                    ...(advisorPhone && { phone: advisorPhone }),
                                   })
                                   window.open(`/api/v1/rates/image?${params.toString()}`, '_blank')
                                 }}

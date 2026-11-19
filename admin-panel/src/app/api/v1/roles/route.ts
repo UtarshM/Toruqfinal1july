@@ -1,10 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
-import { validateAuth } from '@/lib/auth-guard'
+import { validateAuth, invalidateAuthCache } from '@/lib/auth-guard'
+
+function checkIsAdmin(context: any): boolean {
+  if (!context) return false
+  const roleUpper = (context.role || '').toUpperCase()
+  const isSuperAdminEmail = context.email?.toLowerCase() === 'torqueautoadvisor@gmail.com'
+  return roleUpper === 'SUPER ADMIN' || roleUpper === 'SUPER_ADMIN' || roleUpper === 'ADMIN' || (roleUpper.includes('ADMIN') && !roleUpper.includes('MANAGER')) || isSuperAdminEmail || context.permissions?.includes('*')
+}
 
 export async function GET(req: NextRequest) {
-  const { error } = await validateAuth(req, 'role.view')
+  const { context, error } = await validateAuth(req, 'role.view')
   if (error) return error
+
+  if (!checkIsAdmin(context)) {
+    return NextResponse.json({ error: 'Forbidden: Only Administrators can view roles and permissions' }, { status: 403 })
+  }
 
   try {
     const roles = await prisma.role.findMany({
@@ -16,6 +27,7 @@ export async function GET(req: NextRequest) {
         },
         permissions: {
           select: {
+            id: true,
             name: true,
             description: true
           }
@@ -33,8 +45,12 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const { error } = await validateAuth(req, 'role.edit')
+  const { context, error } = await validateAuth(req, 'role.edit')
   if (error) return error
+
+  if (!checkIsAdmin(context)) {
+    return NextResponse.json({ error: 'Forbidden: Only Administrators can create roles' }, { status: 403 })
+  }
 
   try {
     const body = await req.json()
@@ -56,6 +72,7 @@ export async function POST(req: NextRequest) {
         description: description?.trim() || null
       }
     })
+    invalidateAuthCache()
     return NextResponse.json(role)
   } catch (err: any) {
     console.error('POST /api/v1/roles error:', err)

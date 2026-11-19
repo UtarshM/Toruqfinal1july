@@ -11,7 +11,20 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'User profile not found' }, { status: 404 })
   }
 
-  return NextResponse.json(userProfile)
+  // Extract clean deduplicated string permissions from role + direct permissions
+  const rolePerms = (userProfile.role?.permissions || []).map((p: any) => typeof p === 'string' ? p : p.name)
+  const directPerms = (userProfile.permissions || []).map((p: any) => typeof p === 'string' ? p : p.name)
+  const mergedPermissions = Array.from(new Set([...rolePerms, ...directPerms]))
+
+  const isSuperAdminEmail = userProfile.email?.toLowerCase() === 'torqueautoadvisor@gmail.com'
+  const roleName = isSuperAdminEmail ? 'Super Admin' : (userProfile.role?.name || 'Staff')
+
+  return NextResponse.json({
+    ...userProfile,
+    role: userProfile.role || { name: roleName },
+    roleName,
+    permissions: isSuperAdminEmail ? ['*'] : mergedPermissions
+  })
 }
 
 export async function PATCH(req: NextRequest) {
