@@ -102,7 +102,7 @@ async function request<T = any>(method: string, path: string, body?: any, isRetr
   }
 
   // Trim trailing slashes from the path to avoid Next.js redirects
-  const cleanPath = path.replace(/\/$/, '');
+  const cleanPath = path.replace(/\/+(\?|$)/, '$1');
   const url = `${BASE_URL}/api/v1${cleanPath}`;
 
   try {

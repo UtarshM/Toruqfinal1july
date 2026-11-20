@@ -93,7 +93,7 @@ export default function ClaimsPage() {
 
   const loadCurrentUser = () => {
     try {
-      const stored = localStorage.getItem('torque_user')
+      const stored = localStorage.getItem('toque_user_profile') || localStorage.getItem('torque_user')
       if (stored) {
         const u = JSON.parse(stored)
         if (u.email) {

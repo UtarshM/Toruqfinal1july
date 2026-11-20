@@ -171,7 +171,7 @@ export default function ClaimsScreen() {
   const load = useCallback(async () => {
     try {
       const params = filter !== 'all' ? `?status=${filter}` : '';
-      const data = await api.get<any[]>(`/claims/${params}`);
+      const data = await api.get<any[]>(`/claims${params}`);
       const arr = Array.isArray(data) ? data : (data as any).items || [];
       setItems(arr);
       setTotal(arr.length);
