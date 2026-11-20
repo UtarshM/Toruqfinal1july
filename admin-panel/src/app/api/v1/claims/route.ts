@@ -90,18 +90,30 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
     
-    // Auto-link policy/lead info if policy_id / policyId is selected
+    // Auto-link policy/lead info if policy_id / policyId is selected or match by policyNumber
     const policyId = body.policyId || body.policy_id || null
     let { customerName, policyNumber, vehicleNumber, leadId } = body
-    
-    if (policyId && (!customerName || !policyNumber || !vehicleNumber)) {
+    let finalPolicyId = policyId
+
+    if (finalPolicyId) {
       const policy = await prisma.policy.findUnique({
-        where: { id: policyId },
+        where: { id: finalPolicyId },
         include: { lead: true }
       })
       if (policy) {
         customerName = customerName || policy.lead?.clientName || body.contactPersonName || 'Customer'
         policyNumber = policyNumber || policy.policyNumber
+        vehicleNumber = vehicleNumber || policy.lead?.vehicleNo || body.vehicleRegNumber
+        leadId = leadId || policy.leadId
+      }
+    } else if (policyNumber && policyNumber.trim()) {
+      const policy = await prisma.policy.findFirst({
+        where: { policyNumber: policyNumber.trim() },
+        include: { lead: true }
+      })
+      if (policy) {
+        finalPolicyId = policy.id
+        customerName = customerName || policy.lead?.clientName || body.contactPersonName || 'Customer'
         vehicleNumber = vehicleNumber || policy.lead?.vehicleNo || body.vehicleRegNumber
         leadId = leadId || policy.leadId
       }
@@ -133,7 +145,7 @@ export async function POST(req: NextRequest) {
 
     const claim = await prisma.claim.create({
       data: {
-        policyId: policyId || undefined,
+        policyId: finalPolicyId || undefined,
         leadId: leadId || undefined,
         assignedTo: body.assigned_to || body.assignedTo || (context as any)?.userId || undefined,
         customerName: customer,

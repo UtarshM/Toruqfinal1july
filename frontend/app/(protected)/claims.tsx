@@ -128,6 +128,7 @@ export default function ClaimsScreen() {
   const [addModalVisible, setAddModalVisible] = useState(false);
   const [saving, setSaving] = useState(false);
   const [newClaim, setNewClaim] = useState({
+    policyId: '',
     policyNumber: '',
     customerName: '',
     vehicleNumber: '',
@@ -196,6 +197,7 @@ export default function ClaimsScreen() {
     setSaving(true);
     try {
       await api.post('/claims', {
+        policyId: newClaim.policyId || undefined,
         policyNumber: newClaim.policyNumber.trim(),
         customerName: newClaim.customerName.trim(),
         vehicleNumber: newClaim.vehicleNumber.trim() || null,
@@ -204,7 +206,7 @@ export default function ClaimsScreen() {
         incident_date: newClaim.incident_date ? new Date(newClaim.incident_date).toISOString() : null
       });
       setAddModalVisible(false);
-      setNewClaim({ policyNumber: '', customerName: '', vehicleNumber: '', claimType: 'Accidental Damage', claimAmount: '', incident_date: '' });
+      setNewClaim({ policyId: '', policyNumber: '', customerName: '', vehicleNumber: '', claimType: 'Accidental Damage', claimAmount: '', incident_date: '' });
       Alert.alert('Success', 'Claim filed successfully!');
       load();
     } catch (e: any) {
@@ -303,6 +305,7 @@ export default function ClaimsScreen() {
                   if (policy) {
                     setNewClaim(prev => ({
                       ...prev,
+                      policyId: policy.id,
                       policyNumber: policy.policyNumber,
                       customerName: policy.lead?.clientName || 'Direct Policy',
                       vehicleNumber: policy.lead?.vehicleNo || ''
