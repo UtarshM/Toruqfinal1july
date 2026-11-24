@@ -29,6 +29,11 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { saveFileToDevice } from '../utils/fileSaver';
 import DatePickerSelector from './DatePickerSelector';
+import {
+  CONFIRMATION_TEMPLATES,
+  ConfirmationData,
+  TemplateKey
+} from '../utils/confirmationTemplates';
 
 export function formatToDateMonthYear(dateVal: any): string {
   if (!dateVal) return '';
@@ -86,7 +91,11 @@ export const DOCUMENT_CATEGORIES: Record<string, string> = {
   RC_BOOK: 'RC book',
   VEHICLE_PHOTO: 'Vehicle Photo for body type',
   INSPECTION_REPORT: 'Inspection Report',
-  AMOUNT_DUE_DATE_SS: 'Amount & Due Date Confirmation Screenshot'
+  AMOUNT_DUE_DATE_SS: 'Amount & Due Date Confirmation Screenshot',
+  NO_JACK_COVER_SS: 'No Jack Cover Confirmation Screenshot',
+  NO_TOWING_SS: 'No Towing Confirmation Screenshot',
+  BODY_TYPE_SS: 'Body Type Mismatch Confirmation Screenshot',
+  CHEQUE_SS: 'Customer Cheque Confirmation Screenshot'
 };
 
 export const REQUIRED_DOCUMENTS = [
@@ -151,8 +160,27 @@ export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClo
     inspectionStatus: 'Not Applicable',
     mparivahanRcStatus: '',
     amountDueDateMsgSS: '',
-    creditPaymentMsg: ''
+    creditPaymentMsg: '',
+    // 7 Customer Confirmation Template fields
+    cfExpiryDate: lead?.fitnessExpiry ? formatToDateMonthYear(lead.fitnessExpiry) : '',
+    gujaratPermitExpiryDate: '',
+    nationalPermitExpiryDate: '',
+    pucExpiryDate: '',
+    pypCompany: lead?.previousPolicyCompany || '',
+    bodyTypeRc: '',
+    bodyTypeActual: '',
+    bankName: '',
+    chequeNo: '',
+    chequeDepositDate: '',
+    depositAmount: '10,000',
+    discountRs: '',
+    totalReturnAmount: '',
+    dueAmount: '',
+    insCompany: lead?.provider || '',
+    confirmationMsgs: {}
   });
+
+  const [selectedMsgTemplate, setSelectedMsgTemplate] = useState<TemplateKey>('imp_date');
 
   // Manager action states
   const [revertReason, setRevertReason] = useState('');
@@ -216,7 +244,23 @@ export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClo
             regNo: submissionData.formData.regNo || lead?.vehicleNo || lead?.vehicle_number || '',
             mobileNo1: submissionData.formData.mobileNo1 || lead?.clientPhone || lead?.phone || '',
             expDate: formatToDateMonthYear(submissionData.formData.expDate || lead?.expiryDate),
-            creditPaymentMsg: submissionData.formData.creditPaymentMsg || ''
+            creditPaymentMsg: submissionData.formData.creditPaymentMsg || '',
+            cfExpiryDate: submissionData.formData.cfExpiryDate || (lead?.fitnessExpiry ? formatToDateMonthYear(lead.fitnessExpiry) : ''),
+            gujaratPermitExpiryDate: submissionData.formData.gujaratPermitExpiryDate || '',
+            nationalPermitExpiryDate: submissionData.formData.nationalPermitExpiryDate || '',
+            pucExpiryDate: submissionData.formData.pucExpiryDate || '',
+            pypCompany: submissionData.formData.pypCompany || lead?.previousPolicyCompany || '',
+            bodyTypeRc: submissionData.formData.bodyTypeRc || '',
+            bodyTypeActual: submissionData.formData.bodyTypeActual || '',
+            bankName: submissionData.formData.bankName || '',
+            chequeNo: submissionData.formData.chequeNo || '',
+            chequeDepositDate: submissionData.formData.chequeDepositDate || '',
+            depositAmount: submissionData.formData.depositAmount || '10,000',
+            discountRs: submissionData.formData.discountRs || '',
+            totalReturnAmount: submissionData.formData.totalReturnAmount || '',
+            dueAmount: submissionData.formData.dueAmount || '',
+            insCompany: submissionData.formData.insCompany || lead?.provider || '',
+            confirmationMsgs: submissionData.formData.confirmationMsgs || {}
           }));
         }
       }
@@ -229,6 +273,84 @@ export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClo
 
   const handleFieldChange = (key: string, val: string) => {
     setFormData((prev: any) => ({ ...prev, [key]: val }));
+  };
+
+  const getConfirmationData = (): ConfirmationData => {
+    return {
+      customerName: lead?.clientName || 'Customer Name',
+      vehicleNo: formData.regNo || lead?.vehicleNo || lead?.vehicle_number || '',
+      policyType: formData.policyType || 'nil dep',
+      insCompany: formData.insCompany || formData.provider || lead?.provider || 'Insurance Company',
+      cfExpiryDate: formData.cfExpiryDate || (lead?.fitnessExpiry ? formatToDateMonthYear(lead.fitnessExpiry) : ''),
+      gujaratPermitExpiryDate: formData.gujaratPermitExpiryDate || '',
+      nationalPermitExpiryDate: formData.nationalPermitExpiryDate || '',
+      pucExpiryDate: formData.pucExpiryDate || '',
+      pypCompany: formData.pypCompany || lead?.previousPolicyCompany || '',
+      bodyTypeRc: formData.bodyTypeRc || '',
+      bodyTypeActual: formData.bodyTypeActual || '',
+      bankName: formData.bankName || '',
+      chequeNo: formData.chequeNo || '',
+      chequeDepositDate: formData.chequeDepositDate || '',
+      depositAmount: formData.depositAmount || '10,000',
+      discountRs: formData.discountRs || '',
+      totalReturnAmount: formData.totalReturnAmount || '',
+      rsFromCustomer: formData.rsFromCustomer || formData.rate || '',
+      dueAmount: formData.dueAmount || formData.rsFromCustomer || formData.rate || '',
+      dueDate: formData.dueDate || ''
+    };
+  };
+
+  const getActiveMessageText = (templateKey: TemplateKey): string => {
+    const custom = formData.confirmationMsgs?.[templateKey];
+    if (custom !== undefined && custom !== '') {
+      return custom;
+    }
+    if (templateKey === 'payment_baki' && formData.creditPaymentMsg) {
+      return formData.creditPaymentMsg;
+    }
+    const def = CONFIRMATION_TEMPLATES.find(t => t.key === templateKey);
+    return def ? def.generate(getConfirmationData()) : '';
+  };
+
+  const handleMessageChange = (templateKey: TemplateKey, text: string) => {
+    const updatedMsgs = {
+      ...(formData.confirmationMsgs || {}),
+      [templateKey]: text
+    };
+    setFormData((prev: any) => ({
+      ...prev,
+      confirmationMsgs: updatedMsgs,
+      ...(templateKey === 'payment_baki' ? { creditPaymentMsg: text } : {})
+    }));
+  };
+
+  const handleResetMessage = (templateKey: TemplateKey) => {
+    const def = CONFIRMATION_TEMPLATES.find(t => t.key === templateKey);
+    const defaultText = def ? def.generate(getConfirmationData()) : '';
+    const updatedMsgs = {
+      ...(formData.confirmationMsgs || {}),
+      [templateKey]: defaultText
+    };
+    setFormData((prev: any) => ({
+      ...prev,
+      confirmationMsgs: updatedMsgs,
+      ...(templateKey === 'payment_baki' ? { creditPaymentMsg: defaultText } : {})
+    }));
+  };
+
+  const handleCopyMessage = (templateKey: TemplateKey) => {
+    const msg = getActiveMessageText(templateKey);
+    Clipboard.setString(msg);
+    setMsgCopied(true);
+    setTimeout(() => setMsgCopied(false), 2000);
+    Alert.alert('Copied', 'Customer confirmation message copied to clipboard!');
+  };
+
+  const handleSendWhatsApp = (templateKey: TemplateKey) => {
+    const msg = getActiveMessageText(templateKey);
+    const phone = (formData.mobileNo1 || lead?.clientPhone || lead?.phone || '').replace(/\D/g, '');
+    const url = phone ? `https://wa.me/${phone}?text=${encodeURIComponent(msg)}` : `https://wa.me/?text=${encodeURIComponent(msg)}`;
+    Linking.openURL(url);
   };
 
   const handleSaveDraft = async () => {
@@ -1516,25 +1638,55 @@ export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClo
                     </View>
                   )}
 
-                  {/* Gujarati Payment Confirmation Message (Fully Editable - Visible for ALL payment modes) */}
+                  {/* Customer Approval WhatsApp Messages (7 Templates with dynamic variables, editable preview, Copy & WhatsApp) */}
                   <View style={styles.editableMsgCard}>
                     <View style={styles.editableMsgHeader}>
                       <View style={styles.editableMsgTitleRow}>
-                        <Ionicons name="chatbox-ellipses-outline" size={16} color="#7C3AED" />
-                        <Text style={styles.editableMsgTitle}>Customer Confirmation Msg (Gujarati)</Text>
+                        <Ionicons name="chatbubbles" size={17} color="#7C3AED" />
+                        <View>
+                          <Text style={styles.editableMsgTitle}>Customer Approval WhatsApp Messages</Text>
+                          <Text style={styles.editableMsgSubtitle}>ગ્રાહક કન્ફર્મેશન મેસેજ ટેમ્પલેટ્સ</Text>
+                        </View>
+                      </View>
+                    </View>
+
+                    {/* Horizontal Template Selector Tabs */}
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.templateTabsScroll}>
+                      {CONFIRMATION_TEMPLATES.map((tmpl) => {
+                        const isActive = selectedMsgTemplate === tmpl.key;
+                        return (
+                          <Pressable
+                            key={tmpl.key}
+                            style={[styles.templateTabChip, isActive && styles.templateTabChipActive]}
+                            onPress={() => setSelectedMsgTemplate(tmpl.key)}
+                          >
+                            <Ionicons
+                              name={tmpl.icon as any}
+                              size={14}
+                              color={isActive ? '#FFFFFF' : '#7C3AED'}
+                            />
+                            <Text style={[styles.templateTabChipText, isActive && styles.templateTabChipTextActive]}>
+                              {tmpl.title}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </ScrollView>
+
+                    {/* Active Template Meta */}
+                    <View style={styles.activeTemplateBanner}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.activeTemplateTitle}>
+                          {CONFIRMATION_TEMPLATES.find(t => t.key === selectedMsgTemplate)?.title}
+                        </Text>
+                        <Text style={styles.activeTemplateDesc}>
+                          {CONFIRMATION_TEMPLATES.find(t => t.key === selectedMsgTemplate)?.gujaratiTitle}
+                        </Text>
                       </View>
                       <View style={styles.editableMsgActions}>
                         <Pressable
                           style={styles.copyMsgBtn}
-                          onPress={() => {
-                            const msg = formData.creditPaymentMsg !== undefined && formData.creditPaymentMsg !== ''
-                              ? formData.creditPaymentMsg
-                              : getDefaultCreditPaymentMsg(lead?.clientName, formData.regNo || lead?.vehicleNo, formData.rate || formData.rsFromCustomer, formData.dueDate);
-                            Clipboard.setString(msg);
-                            setMsgCopied(true);
-                            setTimeout(() => setMsgCopied(false), 2000);
-                            Alert.alert('Copied', 'Gujarati confirmation message copied to clipboard!');
-                          }}
+                          onPress={() => handleCopyMessage(selectedMsgTemplate)}
                         >
                           <Ionicons name={msgCopied ? 'checkmark-circle' : 'copy-outline'} size={14} color="#7C3AED" />
                           <Text style={styles.copyMsgBtnText}>{msgCopied ? 'Copied' : 'Copy'}</Text>
@@ -1542,13 +1694,7 @@ export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClo
 
                         <Pressable
                           style={styles.sendWhatsAppBtn}
-                          onPress={() => {
-                            const msg = formData.creditPaymentMsg !== undefined && formData.creditPaymentMsg !== ''
-                              ? formData.creditPaymentMsg
-                              : getDefaultCreditPaymentMsg(lead?.clientName, formData.regNo || lead?.vehicleNo, formData.rate || formData.rsFromCustomer, formData.dueDate);
-                            const phone = (formData.mobileNo1 || lead?.clientPhone || '').replace(/\D/g, '');
-                            Linking.openURL(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`);
-                          }}
+                          onPress={() => handleSendWhatsApp(selectedMsgTemplate)}
                         >
                           <Ionicons name="logo-whatsapp" size={14} color="#FFFFFF" />
                           <Text style={styles.sendWhatsAppBtnText}>WhatsApp</Text>
@@ -1556,31 +1702,222 @@ export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClo
                       </View>
                     </View>
 
+                    {/* Quick Variable Inputs for Active Template */}
+                    {selectedMsgTemplate === 'imp_date' && (
+                      <View style={styles.quickInputsGrid}>
+                        <Text style={styles.quickInputsHeading}>Variables for IMP Date Confirmation:</Text>
+                        <View style={styles.quickInputRow}>
+                          <View style={styles.quickInputField}>
+                            <DatePickerSelector
+                              label="Passing (CF) Expiry"
+                              value={formData.cfExpiryDate}
+                              onChange={(v: string) => handleFieldChange('cfExpiryDate', v)}
+                              placeholder="DD/MM/YYYY"
+                              format="DD/MM/YYYY"
+                            />
+                          </View>
+                          <View style={styles.quickInputField}>
+                            <DatePickerSelector
+                              label="PUC Expiry"
+                              value={formData.pucExpiryDate}
+                              onChange={(v: string) => handleFieldChange('pucExpiryDate', v)}
+                              placeholder="DD/MM/YYYY"
+                              format="DD/MM/YYYY"
+                            />
+                          </View>
+                        </View>
+                        <View style={styles.quickInputRow}>
+                          <View style={styles.quickInputField}>
+                            <DatePickerSelector
+                              label="Gujarat Permit Expiry"
+                              value={formData.gujaratPermitExpiryDate}
+                              onChange={(v: string) => handleFieldChange('gujaratPermitExpiryDate', v)}
+                              placeholder="DD/MM/YYYY (Optional)"
+                              format="DD/MM/YYYY"
+                            />
+                          </View>
+                          <View style={styles.quickInputField}>
+                            <DatePickerSelector
+                              label="National Permit Expiry"
+                              value={formData.nationalPermitExpiryDate}
+                              onChange={(v: string) => handleFieldChange('nationalPermitExpiryDate', v)}
+                              placeholder="DD/MM/YYYY (Optional)"
+                              format="DD/MM/YYYY"
+                            />
+                          </View>
+                        </View>
+                        <View style={styles.quickInputField}>
+                          <Text style={styles.quickInputLabel}>Insurance Company</Text>
+                          <TextInput
+                            style={styles.quickInputText}
+                            placeholder="e.g. Universal Sompo / Chola / Digit"
+                            placeholderTextColor="#94A3B8"
+                            value={formData.insCompany}
+                            onChangeText={(v: string) => handleFieldChange('insCompany', v)}
+                          />
+                        </View>
+                      </View>
+                    )}
+
+                    {selectedMsgTemplate === 'ncb' && (
+                      <View style={styles.quickInputsGrid}>
+                        <Text style={styles.quickInputsHeading}>Variables for NCB Confirmation:</Text>
+                        <View style={styles.quickInputField}>
+                          <Text style={styles.quickInputLabel}>Previous Year Insurer (PYP Company)</Text>
+                          <TextInput
+                            style={styles.quickInputText}
+                            placeholder="e.g. HDFC ERGO / ICICI Lombard / Digit"
+                            placeholderTextColor="#94A3B8"
+                            value={formData.pypCompany}
+                            onChangeText={(v: string) => handleFieldChange('pypCompany', v)}
+                          />
+                        </View>
+                      </View>
+                    )}
+
+                    {selectedMsgTemplate === 'body_type' && (
+                      <View style={styles.quickInputsGrid}>
+                        <Text style={styles.quickInputsHeading}>Variables for Body Type Mismatch:</Text>
+                        <View style={styles.quickInputRow}>
+                          <View style={styles.quickInputField}>
+                            <Text style={styles.quickInputLabel}>Body Type as per RC</Text>
+                            <TextInput
+                              style={styles.quickInputText}
+                              placeholder="e.g. Open Tipper"
+                              placeholderTextColor="#94A3B8"
+                              value={formData.bodyTypeRc}
+                              onChangeText={(v: string) => handleFieldChange('bodyTypeRc', v)}
+                            />
+                          </View>
+                          <View style={styles.quickInputField}>
+                            <Text style={styles.quickInputLabel}>Actual Vehicle Body Type</Text>
+                            <TextInput
+                              style={styles.quickInputText}
+                              placeholder="e.g. Closed Box / Container"
+                              placeholderTextColor="#94A3B8"
+                              value={formData.bodyTypeActual}
+                              onChangeText={(v: string) => handleFieldChange('bodyTypeActual', v)}
+                            />
+                          </View>
+                        </View>
+                      </View>
+                    )}
+
+                    {selectedMsgTemplate === 'cheque' && (
+                      <View style={styles.quickInputsGrid}>
+                        <Text style={styles.quickInputsHeading}>Variables for Customer Cheque:</Text>
+                        <View style={styles.quickInputRow}>
+                          <View style={styles.quickInputField}>
+                            <Text style={styles.quickInputLabel}>Bank Name</Text>
+                            <TextInput
+                              style={styles.quickInputText}
+                              placeholder="e.g. HDFC / SBI / ICICI Bank"
+                              placeholderTextColor="#94A3B8"
+                              value={formData.bankName}
+                              onChangeText={(v: string) => handleFieldChange('bankName', v)}
+                            />
+                          </View>
+                          <View style={styles.quickInputField}>
+                            <Text style={styles.quickInputLabel}>Cheque Number</Text>
+                            <TextInput
+                              style={styles.quickInputText}
+                              placeholder="e.g. 123456"
+                              placeholderTextColor="#94A3B8"
+                              value={formData.chequeNo}
+                              onChangeText={(v: string) => handleFieldChange('chequeNo', v)}
+                            />
+                          </View>
+                        </View>
+                        <View style={styles.quickInputRow}>
+                          <View style={styles.quickInputField}>
+                            <DatePickerSelector
+                              label="Cheque Deposit Date"
+                              value={formData.chequeDepositDate}
+                              onChange={(v: string) => handleFieldChange('chequeDepositDate', v)}
+                              placeholder="DD/MM/YYYY"
+                              format="DD/MM/YYYY"
+                            />
+                          </View>
+                          <View style={styles.quickInputField}>
+                            <Text style={styles.quickInputLabel}>Deposit Amount (₹)</Text>
+                            <TextInput
+                              style={styles.quickInputText}
+                              placeholder="10,000"
+                              placeholderTextColor="#94A3B8"
+                              keyboardType="numeric"
+                              value={formData.depositAmount}
+                              onChangeText={(v: string) => handleFieldChange('depositAmount', v)}
+                            />
+                          </View>
+                          <View style={styles.quickInputField}>
+                            <Text style={styles.quickInputLabel}>Cashback / Discount (₹)</Text>
+                            <TextInput
+                              style={styles.quickInputText}
+                              placeholder="0"
+                              placeholderTextColor="#94A3B8"
+                              keyboardType="numeric"
+                              value={formData.discountRs}
+                              onChangeText={(v: string) => handleFieldChange('discountRs', v)}
+                            />
+                          </View>
+                        </View>
+                      </View>
+                    )}
+
+                    {selectedMsgTemplate === 'payment_baki' && (
+                      <View style={styles.quickInputsGrid}>
+                        <Text style={styles.quickInputsHeading}>Variables for Payment Baki:</Text>
+                        <View style={styles.quickInputRow}>
+                          <View style={styles.quickInputField}>
+                            <Text style={styles.quickInputLabel}>Total Rs From Customer</Text>
+                            <TextInput
+                              style={styles.quickInputText}
+                              placeholder="e.g. 48000"
+                              placeholderTextColor="#94A3B8"
+                              keyboardType="numeric"
+                              value={formData.rsFromCustomer}
+                              onChangeText={(v: string) => handleFieldChange('rsFromCustomer', v)}
+                            />
+                          </View>
+                          <View style={styles.quickInputField}>
+                            <Text style={styles.quickInputLabel}>Due Amount (₹)</Text>
+                            <TextInput
+                              style={styles.quickInputText}
+                              placeholder="e.g. 48000"
+                              placeholderTextColor="#94A3B8"
+                              keyboardType="numeric"
+                              value={formData.dueAmount}
+                              onChangeText={(v: string) => handleFieldChange('dueAmount', v)}
+                            />
+                          </View>
+                        </View>
+                        <DatePickerSelector
+                          label="Due Date (DD/MM/YYYY)"
+                          value={formData.dueDate}
+                          onChange={(v: string) => handleFieldChange('dueDate', v)}
+                          placeholder="DD/MM/YYYY"
+                          format="DD/MM/YYYY"
+                        />
+                      </View>
+                    )}
+
+                    {/* Editable Text Area for Live Message Preview & Customization */}
                     <TextInput
                       style={styles.editableMsgInput}
                       multiline
-                      numberOfLines={6}
+                      numberOfLines={7}
                       textAlignVertical="top"
-                      value={
-                        formData.creditPaymentMsg !== undefined && formData.creditPaymentMsg !== ''
-                          ? formData.creditPaymentMsg
-                          : getDefaultCreditPaymentMsg(lead?.clientName, formData.regNo || lead?.vehicleNo, formData.rate || formData.rsFromCustomer, formData.dueDate)
-                      }
-                      onChangeText={(v: string) => handleFieldChange('creditPaymentMsg', v)}
-                      placeholder="Edit Gujarati confirmation message..."
+                      value={getActiveMessageText(selectedMsgTemplate)}
+                      onChangeText={(v: string) => handleMessageChange(selectedMsgTemplate, v)}
+                      placeholder="Live editable message for customer..."
                       placeholderTextColor="#94A3B8"
                     />
 
                     <View style={styles.msgFooterRow}>
                       <Text style={styles.editableMsgHelp}>
-                        * You can edit customer name, amount, date or any text above.
+                        * You can edit any details directly above. Changes are auto-saved.
                       </Text>
-                      <Pressable
-                        onPress={() => {
-                          const defaultMsg = getDefaultCreditPaymentMsg(lead?.clientName, formData.regNo || lead?.vehicleNo, formData.rate || formData.rsFromCustomer, formData.dueDate);
-                          handleFieldChange('creditPaymentMsg', defaultMsg);
-                        }}
-                      >
+                      <Pressable onPress={() => handleResetMessage(selectedMsgTemplate)}>
                         <Text style={styles.resetMsgText}>Reset Template</Text>
                       </Pressable>
                     </View>
@@ -2794,6 +3131,95 @@ const styles = StyleSheet.create({
     fontSize: FontSize.xs,
     fontWeight: '700',
     color: '#581C87',
+  },
+  editableMsgSubtitle: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#9333EA',
+  },
+  templateTabsScroll: {
+    paddingVertical: 6,
+    gap: 6,
+  },
+  templateTabChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 20,
+    backgroundColor: '#F3E8FF',
+    borderWidth: 1,
+    borderColor: '#E9D5FF',
+  },
+  templateTabChipActive: {
+    backgroundColor: '#7C3AED',
+    borderColor: '#7C3AED',
+  },
+  templateTabChipText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#6B21A8',
+  },
+  templateTabChipTextActive: {
+    color: '#FFFFFF',
+  },
+  activeTemplateBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#FAF5FF',
+    borderWidth: 1,
+    borderColor: '#E9D5FF',
+    borderRadius: BorderRadius.sm,
+    padding: 8,
+    gap: 8,
+  },
+  activeTemplateTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#581C87',
+  },
+  activeTemplateDesc: {
+    fontSize: 10,
+    color: '#7E22CE',
+    marginTop: 2,
+  },
+  quickInputsGrid: {
+    backgroundColor: '#FAF5FF',
+    borderWidth: 1,
+    borderColor: '#E9D5FF',
+    borderRadius: BorderRadius.sm,
+    padding: 8,
+    gap: 8,
+  },
+  quickInputsHeading: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#6B21A8',
+  },
+  quickInputRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  quickInputField: {
+    flex: 1,
+  },
+  quickInputLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#6B21A8',
+    marginBottom: 4,
+  },
+  quickInputText: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#D8B4FE',
+    borderRadius: 6,
+    height: 38,
+    paddingHorizontal: 8,
+    fontSize: 12,
+    color: Colors.text,
   },
   editableMsgActions: {
     flexDirection: 'row',

@@ -4,10 +4,16 @@ import React, { useState, useEffect, useRef } from 'react'
 import {
   FileText, UploadCloud, Upload, CheckCircle2, AlertCircle, Eye, Download,
   Send, Trash2, RefreshCw, X, Copy, Check, MessageSquare, Shield,
-  Car, User, Phone, Calendar, ArrowRight, Sparkles, ExternalLink
+  Car, User, Phone, Calendar, ArrowRight, Sparkles, ExternalLink,
+  ShieldCheck, Wrench, Truck, CreditCard, Banknote
 } from 'lucide-react'
 import { fetchApi } from '@/lib/api'
 import { supabase } from '@/lib/supabase'
+import {
+  CONFIRMATION_TEMPLATES,
+  ConfirmationData,
+  TemplateKey
+} from '@/lib/confirmationTemplates'
 
 interface DocumentEntry {
   id: string
@@ -35,6 +41,10 @@ export const REQUIRED_DOCUMENTS = [
   { key: 'QUOTATION', label: '5. Quotation', desc: 'Generated insurance quotation PDF/image' },
   { key: 'RC_BOOK', label: '6. RC Book', desc: 'Vehicle Registration Certificate (Front & Back)' },
   { key: 'VEHICLE_PHOTO', label: '7. Vehicle Photo for Body Type', desc: 'Live vehicle photo confirming body type match' },
+  { key: 'NO_JACK_COVER_SS', label: '8. No Jack Cover Screenshot (If applicable)', desc: 'Screenshot of no jack cover notice' },
+  { key: 'NO_TOWING_SS', label: '9. No Towing Screenshot (If applicable)', desc: 'Screenshot of no towing cover notice' },
+  { key: 'BODY_TYPE_SS', label: '10. Body Type Mismatch Screenshot (If applicable)', desc: 'Screenshot of body type notice' },
+  { key: 'CHEQUE_SS', label: '11. Customer Cheque Screenshot (If applicable)', desc: 'Screenshot of cheque confirmation terms' },
 ]
 
 export const VEHICLE_TYPE_OPTIONS = [
@@ -161,10 +171,100 @@ export default function LeadPolicySubmissionModal({ leadId, lead, onClose, onUpd
     inspectionStatus: 'Not Applicable',
     mparivahanRcStatus: '',
     amountDueDateMsgSS: '',
-    creditPaymentMsg: ''
+    creditPaymentMsg: '',
+    // 7 Customer Confirmation Template fields
+    cfExpiryDate: lead?.fitnessExpiry ? formatToDateMonthYear(lead.fitnessExpiry) : '',
+    gujaratPermitExpiryDate: '',
+    nationalPermitExpiryDate: '',
+    pucExpiryDate: '',
+    pypCompany: lead?.previousPolicyCompany || '',
+    bodyTypeRc: '',
+    bodyTypeActual: '',
+    bankName: '',
+    chequeNo: '',
+    chequeDepositDate: '',
+    depositAmount: '10,000',
+    discountRs: '',
+    totalReturnAmount: '',
+    dueAmount: '',
+    insCompany: lead?.provider || '',
+    confirmationMsgs: {}
   })
 
+  const [selectedMsgTemplate, setSelectedMsgTemplate] = useState<TemplateKey>('imp_date')
+
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({})
+
+  // Confirmation helpers
+  const getConfirmationData = (): ConfirmationData => {
+    return {
+      customerName: lead?.clientName || 'Customer Name',
+      vehicleNo: formData.regNo || lead?.vehicleNo || '',
+      policyType: formData.policyType || 'nil dep',
+      insCompany: formData.insCompany || lead?.provider || 'Insurance Company',
+      cfExpiryDate: formData.cfExpiryDate || (lead?.fitnessExpiry ? formatToDateMonthYear(lead.fitnessExpiry) : ''),
+      gujaratPermitExpiryDate: formData.gujaratPermitExpiryDate || '',
+      nationalPermitExpiryDate: formData.nationalPermitExpiryDate || '',
+      pucExpiryDate: formData.pucExpiryDate || '',
+      pypCompany: formData.pypCompany || lead?.previousPolicyCompany || '',
+      bodyTypeRc: formData.bodyTypeRc || '',
+      bodyTypeActual: formData.bodyTypeActual || '',
+      bankName: formData.bankName || '',
+      chequeNo: formData.chequeNo || '',
+      chequeDepositDate: formData.chequeDepositDate || '',
+      depositAmount: formData.depositAmount || '10,000',
+      discountRs: formData.discountRs || '',
+      totalReturnAmount: formData.totalReturnAmount || '',
+      rsFromCustomer: formData.rsFromCustomer || formData.rate || '',
+      dueAmount: formData.dueAmount || formData.rsFromCustomer || formData.rate || '',
+      dueDate: formData.dueDate || ''
+    }
+  }
+
+  const getActiveMessageText = (templateKey: TemplateKey): string => {
+    const custom = formData.confirmationMsgs?.[templateKey]
+    if (custom !== undefined && custom !== '') {
+      return custom
+    }
+    if (templateKey === 'payment_baki' && formData.creditPaymentMsg) {
+      return formData.creditPaymentMsg
+    }
+    const def = CONFIRMATION_TEMPLATES.find(t => t.key === templateKey)
+    return def ? def.generate(getConfirmationData()) : ''
+  }
+
+  const handleMessageChange = (templateKey: TemplateKey, text: string) => {
+    const updatedMsgs = {
+      ...(formData.confirmationMsgs || {}),
+      [templateKey]: text
+    }
+    setFormData((prev: any) => ({
+      ...prev,
+      confirmationMsgs: updatedMsgs,
+      ...(templateKey === 'payment_baki' ? { creditPaymentMsg: text } : {})
+    }))
+  }
+
+  const handleResetMessage = (templateKey: TemplateKey) => {
+    const def = CONFIRMATION_TEMPLATES.find(t => t.key === templateKey)
+    const defaultText = def ? def.generate(getConfirmationData()) : ''
+    const updatedMsgs = {
+      ...(formData.confirmationMsgs || {}),
+      [templateKey]: defaultText
+    }
+    setFormData((prev: any) => ({
+      ...prev,
+      confirmationMsgs: updatedMsgs,
+      ...(templateKey === 'payment_baki' ? { creditPaymentMsg: defaultText } : {})
+    }))
+  }
+
+  const handleCopyMessage = (templateKey: TemplateKey) => {
+    const msg = getActiveMessageText(templateKey)
+    navigator.clipboard.writeText(msg)
+    setMsgCopied(true)
+    setTimeout(() => setMsgCopied(false), 2000)
+  }
 
   // Load current submission state
   const loadSubmission = async () => {
@@ -190,7 +290,23 @@ export default function LeadPolicySubmissionModal({ leadId, lead, onClose, onUpd
             inspectionStatus: res.submission.formData.inspectionStatus === 'Not Required' ? 'Not Applicable' : (res.submission.formData.inspectionStatus || 'Not Applicable'),
             expDate: formatToDateMonthYear(res.submission.formData.expDate || lead?.expiryDate),
             regNo: res.submission.formData.regNo || lead?.vehicleNo || '',
-            mobileNo1: res.submission.formData.mobileNo1 || lead?.clientPhone || ''
+            mobileNo1: res.submission.formData.mobileNo1 || lead?.clientPhone || '',
+            cfExpiryDate: res.submission.formData.cfExpiryDate || (lead?.fitnessExpiry ? formatToDateMonthYear(lead.fitnessExpiry) : ''),
+            gujaratPermitExpiryDate: res.submission.formData.gujaratPermitExpiryDate || '',
+            nationalPermitExpiryDate: res.submission.formData.nationalPermitExpiryDate || '',
+            pucExpiryDate: res.submission.formData.pucExpiryDate || '',
+            pypCompany: res.submission.formData.pypCompany || lead?.previousPolicyCompany || '',
+            bodyTypeRc: res.submission.formData.bodyTypeRc || '',
+            bodyTypeActual: res.submission.formData.bodyTypeActual || '',
+            bankName: res.submission.formData.bankName || '',
+            chequeNo: res.submission.formData.chequeNo || '',
+            chequeDepositDate: res.submission.formData.chequeDepositDate || '',
+            depositAmount: res.submission.formData.depositAmount || '10,000',
+            discountRs: res.submission.formData.discountRs || '',
+            totalReturnAmount: res.submission.formData.totalReturnAmount || '',
+            dueAmount: res.submission.formData.dueAmount || '',
+            insCompany: res.submission.formData.insCompany || lead?.provider || '',
+            confirmationMsgs: res.submission.formData.confirmationMsgs || {}
           }))
         }
       }
@@ -924,56 +1040,299 @@ ${formData.paymentMode?.toLowerCase() === 'credit' && formData.dueDate ? `*Due D
                   </div>
                 )}
 
-                {/* Autogenerated Editable Confirmation Message for Customer (Visible for ALL payment modes) */}
-                <div className="bg-white border border-purple-200 rounded-xl p-3.5 space-y-2 mt-2">
-                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-purple-100 pb-2">
-                    <label className="text-[11px] font-bold text-purple-950 flex items-center gap-1.5">
-                      <MessageSquare size={14} className="text-purple-600" />
-                      Customer Confirmation Message (Gujarati - Fully Editable)
-                    </label>
+                {/* Customer Approval WhatsApp Messages (7 Templates with dynamic variables, editable preview, Copy & WhatsApp) */}
+                <div className="bg-white border border-purple-200 rounded-xl p-4 space-y-3 mt-3 shadow-sm">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-purple-100 pb-2.5">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-lg bg-purple-100 flex items-center justify-center text-purple-700">
+                        <MessageSquare size={16} />
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-bold text-purple-950">Customer Approval WhatsApp Messages</h4>
+                        <p className="text-[11px] text-purple-600 font-medium">ગ્રાહક કન્ફર્મેશન મેસેજ ટેમ્પલેટ્સ</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Horizontal Template Selector Tabs */}
+                  <div className="flex items-center gap-1.5 overflow-x-auto pb-1.5 scrollbar-thin">
+                    {CONFIRMATION_TEMPLATES.map((tmpl) => {
+                      const isActive = selectedMsgTemplate === tmpl.key
+                      return (
+                        <button
+                          key={tmpl.key}
+                          type="button"
+                          onClick={() => setSelectedMsgTemplate(tmpl.key)}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 cursor-pointer ${
+                            isActive
+                              ? 'bg-purple-600 text-white shadow-sm'
+                              : 'bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-100'
+                          }`}
+                        >
+                          <span>{tmpl.title}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+
+                  {/* Active Template Meta & Action Buttons */}
+                  <div className="flex flex-wrap items-center justify-between gap-2 bg-purple-50/60 border border-purple-100 rounded-lg p-2.5">
+                    <div>
+                      <div className="text-xs font-bold text-purple-950 flex items-center gap-1.5">
+                        <span>{CONFIRMATION_TEMPLATES.find(t => t.key === selectedMsgTemplate)?.title}</span>
+                        <span className="text-[11px] font-medium text-purple-600">
+                          ({CONFIRMATION_TEMPLATES.find(t => t.key === selectedMsgTemplate)?.gujaratiTitle})
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        {CONFIRMATION_TEMPLATES.find(t => t.key === selectedMsgTemplate)?.desc}
+                      </p>
+                    </div>
+
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
-                        onClick={() => {
-                          const msg = formData.creditPaymentMsg || getDefaultCreditPaymentMsg(lead?.clientName, formData.regNo || lead?.vehicleNo, formData.rate || formData.rsFromCustomer, formData.dueDate)
-                          navigator.clipboard.writeText(msg)
-                          setMsgCopied(true)
-                          setTimeout(() => setMsgCopied(false), 2000)
-                        }}
-                        className="px-2.5 py-1 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-lg text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                        onClick={() => handleCopyMessage(selectedMsgTemplate)}
+                        className="px-2.5 py-1.5 bg-white hover:bg-purple-50 text-purple-700 border border-purple-200 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
                       >
-                        {msgCopied ? <Check size={12} className="text-emerald-600" /> : <Copy size={12} />}
+                        {msgCopied ? <Check size={13} className="text-emerald-600" /> : <Copy size={13} />}
                         {msgCopied ? 'Copied!' : 'Copy Message'}
                       </button>
                       <a
-                        href={`https://wa.me/${(formData.mobileNo1 || lead?.clientPhone || '').replace(/\D/g, '')}?text=${encodeURIComponent(formData.creditPaymentMsg || getDefaultCreditPaymentMsg(lead?.clientName, formData.regNo || lead?.vehicleNo, formData.rate || formData.rsFromCustomer, formData.dueDate))}`}
+                        href={`https://wa.me/${(formData.mobileNo1 || lead?.clientPhone || '').replace(/\D/g, '')}?text=${encodeURIComponent(getActiveMessageText(selectedMsgTemplate))}`}
                         target="_blank"
                         rel="noreferrer"
-                        className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                        className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
                       >
-                        <MessageSquare size={12} />
+                        <MessageSquare size={13} />
                         Send on WhatsApp
                       </a>
                     </div>
                   </div>
 
+                  {/* Quick Variable Inputs for Active Template */}
+                  {selectedMsgTemplate === 'imp_date' && (
+                    <div className="bg-slate-50/80 border border-slate-200 rounded-lg p-3 space-y-2.5">
+                      <div className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                        Variables for IMP Date Confirmation:
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5">
+                        <div>
+                          <label className="text-[11px] font-medium text-slate-600 block mb-1">Passing (CF) Expiry</label>
+                          <input
+                            type="text"
+                            placeholder="DD/MM/YYYY"
+                            value={formData.cfExpiryDate}
+                            onChange={e => setFormData({ ...formData, cfExpiryDate: e.target.value })}
+                            className="w-full bg-white border border-slate-200 rounded-md px-2.5 py-1.5 text-xs text-slate-800 outline-none focus:border-purple-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[11px] font-medium text-slate-600 block mb-1">PUC Expiry</label>
+                          <input
+                            type="text"
+                            placeholder="DD/MM/YYYY"
+                            value={formData.pucExpiryDate}
+                            onChange={e => setFormData({ ...formData, pucExpiryDate: e.target.value })}
+                            className="w-full bg-white border border-slate-200 rounded-md px-2.5 py-1.5 text-xs text-slate-800 outline-none focus:border-purple-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[11px] font-medium text-slate-600 block mb-1">Gujarat Permit Expiry</label>
+                          <input
+                            type="text"
+                            placeholder="DD/MM/YYYY (Optional)"
+                            value={formData.gujaratPermitExpiryDate}
+                            onChange={e => setFormData({ ...formData, gujaratPermitExpiryDate: e.target.value })}
+                            className="w-full bg-white border border-slate-200 rounded-md px-2.5 py-1.5 text-xs text-slate-800 outline-none focus:border-purple-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[11px] font-medium text-slate-600 block mb-1">National Permit Expiry</label>
+                          <input
+                            type="text"
+                            placeholder="DD/MM/YYYY (Optional)"
+                            value={formData.nationalPermitExpiryDate}
+                            onChange={e => setFormData({ ...formData, nationalPermitExpiryDate: e.target.value })}
+                            className="w-full bg-white border border-slate-200 rounded-md px-2.5 py-1.5 text-xs text-slate-800 outline-none focus:border-purple-500"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-medium text-slate-600 block mb-1">Insurance Company</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Universal Sompo / Chola / Digit"
+                          value={formData.insCompany}
+                          onChange={e => setFormData({ ...formData, insCompany: e.target.value })}
+                          className="w-full bg-white border border-slate-200 rounded-md px-2.5 py-1.5 text-xs text-slate-800 outline-none focus:border-purple-500"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedMsgTemplate === 'ncb' && (
+                    <div className="bg-slate-50/80 border border-slate-200 rounded-lg p-3 space-y-2">
+                      <div className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                        Variables for NCB Confirmation:
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-medium text-slate-600 block mb-1">Previous Year Insurer (PYP Company)</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. HDFC ERGO / ICICI Lombard / Digit"
+                          value={formData.pypCompany}
+                          onChange={e => setFormData({ ...formData, pypCompany: e.target.value })}
+                          className="w-full bg-white border border-slate-200 rounded-md px-2.5 py-1.5 text-xs text-slate-800 outline-none focus:border-purple-500"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedMsgTemplate === 'body_type' && (
+                    <div className="bg-slate-50/80 border border-slate-200 rounded-lg p-3 space-y-2">
+                      <div className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                        Variables for Body Type Mismatch:
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        <div>
+                          <label className="text-[11px] font-medium text-slate-600 block mb-1">Body Type as per RC</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. Open Tipper"
+                            value={formData.bodyTypeRc}
+                            onChange={e => setFormData({ ...formData, bodyTypeRc: e.target.value })}
+                            className="w-full bg-white border border-slate-200 rounded-md px-2.5 py-1.5 text-xs text-slate-800 outline-none focus:border-purple-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[11px] font-medium text-slate-600 block mb-1">Actual Vehicle Body Type</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. Closed Box / Container"
+                            value={formData.bodyTypeActual}
+                            onChange={e => setFormData({ ...formData, bodyTypeActual: e.target.value })}
+                            className="w-full bg-white border border-slate-200 rounded-md px-2.5 py-1.5 text-xs text-slate-800 outline-none focus:border-purple-500"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedMsgTemplate === 'cheque' && (
+                    <div className="bg-slate-50/80 border border-slate-200 rounded-lg p-3 space-y-2">
+                      <div className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                        Variables for Customer Cheque:
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
+                        <div>
+                          <label className="text-[11px] font-medium text-slate-600 block mb-1">Bank Name</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. HDFC / SBI / ICICI Bank"
+                            value={formData.bankName}
+                            onChange={e => setFormData({ ...formData, bankName: e.target.value })}
+                            className="w-full bg-white border border-slate-200 rounded-md px-2.5 py-1.5 text-xs text-slate-800 outline-none focus:border-purple-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[11px] font-medium text-slate-600 block mb-1">Cheque Number</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. 123456"
+                            value={formData.chequeNo}
+                            onChange={e => setFormData({ ...formData, chequeNo: e.target.value })}
+                            className="w-full bg-white border border-slate-200 rounded-md px-2.5 py-1.5 text-xs text-slate-800 outline-none focus:border-purple-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[11px] font-medium text-slate-600 block mb-1">Deposit Date</label>
+                          <input
+                            type="text"
+                            placeholder="DD/MM/YYYY"
+                            value={formData.chequeDepositDate}
+                            onChange={e => setFormData({ ...formData, chequeDepositDate: e.target.value })}
+                            className="w-full bg-white border border-slate-200 rounded-md px-2.5 py-1.5 text-xs text-slate-800 outline-none focus:border-purple-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[11px] font-medium text-slate-600 block mb-1">Deposit Amount (₹)</label>
+                          <input
+                            type="text"
+                            placeholder="10,000"
+                            value={formData.depositAmount}
+                            onChange={e => setFormData({ ...formData, depositAmount: e.target.value })}
+                            className="w-full bg-white border border-slate-200 rounded-md px-2.5 py-1.5 text-xs text-slate-800 outline-none focus:border-purple-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[11px] font-medium text-slate-600 block mb-1">Cashback / Discount (₹)</label>
+                          <input
+                            type="text"
+                            placeholder="0"
+                            value={formData.discountRs}
+                            onChange={e => setFormData({ ...formData, discountRs: e.target.value })}
+                            className="w-full bg-white border border-slate-200 rounded-md px-2.5 py-1.5 text-xs text-slate-800 outline-none focus:border-purple-500"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedMsgTemplate === 'payment_baki' && (
+                    <div className="bg-slate-50/80 border border-slate-200 rounded-lg p-3 space-y-2">
+                      <div className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                        Variables for Payment Baki:
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                        <div>
+                          <label className="text-[11px] font-medium text-slate-600 block mb-1">Total Rs From Customer</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. 48000"
+                            value={formData.rsFromCustomer}
+                            onChange={e => setFormData({ ...formData, rsFromCustomer: e.target.value })}
+                            className="w-full bg-white border border-slate-200 rounded-md px-2.5 py-1.5 text-xs text-slate-800 outline-none focus:border-purple-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[11px] font-medium text-slate-600 block mb-1">Due Amount (₹)</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. 48000"
+                            value={formData.dueAmount}
+                            onChange={e => setFormData({ ...formData, dueAmount: e.target.value })}
+                            className="w-full bg-white border border-slate-200 rounded-md px-2.5 py-1.5 text-xs text-slate-800 outline-none focus:border-purple-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[11px] font-medium text-slate-600 block mb-1">Due Date</label>
+                          <input
+                            type="text"
+                            placeholder="DD/MM/YYYY"
+                            value={formData.dueDate}
+                            onChange={e => setFormData({ ...formData, dueDate: e.target.value })}
+                            className="w-full bg-white border border-slate-200 rounded-md px-2.5 py-1.5 text-xs text-slate-800 outline-none focus:border-purple-500"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Editable Text Area for Live Message Preview & Customization */}
                   <textarea
                     rows={7}
-                    value={formData.creditPaymentMsg !== undefined && formData.creditPaymentMsg !== '' ? formData.creditPaymentMsg : getDefaultCreditPaymentMsg(lead?.clientName, formData.regNo || lead?.vehicleNo, formData.rate || formData.rsFromCustomer, formData.dueDate)}
-                    onChange={e => setFormData({ ...formData, creditPaymentMsg: e.target.value })}
+                    value={getActiveMessageText(selectedMsgTemplate)}
+                    onChange={e => handleMessageChange(selectedMsgTemplate, e.target.value)}
                     className="w-full bg-slate-50/70 border border-purple-100 rounded-lg p-3 text-xs text-slate-800 font-medium outline-none focus:ring-2 focus:ring-purple-500 leading-relaxed font-sans"
-                    placeholder="Edit Gujarati confirmation message..."
+                    placeholder="Live editable confirmation message..."
                   />
+
                   <div className="flex items-center justify-between text-[11px] text-slate-500">
-                    <span>* Edit customer name, amount, date or any text above before sending.</span>
+                    <span>* You can edit any details directly above. Changes are auto-saved.</span>
                     <button
                       type="button"
-                      onClick={() => {
-                        setFormData({
-                          ...formData,
-                          creditPaymentMsg: getDefaultCreditPaymentMsg(lead?.clientName, formData.regNo || lead?.vehicleNo, formData.rate || formData.rsFromCustomer, formData.dueDate)
-                        })
-                      }}
+                      onClick={() => handleResetMessage(selectedMsgTemplate)}
                       className="text-purple-600 hover:text-purple-800 font-bold hover:underline cursor-pointer"
                     >
                       Reset to Template
