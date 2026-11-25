@@ -11,6 +11,8 @@ import {
   Modal,
   Linking,
   Alert,
+  TextInput,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
@@ -18,9 +20,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, FontSize, BorderRadius } from '../../src/utils/theme';
 import { useAuth } from '../../src/context/AuthContext';
 import { api } from '../../src/utils/api';
+import { leadsService } from '../../src/services/leads';
 import { useCacheStore } from '../../src/store/cacheStore';
 import AppFooter from '../../src/components/AppFooter';
 import Sidebar from '../../src/components/Sidebar';
+import LeadPolicySubmissionModal from '../../src/components/LeadPolicySubmissionModal';
 
 const { width } = Dimensions.get('window');
 
@@ -264,6 +268,155 @@ export default function DashboardScreen() {
 
   // Modals
   const [fabActionVisible, setFabActionVisible] = useState(false);
+
+  // Floating Actions: 1. APPLY (Action Sheet + Leave Application Modal)
+  const [applyMenuVisible, setApplyMenuVisible] = useState(false);
+  const [leaveModalVisible, setLeaveModalVisible] = useState(false);
+  const [leaveType, setLeaveType] = useState<'casual' | 'sick' | 'paid'>('casual');
+  const [leaveStartDate, setLeaveStartDate] = useState(new Date().toISOString().split('T')[0]);
+  const [leaveEndDate, setLeaveEndDate] = useState(new Date().toISOString().split('T')[0]);
+  const [leaveReason, setLeaveReason] = useState('');
+  const [leaveSubmitting, setLeaveSubmitting] = useState(false);
+
+  // Floating Actions: 2. Direct Make Policy / Policy To Be Done Modal State
+  const [makePolicySearchVisible, setMakePolicySearchVisible] = useState(false);
+  const [makePolicyVehicle, setMakePolicyVehicle] = useState('');
+  const [makePolicyClientName, setMakePolicyClientName] = useState('');
+  const [makePolicyPhone, setMakePolicyPhone] = useState('');
+  const [makePolicySearching, setMakePolicySearching] = useState(false);
+  const [recentLeads, setRecentLeads] = useState<any[]>([]);
+  const [selectedPolicyLead, setSelectedPolicyLead] = useState<any>(null);
+  const [makePolicyModalVisible, setMakePolicyModalVisible] = useState(false);
+
+  // Floating Actions: 3. Plus (+) Quick Add Menu State
+  const [plusMenuVisible, setPlusMenuVisible] = useState(false);
+
+  const loadRecentLeads = useCallback(async () => {
+    try {
+      const cached = cache['/leads'];
+      if (cached && Array.isArray(cached) && cached.length > 0) {
+        setRecentLeads(cached.slice(0, 6));
+        return;
+      }
+      const res = await api.get<any>('/leads?limit=6&sortBy=createdAt&sortOrder=desc');
+      const leads = res?.data || res?.leads || res || [];
+      if (Array.isArray(leads) && leads.length > 0) {
+        setRecentLeads(leads);
+      }
+    } catch (err) {
+      console.warn('Failed to load recent leads for policy form:', err);
+    }
+  }, [cache]);
+
+  const handleOpenPolicyForLead = (lead: any) => {
+    setSelectedPolicyLead(lead);
+    setMakePolicySearchVisible(false);
+    setMakePolicyModalVisible(true);
+  };
+
+  const handleProceedMakePolicy = async () => {
+    const rawV = makePolicyVehicle.trim().toUpperCase();
+    if (!rawV) {
+      Alert.alert('Vehicle Required', 'Please enter a vehicle registration number (e.g. GJ01AB1234).');
+      return;
+    }
+    const cleanReg = rawV.replace(/[^A-Za-z0-9]/g, '');
+    setMakePolicySearching(true);
+    try {
+      let found = recentLeads.find((l) => {
+        const v = (l.vehicleNo || l.vehicle_no || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+        return v === cleanReg;
+      });
+
+      if (!found) {
+        const localMatches = await leadsService.listLocal({ search: cleanReg, limit: 1 });
+        if (localMatches && localMatches.length > 0) {
+          found = {
+            id: localMatches[0].id,
+            vehicleNo: localMatches[0].vehicle_no,
+            clientName: localMatches[0].client_name,
+            clientPhone: localMatches[0].client_phone,
+            expiryDate: localMatches[0].expiry_date,
+            status: localMatches[0].status,
+          };
+        }
+      }
+
+      if (!found) {
+        const searchRes = await api.get<any>(`/leads?search=${encodeURIComponent(cleanReg)}&limit=1`).catch(() => null);
+        const data = searchRes?.data || searchRes?.leads || searchRes || [];
+        if (Array.isArray(data) && data.length > 0) {
+          found = data[0];
+        }
+      }
+
+      if (found) {
+        handleOpenPolicyForLead(found);
+        return;
+      }
+
+      const cName = makePolicyClientName.trim() || 'New Customer';
+      const cPhone = makePolicyPhone.trim();
+      let createdLead: any = null;
+
+      try {
+        const createRes = await api.post<any>('/leads', {
+          vehicleNo: cleanReg,
+          clientName: cName,
+          clientPhone: cPhone || undefined,
+          status: 'interested',
+        });
+        createdLead = createRes?.data || createRes?.lead || createRes;
+      } catch (postErr) {
+        console.warn('Backend lead creation failed, generating local lead record:', postErr);
+      }
+
+      if (createdLead && createdLead.id) {
+        handleOpenPolicyForLead(createdLead);
+      } else {
+        handleOpenPolicyForLead({
+          id: `temp-${Date.now()}`,
+          vehicleNo: cleanReg,
+          clientName: cName,
+          clientPhone: cPhone,
+          status: 'interested',
+        });
+      }
+    } catch (err: any) {
+      Alert.alert('Error', err?.message || 'Could not open policy form');
+    } finally {
+      setMakePolicySearching(false);
+    }
+  };
+
+  const handleSubmitLeave = async () => {
+    if (!leaveStartDate.trim() || !leaveEndDate.trim()) {
+      Alert.alert('Dates Required', 'Please enter start and end dates (YYYY-MM-DD).');
+      return;
+    }
+    if (!leaveReason.trim()) {
+      Alert.alert('Reason Required', 'Please enter a reason for your leave.');
+      return;
+    }
+    setLeaveSubmitting(true);
+    try {
+      await api.post('/hr/leaves', {
+        userId: user?.id,
+        startDate: new Date(leaveStartDate.trim()).toISOString(),
+        endDate: new Date(leaveEndDate.trim()).toISOString(),
+        reason: leaveReason.trim(),
+        type: leaveType,
+        status: 'pending',
+      });
+      setLeaveModalVisible(false);
+      setLeaveReason('');
+      Alert.alert('Leave Submitted', 'Your leave application has been submitted for approval.');
+    } catch (err: any) {
+      Alert.alert('Error', err?.message || 'Failed to submit leave application');
+    } finally {
+      setLeaveSubmitting(false);
+    }
+  };
 
   // Carousel Active Index
   const [activeBannerIndex, setActiveBannerIndex] = useState(0);
@@ -1157,16 +1310,41 @@ export default function DashboardScreen() {
           )}
         </View>
 
-        <View style={{ height: 40 }} />
+        <View style={{ height: 96 }} />
       </ScrollView>
 
-      {/* 6. FLOATING ACTION BUTTON (Role Adaptive) */}
-      <Pressable
-        style={styles.fabButton}
-        onPress={() => setFabActionVisible(true)}
-      >
-        <Ionicons name="flash" size={24} color="#FFFFFF" />
-      </Pressable>
+      {/* 6. 3 FLOATING ACTION BUTTONS (Available on Home for All Roles) */}
+      <View style={styles.floatingBtnRow} pointerEvents="box-none">
+        {/* Left: APPLY */}
+        <Pressable
+          style={({ pressed }) => [styles.floatingActionBtn, pressed && styles.floatingBtnPressed]}
+          onPress={() => setApplyMenuVisible(true)}
+        >
+          <Ionicons name="document-text-outline" size={17} color="#FFFFFF" style={{ marginBottom: 2 }} />
+          <Text style={styles.floatingBtnApplyText}>APPLY</Text>
+        </Pressable>
+
+        {/* Center: Policy To Be Done */}
+        <Pressable
+          style={({ pressed }) => [styles.floatingActionBtn, pressed && styles.floatingBtnPressed]}
+          onPress={() => {
+            loadRecentLeads();
+            setMakePolicySearchVisible(true);
+          }}
+        >
+          <Ionicons name="shield-checkmark" size={16} color="#FFFFFF" style={{ marginBottom: 1 }} />
+          <Text style={styles.floatingBtnPolicyLine1}>Policy</Text>
+          <Text style={styles.floatingBtnPolicyLine2}>To Be Done</Text>
+        </Pressable>
+
+        {/* Right: + Quick Add */}
+        <Pressable
+          style={({ pressed }) => [styles.floatingActionBtn, pressed && styles.floatingBtnPressed]}
+          onPress={() => setPlusMenuVisible(true)}
+        >
+          <Ionicons name="add" size={26} color="#FFFFFF" />
+        </Pressable>
+      </View>
 
       {/* 7. STICKY BOTTOM FOOTER (Role-Adaptive Footer) */}
       <AppFooter active="home" />
@@ -1405,6 +1583,446 @@ export default function DashboardScreen() {
               <Text style={styles.fabSheetItemText}>Call Support Desk</Text>
             </Pressable>
           </View>
+        </Pressable>
+      </Modal>
+
+      {/* MODAL: APPLY BUTTON ACTION SHEET */}
+      <Modal
+        visible={applyMenuVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setApplyMenuVisible(false)}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => setApplyMenuVisible(false)}>
+          <Pressable style={styles.menuSheetCard} onPress={(e) => e.stopPropagation()}>
+            <View style={styles.menuSheetHeader}>
+              <View style={styles.menuSheetHeaderIconWrap}>
+                <Ionicons name="document-text" size={22} color="#002FA7" />
+              </View>
+              <View style={{ flex: 1, marginLeft: 10 }}>
+                <Text style={styles.menuSheetTitle}>Apply & Requests</Text>
+                <Text style={styles.menuSheetSub}>Submit leave, expense, or quick application</Text>
+              </View>
+              <Pressable onPress={() => setApplyMenuVisible(false)} style={{ padding: 4 }}>
+                <Ionicons name="close" size={22} color="#64748B" />
+              </Pressable>
+            </View>
+
+            <View style={styles.menuItemsGrid}>
+              <Pressable
+                style={styles.menuActionItem}
+                onPress={() => {
+                  setApplyMenuVisible(false);
+                  setLeaveModalVisible(true);
+                }}
+              >
+                <View style={[styles.menuItemIconBg, { backgroundColor: '#EFF6FF' }]}>
+                  <Ionicons name="calendar-outline" size={20} color="#002FA7" />
+                </View>
+                <View style={styles.menuItemTextWrap}>
+                  <Text style={styles.menuItemTitle}>Apply for Leave</Text>
+                  <Text style={styles.menuItemDesc}>Submit casual, sick, or paid leave request</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
+              </Pressable>
+
+              <Pressable
+                style={styles.menuActionItem}
+                onPress={() => {
+                  setApplyMenuVisible(false);
+                  router.push('/(protected)/finance' as any);
+                }}
+              >
+                <View style={[styles.menuItemIconBg, { backgroundColor: '#ECFDF5' }]}>
+                  <Ionicons name="receipt-outline" size={20} color="#059669" />
+                </View>
+                <View style={styles.menuItemTextWrap}>
+                  <Text style={styles.menuItemTitle}>Expense / Finance Desk</Text>
+                  <Text style={styles.menuItemDesc}>Log vouchers, expenses, or reimbursements</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
+              </Pressable>
+
+              <Pressable
+                style={styles.menuActionItem}
+                onPress={() => {
+                  setApplyMenuVisible(false);
+                  router.push('/(protected)/rate-calculator' as any);
+                }}
+              >
+                <View style={[styles.menuItemIconBg, { backgroundColor: '#FAF5FF' }]}>
+                  <Ionicons name="calculator-outline" size={20} color="#7C3AED" />
+                </View>
+                <View style={styles.menuItemTextWrap}>
+                  <Text style={styles.menuItemTitle}>Rate Calculator & Quote</Text>
+                  <Text style={styles.menuItemDesc}>Generate instant multi-insurer customer quote</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
+              </Pressable>
+
+              <Pressable
+                style={styles.menuActionItem}
+                onPress={() => {
+                  setApplyMenuVisible(false);
+                  setFabActionVisible(true);
+                }}
+              >
+                <View style={[styles.menuItemIconBg, { backgroundColor: '#FFFBEB' }]}>
+                  <Ionicons name="flash-outline" size={20} color="#D97706" />
+                </View>
+                <View style={styles.menuItemTextWrap}>
+                  <Text style={styles.menuItemTitle}>Role Quick Actions</Text>
+                  <Text style={styles.menuItemDesc}>Open shortcuts tailored to your role</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* MODAL: LEAVE APPLICATION FORM */}
+      <Modal
+        visible={leaveModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setLeaveModalVisible(false)}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => setLeaveModalVisible(false)}>
+          <Pressable style={styles.makePolicyCard} onPress={(e) => e.stopPropagation()}>
+            <View style={styles.makePolicyHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: '#EFF6FF', justifyContent: 'center', alignItems: 'center' }}>
+                  <Ionicons name="calendar" size={18} color="#002FA7" />
+                </View>
+                <View>
+                  <Text style={styles.makePolicyTitle}>Apply for Leave</Text>
+                  <Text style={styles.makePolicySub}>Sent to HR & Admin for approval</Text>
+                </View>
+              </View>
+              <Pressable onPress={() => setLeaveModalVisible(false)} style={{ padding: 4 }}>
+                <Ionicons name="close" size={22} color="#64748B" />
+              </Pressable>
+            </View>
+
+            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+              {(['casual', 'sick', 'paid'] as const).map((t) => (
+                <Pressable
+                  key={t}
+                  style={[styles.leaveTypeChip, leaveType === t && styles.leaveTypeChipActive]}
+                  onPress={() => setLeaveType(t)}
+                >
+                  <Text style={[styles.leaveTypeChipText, leaveType === t && styles.leaveTypeChipTextActive]}>
+                    {t.charAt(0).toUpperCase() + t.slice(1)}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+
+            <View style={styles.makePolicyInputWrap}>
+              <Text style={styles.leaveInputLabel}>Start Date (YYYY-MM-DD)</Text>
+              <TextInput
+                style={styles.makePolicyTextInput}
+                value={leaveStartDate}
+                onChangeText={setLeaveStartDate}
+                placeholder="2026-11-25"
+                placeholderTextColor="#94A3B8"
+              />
+            </View>
+
+            <View style={styles.makePolicyInputWrap}>
+              <Text style={styles.leaveInputLabel}>End Date (YYYY-MM-DD)</Text>
+              <TextInput
+                style={styles.makePolicyTextInput}
+                value={leaveEndDate}
+                onChangeText={setLeaveEndDate}
+                placeholder="2026-11-25"
+                placeholderTextColor="#94A3B8"
+              />
+            </View>
+
+            <View style={styles.makePolicyInputWrap}>
+              <Text style={styles.leaveInputLabel}>Reason *</Text>
+              <TextInput
+                style={[styles.makePolicyTextInput, { minHeight: 72, textAlignVertical: 'top' }]}
+                value={leaveReason}
+                onChangeText={setLeaveReason}
+                placeholder="Enter reason for leave..."
+                placeholderTextColor="#94A3B8"
+                multiline
+              />
+            </View>
+
+            <Pressable
+              style={[styles.makePolicyProceedBtn, leaveSubmitting && { opacity: 0.6 }]}
+              onPress={handleSubmitLeave}
+              disabled={leaveSubmitting}
+            >
+              {leaveSubmitting ? (
+                <ActivityIndicator color="#FFFFFF" size="small" />
+              ) : (
+                <Text style={styles.makePolicyProceedText}>Submit Leave Request</Text>
+              )}
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* MODAL: DIRECT MAKE POLICY / POLICY TO BE DONE */}
+      <Modal
+        visible={makePolicySearchVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setMakePolicySearchVisible(false)}
+      >
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setMakePolicySearchVisible(false)}
+        >
+          <Pressable style={styles.makePolicyCard} onPress={(e) => e.stopPropagation()}>
+            <View style={styles.makePolicyHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: '#FEE2E2', justifyContent: 'center', alignItems: 'center' }}>
+                  <Ionicons name="shield-checkmark" size={18} color="#DC2626" />
+                </View>
+                <View>
+                  <Text style={styles.makePolicyTitle}>Policy To Be Done</Text>
+                  <Text style={styles.makePolicySub}>Direct Make Policy Form & Document Flow</Text>
+                </View>
+              </View>
+              <Pressable onPress={() => setMakePolicySearchVisible(false)} style={{ padding: 4 }}>
+                <Ionicons name="close" size={22} color="#64748B" />
+              </Pressable>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" style={{ maxHeight: 420 }}>
+              <View style={styles.makePolicyInputWrap}>
+                <Text style={styles.leaveInputLabel}>Vehicle Number *</Text>
+                <TextInput
+                  style={styles.makePolicyTextInput}
+                  placeholder="e.g. GJ01AB1234"
+                  placeholderTextColor="#94A3B8"
+                  autoCapitalize="characters"
+                  value={makePolicyVehicle}
+                  onChangeText={(val) => setMakePolicyVehicle(val.toUpperCase())}
+                />
+              </View>
+
+              <View style={styles.makePolicyInputWrap}>
+                <Text style={styles.leaveInputLabel}>Client / Customer Name (Optional)</Text>
+                <TextInput
+                  style={styles.makePolicyTextInput}
+                  placeholder="e.g. Rajesh Kumar"
+                  placeholderTextColor="#94A3B8"
+                  value={makePolicyClientName}
+                  onChangeText={setMakePolicyClientName}
+                />
+              </View>
+
+              <View style={styles.makePolicyInputWrap}>
+                <Text style={styles.leaveInputLabel}>Customer Phone Number (Optional)</Text>
+                <TextInput
+                  style={styles.makePolicyTextInput}
+                  placeholder="e.g. 9876543210"
+                  placeholderTextColor="#94A3B8"
+                  keyboardType="phone-pad"
+                  maxLength={10}
+                  value={makePolicyPhone}
+                  onChangeText={setMakePolicyPhone}
+                />
+              </View>
+
+              <Pressable
+                style={[styles.makePolicyProceedBtn, makePolicySearching && { opacity: 0.6 }]}
+                onPress={handleProceedMakePolicy}
+                disabled={makePolicySearching}
+              >
+                {makePolicySearching ? (
+                  <ActivityIndicator color="#FFFFFF" size="small" />
+                ) : (
+                  <>
+                    <Ionicons name="document-text" size={17} color="#FFFFFF" />
+                    <Text style={styles.makePolicyProceedText}>Open Policy Submission Form →</Text>
+                  </>
+                )}
+              </Pressable>
+
+              {recentLeads && recentLeads.length > 0 && (
+                <View style={{ marginTop: 12 }}>
+                  <Text style={[styles.leaveInputLabel, { marginBottom: 8 }]}>Or Pick from Recent Leads</Text>
+                  {recentLeads.slice(0, 5).map((l) => (
+                    <Pressable
+                      key={l.id || l.vehicleNo}
+                      style={styles.recentLeadRow}
+                      onPress={() => handleOpenPolicyForLead(l)}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.recentLeadVeh}>{l.vehicleNo || l.vehicle_no || 'N/A'}</Text>
+                        <Text style={styles.recentLeadName}>{l.clientName || l.client_name || 'Customer'}</Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={16} color="#94A3B8" />
+                    </Pressable>
+                  ))}
+                </View>
+              )}
+
+              <Pressable
+                style={styles.deskLinkBtn}
+                onPress={() => {
+                  setMakePolicySearchVisible(false);
+                  router.push('/(protected)/policy-approvals' as any);
+                }}
+              >
+                <Ionicons name="folder-open-outline" size={16} color="#DC2626" />
+                <Text style={styles.deskLinkText}>Open Full Policies To Be Done Desk →</Text>
+              </Pressable>
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* DIRECT POLICY SUBMISSION MODAL */}
+      {selectedPolicyLead && (
+        <LeadPolicySubmissionModal
+          visible={makePolicyModalVisible}
+          leadId={selectedPolicyLead.id}
+          lead={selectedPolicyLead}
+          onClose={() => {
+            setMakePolicyModalVisible(false);
+            setSelectedPolicyLead(null);
+          }}
+          onUpdated={() => {
+            loadData();
+          }}
+        />
+      )}
+
+      {/* MODAL: PLUS BUTTON (ADD NEW) ACTION SHEET */}
+      <Modal
+        visible={plusMenuVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setPlusMenuVisible(false)}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => setPlusMenuVisible(false)}>
+          <Pressable style={styles.menuSheetCard} onPress={(e) => e.stopPropagation()}>
+            <View style={styles.menuSheetHeader}>
+              <View style={styles.menuSheetHeaderIconWrap}>
+                <Ionicons name="add-circle" size={24} color="#002FA7" />
+              </View>
+              <View style={{ flex: 1, marginLeft: 10 }}>
+                <Text style={styles.menuSheetTitle}>Add New Entry</Text>
+                <Text style={styles.menuSheetSub}>Choose an action to log or initiate</Text>
+              </View>
+              <Pressable onPress={() => setPlusMenuVisible(false)} style={{ padding: 4 }}>
+                <Ionicons name="close" size={22} color="#64748B" />
+              </Pressable>
+            </View>
+
+            <View style={styles.menuItemsGrid}>
+              <Pressable
+                style={styles.menuActionItem}
+                onPress={() => {
+                  setPlusMenuVisible(false);
+                  router.push('/(protected)/lead/new' as any);
+                }}
+              >
+                <View style={[styles.menuItemIconBg, { backgroundColor: '#EEF2FF' }]}>
+                  <Ionicons name="person-add" size={20} color="#002FA7" />
+                </View>
+                <View style={styles.menuItemTextWrap}>
+                  <Text style={styles.menuItemTitle}>Add New Lead</Text>
+                  <Text style={styles.menuItemDesc}>Create a new motor insurance inquiry</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
+              </Pressable>
+
+              <Pressable
+                style={styles.menuActionItem}
+                onPress={() => {
+                  setPlusMenuVisible(false);
+                  router.push('/(protected)/claims' as any);
+                }}
+              >
+                <View style={[styles.menuItemIconBg, { backgroundColor: '#FEE2E2' }]}>
+                  <Ionicons name="document-text" size={20} color="#DC2626" />
+                </View>
+                <View style={styles.menuItemTextWrap}>
+                  <Text style={styles.menuItemTitle}>Add New Claim</Text>
+                  <Text style={styles.menuItemDesc}>File new client claim intimation</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
+              </Pressable>
+
+              <Pressable
+                style={styles.menuActionItem}
+                onPress={() => {
+                  setPlusMenuVisible(false);
+                  router.push('/(protected)/cheques' as any);
+                }}
+              >
+                <View style={[styles.menuItemIconBg, { backgroundColor: '#ECFDF5' }]}>
+                  <Ionicons name="card" size={20} color="#059669" />
+                </View>
+                <View style={styles.menuItemTextWrap}>
+                  <Text style={styles.menuItemTitle}>Payment</Text>
+                  <Text style={styles.menuItemDesc}>Inward cheque or credit collection</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
+              </Pressable>
+
+              <Pressable
+                style={styles.menuActionItem}
+                onPress={() => {
+                  setPlusMenuVisible(false);
+                  router.push('/(protected)/loan-inquiries' as any);
+                }}
+              >
+                <View style={[styles.menuItemIconBg, { backgroundColor: '#EFF6FF' }]}>
+                  <Ionicons name="cash" size={20} color="#2563EB" />
+                </View>
+                <View style={styles.menuItemTextWrap}>
+                  <Text style={styles.menuItemTitle}>Loan Inquiry</Text>
+                  <Text style={styles.menuItemDesc}>Vehicle loan or refinance lead</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
+              </Pressable>
+
+              <Pressable
+                style={styles.menuActionItem}
+                onPress={() => {
+                  setPlusMenuVisible(false);
+                  router.push('/(protected)/rto' as any);
+                }}
+              >
+                <View style={[styles.menuItemIconBg, { backgroundColor: '#FAF5FF' }]}>
+                  <Ionicons name="car" size={20} color="#7C3AED" />
+                </View>
+                <View style={styles.menuItemTextWrap}>
+                  <Text style={styles.menuItemTitle}>RTO Work Inquiry</Text>
+                  <Text style={styles.menuItemDesc}>RC Transfer, NOC, Passing, Fitness</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
+              </Pressable>
+
+              <Pressable
+                style={styles.menuActionItem}
+                onPress={() => {
+                  setPlusMenuVisible(false);
+                  router.push({ pathname: '/(protected)/rto', params: { type: 'license' } } as any);
+                }}
+              >
+                <View style={[styles.menuItemIconBg, { backgroundColor: '#FFFBEB' }]}>
+                  <Ionicons name="id-card" size={20} color="#D97706" />
+                </View>
+                <View style={styles.menuItemTextWrap}>
+                  <Text style={styles.menuItemTitle}>License Inquiry</Text>
+                  <Text style={styles.menuItemDesc}>Driving license & permit services</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
+              </Pressable>
+            </View>
+          </Pressable>
         </Pressable>
       </Modal>
     </SafeAreaView>
@@ -1950,4 +2568,200 @@ const styles = StyleSheet.create({
     backgroundColor: '#F8FAFC',
   },
   fabSheetItemText: { fontSize: 14, fontWeight: '700', color: '#1E293B' },
+
+  /* 3 Floating Action Pill Buttons (All Roles on Home) */
+  floatingBtnRow: {
+    position: 'absolute',
+    bottom: 72,
+    left: 16,
+    right: 16,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 10,
+    zIndex: 99,
+  },
+  floatingActionBtn: {
+    flex: 1,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#002FA7',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    shadowColor: '#002FA7',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  floatingBtnPressed: {
+    opacity: 0.85,
+    transform: [{ scale: 0.97 }],
+  },
+  floatingBtnApplyText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.6,
+  },
+  floatingBtnPolicyLine1: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '800',
+    lineHeight: 13,
+  },
+  floatingBtnPolicyLine2: {
+    color: '#E0E7FF',
+    fontSize: 10,
+    fontWeight: '700',
+    lineHeight: 12,
+  },
+
+  /* Action Sheet Menu Cards (Plus & Apply) */
+  menuSheetCard: {
+    width: '100%',
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 20,
+    paddingBottom: 34,
+    position: 'absolute',
+    bottom: 0,
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 16,
+    elevation: 12,
+  },
+  menuSheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingBottom: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+    marginBottom: 12,
+  },
+  menuSheetHeaderIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#EFF6FF',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  menuSheetTitle: { fontSize: 17, fontWeight: '800', color: '#0F172A' },
+  menuSheetSub: { fontSize: 12, color: '#64748B', marginTop: 2 },
+  menuItemsGrid: { gap: 8 },
+  menuActionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 14,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  menuItemIconBg: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  menuItemTextWrap: { flex: 1 },
+  menuItemTitle: { fontSize: 14, fontWeight: '800', color: '#0F172A' },
+  menuItemDesc: { fontSize: 11, color: '#64748B', marginTop: 2 },
+
+  /* Policy To Be Done & Leave Modals */
+  makePolicyCard: {
+    width: '100%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 18,
+    maxHeight: '85%',
+  },
+  makePolicyHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 14,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  makePolicyTitle: { fontSize: 16, fontWeight: '800', color: '#0F172A' },
+  makePolicySub: { fontSize: 11, color: '#64748B', marginTop: 2 },
+  makePolicyInputWrap: { marginBottom: 12 },
+  leaveInputLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#475569',
+    marginBottom: 5,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  makePolicyTextInput: {
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#0F172A',
+  },
+  makePolicyProceedBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#002FA7',
+    borderRadius: 12,
+    paddingVertical: 13,
+    marginTop: 4,
+  },
+  makePolicyProceedText: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
+  recentLeadRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    padding: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    marginBottom: 6,
+  },
+  recentLeadVeh: { fontSize: 13, fontWeight: '800', color: '#0F172A' },
+  recentLeadName: { fontSize: 11, color: '#64748B', marginTop: 1 },
+  deskLinkBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+  },
+  deskLinkText: { fontSize: 12, fontWeight: '700', color: '#DC2626' },
+  leaveTypeChip: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  leaveTypeChipActive: {
+    backgroundColor: '#002FA7',
+    borderColor: '#002FA7',
+  },
+  leaveTypeChipText: { fontSize: 12, fontWeight: '700', color: '#475569' },
+  leaveTypeChipTextActive: { color: '#FFFFFF' },
 });
