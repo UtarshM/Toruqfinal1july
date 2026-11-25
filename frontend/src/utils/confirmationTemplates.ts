@@ -213,3 +213,28 @@ export const CONFIRMATION_TEMPLATES: TemplateDefinition[] = [
     generate: getPaymentBakiMsg
   }
 ];
+
+export const ALL_TEMPLATE_KEYS: TemplateKey[] = CONFIRMATION_TEMPLATES.map(t => t.key);
+
+export function combineConfirmationMessages(
+  selectedKeys: TemplateKey[],
+  data: ConfirmationData,
+  customOverrides?: Partial<Record<TemplateKey, string>>
+): string {
+  const orderedKeys = CONFIRMATION_TEMPLATES.map(t => t.key).filter(k => selectedKeys.includes(k));
+  if (orderedKeys.length === 0) {
+    return 'કૃપા કરીને ઓછામાં ઓછો એક કન્ફર્મેશન વિકલ્પ પસંદ કરો.';
+  }
+
+  const name = data.customerName?.trim() || 'Customer Name';
+  const veh = data.vehicleNo?.trim() || 'GJ-XX-XXXX';
+
+  const sections = orderedKeys.map((key, idx) => {
+    const def = CONFIRMATION_TEMPLATES.find(t => t.key === key)!;
+    const custom = customOverrides?.[key];
+    const body = custom && custom.trim() !== '' ? custom.trim() : def.generate(data).trim();
+    return `*${idx + 1}. ${def.title}*\n${body}`;
+  });
+
+  return `🙏 *Customer Policy Approval & Confirmation*\n*Customer:* ${name}\n*Vehicle No:* ${veh}\n\n━━━━━━━━━━━━━━━━━━━━\n\n${sections.join('\n\n━━━━━━━━━━━━━━━━━━━━\n\n')}\n\n━━━━━━━━━━━━━━━━━━━━\n\nકૃપા કરીને ઉપરની તમામ વિગતો વાંચી અને ચકાસીને *"OK / Approved"* રિપ્લાય આપશો. 🙏`;
+}

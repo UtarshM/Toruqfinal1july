@@ -5,12 +5,14 @@ import {
   FileText, UploadCloud, Upload, CheckCircle2, AlertCircle, Eye, Download,
   Send, Trash2, RefreshCw, X, Copy, Check, MessageSquare, Shield,
   Car, User, Phone, Calendar, ArrowRight, Sparkles, ExternalLink,
-  ShieldCheck, Wrench, Truck, CreditCard, Banknote
+  ShieldCheck, Wrench, Truck, CreditCard, Banknote, Layers, CheckSquare, Square
 } from 'lucide-react'
 import { fetchApi } from '@/lib/api'
 import { supabase } from '@/lib/supabase'
 import {
   CONFIRMATION_TEMPLATES,
+  ALL_TEMPLATE_KEYS,
+  combineConfirmationMessages,
   ConfirmationData,
   TemplateKey
 } from '@/lib/confirmationTemplates'
@@ -188,10 +190,11 @@ export default function LeadPolicySubmissionModal({ leadId, lead, onClose, onUpd
     totalReturnAmount: '',
     dueAmount: '',
     insCompany: lead?.provider || '',
-    confirmationMsgs: {}
+    confirmationMsgs: {},
+    selectedCombinedKeys: ['imp_date', 'ncb'] as TemplateKey[]
   })
 
-  const [selectedMsgTemplate, setSelectedMsgTemplate] = useState<TemplateKey>('imp_date')
+  const [selectedMsgTemplate, setSelectedMsgTemplate] = useState<'combined' | TemplateKey>('combined')
 
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({})
 
@@ -221,7 +224,46 @@ export default function LeadPolicySubmissionModal({ leadId, lead, onClose, onUpd
     }
   }
 
-  const getActiveMessageText = (templateKey: TemplateKey): string => {
+  const getSelectedCombinedKeys = (): TemplateKey[] => {
+    return Array.isArray(formData.selectedCombinedKeys) ? formData.selectedCombinedKeys : ['imp_date', 'ncb']
+  }
+
+  const toggleCombinedKey = (key: TemplateKey) => {
+    const current = getSelectedCombinedKeys()
+    const next = current.includes(key)
+      ? current.filter((k) => k !== key)
+      : [...current, key]
+    const updatedMsgs = { ...(formData.confirmationMsgs || {}) }
+    delete updatedMsgs.combined
+    setFormData((prev: any) => ({
+      ...prev,
+      selectedCombinedKeys: next,
+      confirmationMsgs: updatedMsgs,
+    }))
+  }
+
+  const setAllCombinedKeys = (keys: TemplateKey[]) => {
+    const updatedMsgs = { ...(formData.confirmationMsgs || {}) }
+    delete updatedMsgs.combined
+    setFormData((prev: any) => ({
+      ...prev,
+      selectedCombinedKeys: keys,
+      confirmationMsgs: updatedMsgs,
+    }))
+  }
+
+  const getActiveMessageText = (templateKey: 'combined' | TemplateKey): string => {
+    if (templateKey === 'combined') {
+      const customCombined = formData.confirmationMsgs?.combined
+      if (customCombined !== undefined && customCombined !== '') {
+        return customCombined
+      }
+      return combineConfirmationMessages(
+        getSelectedCombinedKeys(),
+        getConfirmationData(),
+        formData.confirmationMsgs
+      )
+    }
     const custom = formData.confirmationMsgs?.[templateKey]
     if (custom !== undefined && custom !== '') {
       return custom
@@ -233,7 +275,7 @@ export default function LeadPolicySubmissionModal({ leadId, lead, onClose, onUpd
     return def ? def.generate(getConfirmationData()) : ''
   }
 
-  const handleMessageChange = (templateKey: TemplateKey, text: string) => {
+  const handleMessageChange = (templateKey: 'combined' | TemplateKey, text: string) => {
     const updatedMsgs = {
       ...(formData.confirmationMsgs || {}),
       [templateKey]: text
@@ -245,7 +287,16 @@ export default function LeadPolicySubmissionModal({ leadId, lead, onClose, onUpd
     }))
   }
 
-  const handleResetMessage = (templateKey: TemplateKey) => {
+  const handleResetMessage = (templateKey: 'combined' | TemplateKey) => {
+    if (templateKey === 'combined') {
+      const updatedMsgs = { ...(formData.confirmationMsgs || {}) }
+      delete updatedMsgs.combined
+      setFormData((prev: any) => ({
+        ...prev,
+        confirmationMsgs: updatedMsgs,
+      }))
+      return
+    }
     const def = CONFIRMATION_TEMPLATES.find(t => t.key === templateKey)
     const defaultText = def ? def.generate(getConfirmationData()) : ''
     const updatedMsgs = {
@@ -259,7 +310,7 @@ export default function LeadPolicySubmissionModal({ leadId, lead, onClose, onUpd
     }))
   }
 
-  const handleCopyMessage = (templateKey: TemplateKey) => {
+  const handleCopyMessage = (templateKey: 'combined' | TemplateKey) => {
     const msg = getActiveMessageText(templateKey)
     navigator.clipboard.writeText(msg)
     setMsgCopied(true)
@@ -306,7 +357,10 @@ export default function LeadPolicySubmissionModal({ leadId, lead, onClose, onUpd
             totalReturnAmount: res.submission.formData.totalReturnAmount || '',
             dueAmount: res.submission.formData.dueAmount || '',
             insCompany: res.submission.formData.insCompany || lead?.provider || '',
-            confirmationMsgs: res.submission.formData.confirmationMsgs || {}
+            confirmationMsgs: res.submission.formData.confirmationMsgs || {},
+            selectedCombinedKeys: Array.isArray(res.submission.formData.selectedCombinedKeys)
+              ? res.submission.formData.selectedCombinedKeys
+              : ['imp_date', 'ncb']
           }))
         }
       }
@@ -1056,6 +1110,18 @@ ${formData.paymentMode?.toLowerCase() === 'credit' && formData.dueDate ? `*Due D
 
                   {/* Horizontal Template Selector Tabs */}
                   <div className="flex items-center gap-1.5 overflow-x-auto pb-1.5 scrollbar-thin">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedMsgTemplate('combined')}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 cursor-pointer ${
+                        selectedMsgTemplate === 'combined'
+                          ? 'bg-purple-600 text-white shadow-sm'
+                          : 'bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-100'
+                      }`}
+                    >
+                      <Layers size={13} />
+                      <span>All Combined ({getSelectedCombinedKeys().length})</span>
+                    </button>
                     {CONFIRMATION_TEMPLATES.map((tmpl) => {
                       const isActive = selectedMsgTemplate === tmpl.key
                       return (
@@ -1079,13 +1145,21 @@ ${formData.paymentMode?.toLowerCase() === 'credit' && formData.dueDate ? `*Due D
                   <div className="flex flex-wrap items-center justify-between gap-2 bg-purple-50/60 border border-purple-100 rounded-lg p-2.5">
                     <div>
                       <div className="text-xs font-bold text-purple-950 flex items-center gap-1.5">
-                        <span>{CONFIRMATION_TEMPLATES.find(t => t.key === selectedMsgTemplate)?.title}</span>
+                        <span>
+                          {selectedMsgTemplate === 'combined'
+                            ? 'Combined Approval Message (1 WhatsApp)'
+                            : CONFIRMATION_TEMPLATES.find(t => t.key === selectedMsgTemplate)?.title}
+                        </span>
                         <span className="text-[11px] font-medium text-purple-600">
-                          ({CONFIRMATION_TEMPLATES.find(t => t.key === selectedMsgTemplate)?.gujaratiTitle})
+                          {selectedMsgTemplate === 'combined'
+                            ? `(${getSelectedCombinedKeys().length} selected • બધી મંજૂરી એક જ મેસેજમાં)`
+                            : `(${CONFIRMATION_TEMPLATES.find(t => t.key === selectedMsgTemplate)?.gujaratiTitle})`}
                         </span>
                       </div>
                       <p className="text-[11px] text-slate-500 mt-0.5">
-                        {CONFIRMATION_TEMPLATES.find(t => t.key === selectedMsgTemplate)?.desc}
+                        {selectedMsgTemplate === 'combined'
+                          ? 'Select all applicable approvals below and send them together in one WhatsApp message.'
+                          : CONFIRMATION_TEMPLATES.find(t => t.key === selectedMsgTemplate)?.desc}
                       </p>
                     </div>
 
@@ -1109,6 +1183,53 @@ ${formData.paymentMode?.toLowerCase() === 'credit' && formData.dueDate ? `*Due D
                       </a>
                     </div>
                   </div>
+
+                  {/* Multi-select Approval Checklist when Combined is active */}
+                  {selectedMsgTemplate === 'combined' && (
+                    <div className="bg-purple-50/50 border border-purple-200 rounded-lg p-3 space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[11px] font-bold text-purple-900 uppercase tracking-wider">
+                          Select Approvals to Combine:
+                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setAllCombinedKeys(ALL_TEMPLATE_KEYS)}
+                            className="px-2 py-0.5 bg-purple-100 hover:bg-purple-200 text-purple-800 rounded text-[11px] font-bold cursor-pointer"
+                          >
+                            Select All (7)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setAllCombinedKeys([])}
+                            className="px-2 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded text-[11px] font-bold cursor-pointer"
+                          >
+                            Clear
+                          </button>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {CONFIRMATION_TEMPLATES.map((tmpl) => {
+                          const checked = getSelectedCombinedKeys().includes(tmpl.key)
+                          return (
+                            <button
+                              key={tmpl.key}
+                              type="button"
+                              onClick={() => toggleCombinedKey(tmpl.key)}
+                              className={`px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer border ${
+                                checked
+                                  ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
+                                  : 'bg-white text-purple-800 border-purple-200 hover:bg-purple-50'
+                              }`}
+                            >
+                              {checked ? <CheckSquare size={13} /> : <Square size={13} />}
+                              <span>{tmpl.title}</span>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Quick Variable Inputs for Active Template */}
                   {selectedMsgTemplate === 'imp_date' && (

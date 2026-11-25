@@ -31,6 +31,8 @@ import { saveFileToDevice } from '../utils/fileSaver';
 import DatePickerSelector from './DatePickerSelector';
 import {
   CONFIRMATION_TEMPLATES,
+  ALL_TEMPLATE_KEYS,
+  combineConfirmationMessages,
   ConfirmationData,
   TemplateKey
 } from '../utils/confirmationTemplates';
@@ -177,10 +179,11 @@ export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClo
     totalReturnAmount: '',
     dueAmount: '',
     insCompany: lead?.provider || '',
-    confirmationMsgs: {}
+    confirmationMsgs: {},
+    selectedCombinedKeys: ['imp_date', 'ncb'] as TemplateKey[]
   });
 
-  const [selectedMsgTemplate, setSelectedMsgTemplate] = useState<TemplateKey>('imp_date');
+  const [selectedMsgTemplate, setSelectedMsgTemplate] = useState<'combined' | TemplateKey>('combined');
 
   // Manager action states
   const [revertReason, setRevertReason] = useState('');
@@ -260,7 +263,10 @@ export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClo
             totalReturnAmount: submissionData.formData.totalReturnAmount || '',
             dueAmount: submissionData.formData.dueAmount || '',
             insCompany: submissionData.formData.insCompany || lead?.provider || '',
-            confirmationMsgs: submissionData.formData.confirmationMsgs || {}
+            confirmationMsgs: submissionData.formData.confirmationMsgs || {},
+            selectedCombinedKeys: Array.isArray(submissionData.formData.selectedCombinedKeys)
+              ? submissionData.formData.selectedCombinedKeys
+              : ['imp_date', 'ncb']
           }));
         }
       }
@@ -300,7 +306,46 @@ export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClo
     };
   };
 
-  const getActiveMessageText = (templateKey: TemplateKey): string => {
+  const getSelectedCombinedKeys = (): TemplateKey[] => {
+    return Array.isArray(formData.selectedCombinedKeys) ? formData.selectedCombinedKeys : ['imp_date', 'ncb'];
+  };
+
+  const toggleCombinedKey = (key: TemplateKey) => {
+    const current = getSelectedCombinedKeys();
+    const next = current.includes(key)
+      ? current.filter((k) => k !== key)
+      : [...current, key];
+    const updatedMsgs = { ...(formData.confirmationMsgs || {}) };
+    delete updatedMsgs.combined;
+    setFormData((prev: any) => ({
+      ...prev,
+      selectedCombinedKeys: next,
+      confirmationMsgs: updatedMsgs,
+    }));
+  };
+
+  const setAllCombinedKeys = (keys: TemplateKey[]) => {
+    const updatedMsgs = { ...(formData.confirmationMsgs || {}) };
+    delete updatedMsgs.combined;
+    setFormData((prev: any) => ({
+      ...prev,
+      selectedCombinedKeys: keys,
+      confirmationMsgs: updatedMsgs,
+    }));
+  };
+
+  const getActiveMessageText = (templateKey: 'combined' | TemplateKey): string => {
+    if (templateKey === 'combined') {
+      const customCombined = formData.confirmationMsgs?.combined;
+      if (customCombined !== undefined && customCombined !== '') {
+        return customCombined;
+      }
+      return combineConfirmationMessages(
+        getSelectedCombinedKeys(),
+        getConfirmationData(),
+        formData.confirmationMsgs
+      );
+    }
     const custom = formData.confirmationMsgs?.[templateKey];
     if (custom !== undefined && custom !== '') {
       return custom;
@@ -312,7 +357,7 @@ export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClo
     return def ? def.generate(getConfirmationData()) : '';
   };
 
-  const handleMessageChange = (templateKey: TemplateKey, text: string) => {
+  const handleMessageChange = (templateKey: 'combined' | TemplateKey, text: string) => {
     const updatedMsgs = {
       ...(formData.confirmationMsgs || {}),
       [templateKey]: text
@@ -324,7 +369,16 @@ export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClo
     }));
   };
 
-  const handleResetMessage = (templateKey: TemplateKey) => {
+  const handleResetMessage = (templateKey: 'combined' | TemplateKey) => {
+    if (templateKey === 'combined') {
+      const updatedMsgs = { ...(formData.confirmationMsgs || {}) };
+      delete updatedMsgs.combined;
+      setFormData((prev: any) => ({
+        ...prev,
+        confirmationMsgs: updatedMsgs,
+      }));
+      return;
+    }
     const def = CONFIRMATION_TEMPLATES.find(t => t.key === templateKey);
     const defaultText = def ? def.generate(getConfirmationData()) : '';
     const updatedMsgs = {
@@ -338,7 +392,7 @@ export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClo
     }));
   };
 
-  const handleCopyMessage = (templateKey: TemplateKey) => {
+  const handleCopyMessage = (templateKey: 'combined' | TemplateKey) => {
     const msg = getActiveMessageText(templateKey);
     Clipboard.setString(msg);
     setMsgCopied(true);
@@ -346,7 +400,7 @@ export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClo
     Alert.alert('Copied', 'Customer confirmation message copied to clipboard!');
   };
 
-  const handleSendWhatsApp = (templateKey: TemplateKey) => {
+  const handleSendWhatsApp = (templateKey: 'combined' | TemplateKey) => {
     const msg = getActiveMessageText(templateKey);
     const phone = (formData.mobileNo1 || lead?.clientPhone || lead?.phone || '').replace(/\D/g, '');
     const url = phone ? `https://wa.me/${phone}?text=${encodeURIComponent(msg)}` : `https://wa.me/?text=${encodeURIComponent(msg)}`;
@@ -1652,6 +1706,19 @@ export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClo
 
                     {/* Horizontal Template Selector Tabs */}
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.templateTabsScroll}>
+                      <Pressable
+                        style={[styles.templateTabChip, selectedMsgTemplate === 'combined' && styles.templateTabChipActive]}
+                        onPress={() => setSelectedMsgTemplate('combined')}
+                      >
+                        <Ionicons
+                          name="layers"
+                          size={14}
+                          color={selectedMsgTemplate === 'combined' ? '#FFFFFF' : '#7C3AED'}
+                        />
+                        <Text style={[styles.templateTabChipText, selectedMsgTemplate === 'combined' && styles.templateTabChipTextActive]}>
+                          All Combined ({getSelectedCombinedKeys().length})
+                        </Text>
+                      </Pressable>
                       {CONFIRMATION_TEMPLATES.map((tmpl) => {
                         const isActive = selectedMsgTemplate === tmpl.key;
                         return (
@@ -1677,10 +1744,14 @@ export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClo
                     <View style={styles.activeTemplateBanner}>
                       <View style={{ flex: 1 }}>
                         <Text style={styles.activeTemplateTitle}>
-                          {CONFIRMATION_TEMPLATES.find(t => t.key === selectedMsgTemplate)?.title}
+                          {selectedMsgTemplate === 'combined'
+                            ? 'Combined Approval Message (1 WhatsApp)'
+                            : CONFIRMATION_TEMPLATES.find(t => t.key === selectedMsgTemplate)?.title}
                         </Text>
                         <Text style={styles.activeTemplateDesc}>
-                          {CONFIRMATION_TEMPLATES.find(t => t.key === selectedMsgTemplate)?.gujaratiTitle}
+                          {selectedMsgTemplate === 'combined'
+                            ? `${getSelectedCombinedKeys().length} approvals selected • બધી મંજૂરી એક જ મેસેજમાં`
+                            : CONFIRMATION_TEMPLATES.find(t => t.key === selectedMsgTemplate)?.gujaratiTitle}
                         </Text>
                       </View>
                       <View style={styles.editableMsgActions}>
@@ -1701,6 +1772,50 @@ export default function LeadPolicySubmissionModal({ visible, leadId, lead, onClo
                         </Pressable>
                       </View>
                     </View>
+
+                    {/* Multi-select Approval Checklist when Combined is active */}
+                    {selectedMsgTemplate === 'combined' && (
+                      <View style={styles.quickInputsGrid}>
+                        <View style={styles.combinedHeaderRow}>
+                          <Text style={styles.quickInputsHeading}>Select Approvals to Combine:</Text>
+                          <View style={{ flexDirection: 'row', gap: 8 }}>
+                            <Pressable
+                              style={styles.combinedMiniBtn}
+                              onPress={() => setAllCombinedKeys(ALL_TEMPLATE_KEYS)}
+                            >
+                              <Text style={styles.combinedMiniBtnText}>Select All</Text>
+                            </Pressable>
+                            <Pressable
+                              style={styles.combinedMiniBtn}
+                              onPress={() => setAllCombinedKeys([])}
+                            >
+                              <Text style={styles.combinedMiniBtnText}>Clear</Text>
+                            </Pressable>
+                          </View>
+                        </View>
+                        <View style={styles.combinedChipsWrap}>
+                          {CONFIRMATION_TEMPLATES.map((tmpl) => {
+                            const checked = getSelectedCombinedKeys().includes(tmpl.key);
+                            return (
+                              <Pressable
+                                key={tmpl.key}
+                                style={[styles.combinedCheckChip, checked && styles.combinedCheckChipActive]}
+                                onPress={() => toggleCombinedKey(tmpl.key)}
+                              >
+                                <Ionicons
+                                  name={checked ? 'checkbox' : 'square-outline'}
+                                  size={15}
+                                  color={checked ? '#FFFFFF' : '#7C3AED'}
+                                />
+                                <Text style={[styles.combinedCheckChipText, checked && styles.combinedCheckChipTextActive]}>
+                                  {tmpl.title}
+                                </Text>
+                              </Pressable>
+                            );
+                          })}
+                        </View>
+                      </View>
+                    )}
 
                     {/* Quick Variable Inputs for Active Template */}
                     {selectedMsgTemplate === 'imp_date' && (
@@ -3197,6 +3312,51 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '800',
     color: '#6B21A8',
+  },
+  combinedHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  combinedMiniBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    backgroundColor: '#EDE9FE',
+  },
+  combinedMiniBtnText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#6D28D9',
+  },
+  combinedChipsWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  combinedCheckChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 9,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#DDD6FE',
+  },
+  combinedCheckChipActive: {
+    backgroundColor: '#7C3AED',
+    borderColor: '#7C3AED',
+  },
+  combinedCheckChipText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#5B21B6',
+  },
+  combinedCheckChipTextActive: {
+    color: '#FFFFFF',
   },
   quickInputRow: {
     flexDirection: 'row',
