@@ -22,6 +22,7 @@ const MENU_GROUPS = [
       { name: 'Imported Spreadsheets', href: '/data/sheets' },
       { name: 'CRM', href: '/crm' },
       { name: 'Rate Calculator', href: '/rate-calculator' },
+      { name: 'Quotation Guide', href: '/quotation-guide' },
       { name: 'Quotation Relationship', href: '/settings/rates' },
       { name: 'Policies PDF', href: '/policies' },
       { name: 'Follow-ups', href: '/follow-ups' },
@@ -95,7 +96,7 @@ export default function Sidebar() {
     if (isHr) {
       // HR manages Users, Onboarding Approvals, HR, Settings, plus Operations and Rate Calculator
       if (group.label === 'SALES') {
-        items = items.filter(i => i.name === 'Rate Calculator')
+        items = items.filter(i => i.name === 'Rate Calculator' || i.name === 'Quotation Guide')
         if (items.length === 0) return null
       }
       if (group.label === 'OPERATIONS') {
@@ -122,7 +123,7 @@ export default function Sidebar() {
         items = items.filter(i => ['Loans', 'Loan Inquiries', 'Claims', 'RTO Work', 'Fitness'].includes(i.name))
       }
       if (group.label === 'SALES') {
-        items = items.filter(i => ['List', 'Leads', 'CRM', 'Rate Calculator', 'Policies PDF', 'Follow-ups'].includes(i.name))
+        items = items.filter(i => ['List', 'Leads', 'CRM', 'Rate Calculator', 'Quotation Guide', 'Policies PDF', 'Follow-ups'].includes(i.name))
       }
       if (group.label === 'MANAGEMENT') {
         items = items.filter(i => ['Policies To Be Done', 'Onboarding Approvals', 'Users', 'Finance', 'Cheques', 'Credit', 'Settings'].includes(i.name))

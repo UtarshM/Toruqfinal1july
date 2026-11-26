@@ -57,6 +57,7 @@ export default function Sidebar({ visible, onClose }: SidebarProps) {
         { name: isAdmin || isManager ? 'List Management' : 'My List', icon: 'list-outline', route: '/(protected)/leads', visible: isAdmin || isManager || hasPermission('lead.view') || (!isHrManager && !isAccountant) },
         { name: 'Today Follow-ups', icon: 'calendar-outline', route: '/(protected)/follow-ups', visible: isAdmin || isManager || hasPermission('lead.view') || (!isHrManager && !isAccountant) },
         { name: 'Rate Calculator', icon: 'calculator-outline', route: '/(protected)/rate-calculator', visible: true },
+        { name: 'Quotation Guide', icon: 'book-outline', route: '/(protected)/quotation-guide', visible: true },
         { name: 'Quotation Relationship', icon: 'options-outline', route: '/(protected)/rates-management', visible: isAdmin },
         { name: 'Policies PDF', icon: 'shield-checkmark-outline', route: '/(protected)/policies', visible: isAdmin || isManager || hasPermission('quotation.generate_pdf') || hasPermission('policy.view') },
         { name: 'Import List', icon: 'cloud-upload-outline', route: '/(protected)/leads/import', visible: isAdmin || hasPermission('lead.import') },
